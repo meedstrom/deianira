@@ -23,35 +23,6 @@
                            "C-x h" "C-x u" "C-x i" "C-x p" "C-x l" "C-x 1"
                            "C-x 2" "C-x 3" "C-x 0"))
 
-(defun esmod-if-prefix-which (lead tail)
-  "Return the hydra appropriate, if any. Hardcoded for now."
-  (let ((cmd (global-key-binding (kbd (concat lead tail)))))
-    (cond ((eq cmd 'Control-X-prefix) #'emo-cx/body)
-          ((eq cmd 'mode-specific-command-prefix) #'emo-cc/body)
-          ((eq cmd 'ctl-x-4-prefix) #'emo-cx4/body)
-          ((eq cmd 'ctl-x-5-prefix) #'emo-cx5/body)
-          ((eq cmd 'vc-prefix-map) nil) ;; C-x v
-          ((eq cmd 'help-command) #'emo-ch/body)
-          ((eq cmd '2C-command) nil) ;; f2
-          ((eq cmd 'ESC-prefix) nil)
-          ((eq cmd 'projectile-command-map) nil)
-          ;; some unnamed prefixes
-          ((string= (concat lead tail) "C-x 8") nil)
-          ((string= (concat lead tail) "C-x ESC") nil)
-          ((string= (concat lead tail) "C-x n") nil)
-          ((string= (concat lead tail) "C-x r") nil)
-          ((string= (concat lead tail) "C-x a") #'emo-cxa/body)
-          ((string= (concat lead tail) "C-x RET") nil)
-          ((string= (concat lead tail) "C-x @") nil)
-          ((string= (concat lead tail) "C-2") #'emo-c2/body)
-          ((string= (concat lead tail) "M-s") #'emo-ms/body)
-          ((string= (concat lead tail) "C-M-g") #'emo-sg/body)
-          ((string= (concat lead tail) "M-g") #'emo-mg/body)
-          ;; ((string= lead "C-") #'emo-control/body)
-          ;; ((string= lead "M-") #'emo-meta/body)
-          ;; ((string= lead "C-M-") #'emo-super/body)
-          )))
-
 (defun esmod-is-a-subhydra (lead tail)
   (if-let ((x (cdr (assoc (concat lead tail) esmod-live-hydras))))
       (intern (concat x "/body"))))
@@ -75,15 +46,6 @@
 (defun esmod-decolorize-cursor ()
   (set-cursor-color esmod-original-cursor-color))
 
-;; Could be refactored
-(defun esmod-is-prefix-or-unbound (lead tail)
-  "Return t if the hotkey described by concatenating LEAD and
-TAIL is a prefix command, such as C-x or C-h."
-  (string-match
-   "prefix\\|nil\\|help-command\\|2C-command"
-   (symbol-name (let ((cmd (global-key-binding (kbd (concat lead tail)))))
-                  (when (symbolp cmd) cmd)))))
-
 (defun esmod-is-named-prefix (lead tail)
   (car-safe
    (member (global-key-binding (kbd (concat lead tail))) esmod-named-prefixes)))
@@ -98,75 +60,6 @@ TAIL is a prefix command, such as C-x or C-h."
                                ESC-prefix
                                projectile-command-map))
 
-;;;;;;;;;;
-;;; UNUSED
-
-(defun esmod-is-prefix (lead tail)
-  "Return t if the hotkey described by concatenating LEAD and
-TAIL is a prefix command, such as C-x or C-h."
-  (let* ((cmd (global-key-binding (kbd (concat lead tail))))
-         (cmdname (if (symbolp cmd) (symbol-name cmd) "foo1234")))
-    (string-match "prefix\\|foo1234\\|help-command\\|2C-command" cmdname)))
-
-(defun esmod-is-unbound (lead tail)
-  (and (esmod-is-prefix-or-unbound lead tail)
-       (not (esmod-is-prefix lead tail))))
-
-(defun esmod-is-prefix-or-unbound* (lead tail)
-  (or (esmod-is-prefix lead tail)
-      (not (esmod-is-bound lead tail))))
-
-(defun esmod-is-prefix-or-unbound+ (lead tail)
-  (or (not (eq nil (global-key-binding (kbd (concat lead tail)))))
-      (not (esmod-is-bound lead tail))
-      (esmod-if-prefix-which lead tail)))
-
-(defun esmod-if-prefix-which-hydra (lead tail)
-  (if (eq t (esmod-if-prefix-which lead tail))
-      nil
-    (esmod-if-prefix-which lead tail)))
-
-(defun esmod-is-prefix-or-unbound++ (lead tail)
-  (or (esmod-if-prefix-which lead tail)
-      (esmod-is-unbound lead tail)))
-
-(defun esmod-is-known-prefix (lead tail)
-  (or (assoc (concat lead tail) esmod-prefix-hydras-alist)
-      (assoc (global-key-binding (kbd (concat lead tail))) esmod-prefix-hydras-alist)))
-
-(defun esmod-is-prefix (lead tail)
-  (or (esmod-is-known-prefix lead tail)
-      (esmod-is-unnamed-prefix lead tail)))
-
-(defvar esmod-prefix-hydras-alist '((Control-X-prefix . emo-cx/body)
-                                    (mode-specific-command-prefix . emo-cc/body)
-                                    (ctl-x-4-prefix . emo-cx4/body)
-                                    (ctl-x-5-prefix . emo-cx5/body)
-                                    (vc-prefix-map . nil)
-                                    (help-command . emo-ch/body)
-                                    (2C-command . nil)
-                                    (ESC-prefix . nil)
-                                    (projectile-command-map . emo-ccp/body)
-                                    ("C-x 8" . nil)
-                                    ("C-x ESC" . nil)
-                                    ("C-x n" . nil)
-                                    ("C-x r" . nil)
-                                    ("C-x a" . emo-cxa/body)
-                                    ("C-x RET" . nil)
-                                    ("C-x @" . nil)
-                                    ("M-s" . emo-ms/body)
-                                    ("M-g" . emo-mg/body)))
-
-;; No idea why these dont work
-(defun esmod-if-prefix-which-hydra* (lead tail)
-  (let ((cell (assoc (concat lead tail) esmod-prefix-hydras-alist #'esmod-eq)))
-    cell))
-
-(defun esmod-eq (obj hotkey)
-  (cond ((equal obj (global-key-binding hotkey)) t)
-        ((equal obj hotkey) t)))
-
-
 (defun esmod-is-bound (lead tail)
   (let ((cmd (global-key-binding (kbd (concat lead tail)))))
     (not (eq cmd nil))))
@@ -177,7 +70,6 @@ TAIL is a prefix command, such as C-x or C-h."
 (defun esmod-is-unnamed-prefix (lead tail)
   (let ((cmd (global-key-binding (kbd (concat lead tail)))))
     (not (symbolp cmd))))
-
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; Micro-macro level
@@ -202,11 +94,6 @@ TAIL is a prefix command, such as C-x or C-h."
       (esmod-is-a-subhydra lead tail)
       `(call-interactively (key-binding (kbd ,(concat lead tail))))))
 
-(defun esmod-cmd-2 (lead tail)
-  (or (when (string= tail "u") #'esmod-universal-arg)
-      (esmod-if-prefix-which lead tail)
-      `(call-interactively (key-binding (kbd ,(concat lead tail))))))
-
 (defun esmod-hint-3 (lead tail)
   (let* ((sym (or (esmod-is-a-subhydra lead tail)
                   (esmod-is-named-prefix lead tail)
@@ -218,28 +105,6 @@ TAIL is a prefix command, such as C-x or C-h."
           (substring name 0 esmod-colwidth)
         name))))
 
-(defun esmod-hint (lead tail)
-  (if (esmod-is-prefix-or-unbound lead tail)
-      " "
-    (let ((name (symbol-name (global-key-binding (kbd (concat lead tail))))))
-      (if (> (length name) esmod-colwidth)
-          (substring name 0 esmod-colwidth)
-        (if (string-equal name "nil")
-            " "
-          name)))))
-
-(defun esmod-hint* (lead tail)
-  (if (esmod-if-prefix-which lead tail)
-      (symbol-name (esmod-if-prefix-which lead tail))
-    (if (esmod-is-prefix-or-unbound lead tail)
-        " "
-      (let ((name (symbol-name (global-key-binding (kbd (concat lead tail))))))
-        (if (> (length name) esmod-colwidth)
-            (substring name 0 esmod-colwidth)
-          (if (string-equal name "nil")
-              " "
-            name))))))
-
 (defun esmod-key (lead tail)
   "If the given hotkey is bound to a command, return TAIL,
 otherwise return a space character. This can be used to
@@ -248,7 +113,8 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
 
 (defun esmod-exit-almost-never (lead tail)
   (when (or (member (concat lead tail) esmod-quitters)
-            (esmod-is-prefix-or-unbound lead tail)) t))
+            (esmod-is-unbound lead tail))
+    t))
 
 (defun esmod-exit-2 (lead tail)
   (cond ((member (concat lead tail) esmod-quitters) '(:exit t))
@@ -258,10 +124,6 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
 
 (defun esmod-head-3 (lead tail)
   `( ,tail ,(esmod-cmd-3 lead tail) ,(esmod-hint-3 lead tail)
-           ,@(esmod-exit-2 lead tail)))
-
-(defun esmod-head-regardless-2 (lead tail)
-  `( ,tail ,(esmod-cmd-2 lead tail) ,(esmod-hint* lead tail)
            ,@(esmod-exit-2 lead tail)))
 
 (defun esmod-head-invisible (lead tail)
