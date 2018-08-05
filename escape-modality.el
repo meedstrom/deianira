@@ -21,9 +21,10 @@
 
 (defvar esmod-noquitters '("C-2 t" "C-2 n" "C-2 p" "C-x ;" "C-x x" "C-x q"
                            "C-x h" "C-x u" "C-x i" "C-x p" "C-x l" "C-x 1"
-                           "C-x 2" "C-x 3" "C-x 0"))
+                           "C-x 2" "C-x 3" "C-x 0" "C-c c"))
 
 (defun esmod-is-a-subhydra (lead tail)
+  "Returns the hydra body in question."
   (if-let ((x (cdr (assoc (concat lead tail) esmod-live-hydras))))
       (intern (concat x "/body"))))
 
@@ -71,6 +72,20 @@
   (let ((cmd (global-key-binding (kbd (concat lead tail)))))
     (not (symbolp cmd))))
 
+
+(defun esmod-is-prefix-or-unbound (lead tail)
+  "Return t if the hotkey described by concatenating LEAD and
+TAIL is a prefix command, such as C-x or C-h."
+  (string-match
+   "prefix\\|nil\\|help-command\\|2C-command"
+   (symbol-name (let ((cmd (global-key-binding (kbd (concat lead tail)))))
+                  (when (symbolp cmd) cmd)))))
+
+(defun esmod-is-prefix-or-unbound-4 (lead tail)
+  (when (or (esmod-is-a-subhydra lead tail)
+            (esmod-is-unbound lead tail))
+    t))
+
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; Micro-macro level
 
@@ -89,6 +104,12 @@
       tail
     `(call-interactively (key-binding (kbd ,(concat lead tail))))))
 
+(defun esmod-cmd-4 (lead tail)
+  (if (esmod-is-unbound lead tail) tail
+    (or (when (string= tail "u") #'esmod-universal-arg)
+        (esmod-is-a-subhydra lead tail)
+        `(call-interactively (key-binding (kbd ,(concat lead tail)))))))
+
 (defun esmod-cmd-3 (lead tail)
   (or (when (string= tail "u") #'esmod-universal-arg)
       (esmod-is-a-subhydra lead tail)
@@ -105,6 +126,12 @@
           (substring name 0 esmod-colwidth)
         name))))
 
+(defun esmod-key-4 (lead tail)
+  "Return either TAIL or a string containing a single space. This
+can be used to make a visibly blank spot in a hydra for hotkeys
+that are unbound."
+  (if (esmod-is-unbound lead tail) " " tail))
+
 (defun esmod-key (lead tail)
   "If the given hotkey is bound to a command, return TAIL,
 otherwise return a space character. This can be used to
@@ -116,11 +143,22 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
             (esmod-is-unbound lead tail))
     t))
 
+(defun esmod-exit-4 (lead tail)
+  (cond ((member (concat lead tail) esmod-quitters) '(:exit t))
+        ((member (concat lead tail) esmod-noquitters) '(:exit nil))
+        ((esmod-is-a-subhydra lead tail) '(:exit t)) ;; very important
+        ((esmod-is-unbound lead tail) '(:exit t))
+        (t '()))) ;; defer to hydra's default behavior
+
 (defun esmod-exit-2 (lead tail)
   (cond ((member (concat lead tail) esmod-quitters) '(:exit t))
         ((member (concat lead tail) esmod-noquitters) '(:exit nil))
         ((esmod-is-prefix-or-unbound lead tail) '(:exit t))
         (t '()))) ;; defer to hydra's default behavior
+
+(defun esmod-head-4 (lead tail)
+  `( ,(esmod-key-4 lead tail) ,(esmod-cmd-4 lead tail) ,(esmod-hint-3 lead tail)
+     ,@(esmod-exit-4 lead tail)))
 
 (defun esmod-head-3 (lead tail)
   `( ,tail ,(esmod-cmd-3 lead tail) ,(esmod-hint-3 lead tail)
@@ -133,9 +171,10 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Macro level: tying it all together.
 
+
 (defmacro esmod-defmode
     (name lead &optional doctitle pop-key parent exit keys)
-  "Make a hydra with very many heads.
+  "Make a hydra with many heads.
 
 Optional argument EXIT controls whether the hydra's heads exit by
 default (overridden on a case-by-case basis by `esmod-quitters').
@@ -145,14 +184,17 @@ display in the hydra hint, defaulting to the value of
 
   `(defhydra ,name (nil nil :columns 10 :exit ,exit
                         :body-pre (esmod-colorize-cursor)
-                        :post (esmod-decolorize-cursor))
+                        ;; (setq exwm-input-line-mode-passthrough t)
+                        :post (esmod-decolorize-cursor)
+                        ;; (setq exwm-input-line-mode-passthrough nil)
+                        :foreign-keys run)
      ,@(if doctitle (list doctitle) '())
-     ,@(mapcar (lambda (char) (esmod-head-3 lead (string char)))
+     ,@(mapcar (lambda (char) (esmod-head-4 lead (string char)))
                (or keys esmod-hydra-keys))
      ,@(mapcar (lambda (tail) (esmod-head-invisible lead tail))
                '("<left>" "<right>" "<up>" "<down>" "<SPC>" "=" "\\" "'" "`"))
-     ,@(mapcar (lambda (chord) (esmod-head-invisible "" chord))
-               esmod-all-simple-chords)
+     ;; ,@(mapcar (lambda (chord) (esmod-head-invisible "" chord))
+     ;; esmod-all-simple-chords)
      ,@(let (extras)
          (mapc (lambda (candidate) (if (car candidate) (push (cdr candidate) extras)))
                ;; List of extra heads to go in the hydra.
@@ -195,6 +237,7 @@ display in the hydra hint, defaulting to the value of
            (hint         (intern (concat x "/hint")))
            (heads        (intern (concat x "/heads")))
            (body         (intern (concat x "/body")))
+           (keymap       (intern (concat x "/keymap")))
            (lead (concat key " "))
            (parent-key (substring key 0 -2)) ;; Doesnt bug with <RET>, strange!
            (parent-symname (cdr (assoc parent-key esmod-live-hydras)))
@@ -205,7 +248,9 @@ display in the hydra hint, defaulting to the value of
       (eval `(progn
                (esmod-defmode ,title       ,lead ,key nil ,parent-body t)
                (esmod-defmode ,nonum-title ,lead ,(concat "\n\n" key) nil ,body t "qwertyuiopasdfghjkl;zxcvbnm,./")
-               (define-key ,nonum-keymap "u" #'hydra--universal-argument)))
+               (define-key ,nonum-keymap "u" #'hydra--universal-argument)
+               (dotimes (i 10)
+                 (define-key ,keymap (int-to-string i) nil))))
       (set hint `(eval (hydra--format nil '(nil nil :columns 10)
                                       ,key (esmod-update-hints ,heads)))))))
 
@@ -267,6 +312,11 @@ META"  "M-<f14>" emo-meta/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
 (esmod-defmode emo-super-nonum "C-M-"  "
 SUPER" "s-<f15>" emo-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
 
+(dotimes (i 10)
+  (define-key emo-control/keymap (int-to-string i) nil)
+  (define-key emo-meta/keymap (int-to-string i) nil)
+  (define-key emo-super/keymap (int-to-string i) nil))
+
 (define-key emo-control-nonum/keymap "u" #'hydra--universal-argument)
 (define-key emo-meta-nonum/keymap "u" #'hydra--universal-argument)
 (define-key emo-super-nonum/keymap "u" #'hydra--universal-argument)
@@ -298,16 +348,92 @@ SUPER" "s-<f15>" emo-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
 
 ;; Context-aware hints. Be aware this does not alter the .../heads variable at
 ;; all. For that, eval something before the hydra--format.
-(dolist (x '(("emo-cx" . "CTL-X")
-             ("emo-cc" . "CTL-C")
-             ("emo-sg" . "SUPER-G")
+(dolist (x '(;; ("emo-cx" . "CTL-X")
+             ;; ("emo-cc" . "CTL-C")
+             ;; ("emo-sg" . "SUPER-G")
              ("emo-super" . "SUPER")
              ("emo-control" . "CONTROL")
              ("emo-meta" . "META")
              ))
-  (set (intern (concat (car x) "/hint"))
-       `(eval (hydra--format nil '(nil nil :columns 10)
-                             ,(cdr x) (esmod-update-hints ,(intern (concat (car x) "/heads")))))))
+  ;; (set (intern (concat (car x) "/hint"))
+  ;; `(eval (progn (set (ca))
+  ;; (hydra--format nil '(nil nil :columns 10) ,(cdr x)
+  ;; (esmod-update-heads ,(intern (concat (car x)
+  ;; "/heads")))))))
+  (let ((y (intern (concat (car x) "/heads"))))
+    (set (intern (concat (car x) "/hint"))
+         `(eval (progn (setq ,y (esmod-update-heads ,y))
+                       (hydra--format nil '(nil nil :columns 10) ,(cdr x) ,y)))))
+  )
+
+
+;; How to detect a change in the keymap?
+;; https://github.com/abo-abo/hydra/wiki/Conditional-Hydra
+;; Instead of re-generating hydra, maybe you'll have luck with altering the /keymap.
+(defun esmod-update-hydra-maybe (heads)
+
+  ;; Figure out the prefix/"lead" for this hydra by iterating until a head is found.
+  (let* ((heads emo-Cx/heads)
+         (example
+          (catch t
+            (dotimes (i 30)
+              (let ((cmd (cadr (elt heads i))))
+                (when (listp cmd) ;; when we find a (call-interactively ...)
+                  (throw t (cadr (cadadr cmd))))))))
+         (lead (substring example 0 -1)))
+
+    (if (catch t
+          (mapc (lambda (head)
+                  (if (> (length (car head)) 1)
+                      nil
+                    (let ((cmd (cadr head)))
+                      (cond ((and (stringp cmd) (esmod-is-bound lead cmd))
+                             (throw t t))
+                            ((and (listp cmd) (esmod-is-unbound lead (car head)))
+                             (throw t t))))))
+                heads))
+        (eval '(esmod-define-global-hydra-maybe (substring lead 0 -1)))
+      )))
+
+
+;; let's use htis in place of the update-hints thing. Return a list of heads for
+;; passing to hydra--format, but also actually set this thing globally.
+(defun esmod-update-heads (heads)
+
+  ;; Figure out the prefix/"lead" for this hydra by iterating until a head is found.
+  (let* ((example
+          (catch t
+            (dotimes (i 30)
+              (let ((cmd (cadr (elt heads i))))
+                (when (listp cmd) ;; when we find a (call-interactively ...)
+                  (throw t (cadr (cadadr cmd))))))))
+         (lead (substring example 0 -1)))
+
+    ;; Go thru heads one by one
+    (mapcar
+     (lambda (head)
+
+       ;; If it's a chord, do not bother updating. Affects <RET> and the like though.
+       (if (> (length (car head)) 1)
+           head
+
+         ;; Check out the heads not currently bound. If the
+         ;; corresponding hotkey has changed, return a new head.
+         (let ((cmd (cadr head)))
+           (if (and (stringp cmd)
+                    (esmod-is-bound lead cmd))
+               (esmod-head-4 lead cmd)
+
+             ;; Otherwise, check if it's a (call-interactively).
+             (if (listp cmd)
+                 (esmod-head-4 lead (car head))
+
+               ;; Otherwise, return head unmodified.
+               head)
+             head))))
+     heads)))
+
+;; (global-set-key (kbd "C-x 7") 'next-line)
 
 ;; It works, but I don't understand how. Why does it not return updated
 ;; heads with hints, for keys that were previously invisible? For those keys,
@@ -332,5 +458,6 @@ SUPER" "s-<f15>" emo-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
              head))
        head))
    heads))
+
 
 (provide 'escape-modality)
