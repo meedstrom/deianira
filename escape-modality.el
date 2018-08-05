@@ -17,7 +17,7 @@
 
 (defun esmod-hydra-keys () (mapcar #'char-to-string esmod-hydra-keys))
 
-(defvar esmod-quitters '("C-q" "C-s" "C-g" "C-u" "M-x" "M-u" "s-u" "C-2"))
+(defvar esmod-quitters '("C-q" "C-s" "C-g" "C-u" "M-x" "M-u" "s-u" "C-2" "C-c c"))
 
 (defvar esmod-noquitters '("C-2 t" "C-2 n" "C-2 p" "C-x ;" "C-x x" "C-x q"
                            "C-x h" "C-x u" "C-x i" "C-x p" "C-x l" "C-x 1"
@@ -35,6 +35,13 @@
    (intern (concat (substring (symbol-name hydra-curr-body-fn) 0 -5)
                    "-nonum/body")))
   (hydra--universal-argument arg))
+
+(defun esmod-cc-cc (arg)
+  (interactive "P")
+  ;; (prefix-command-preserve-state)
+  ;; (setq unread-command-events (listify-key-sequence "c"))
+  (call-interactively (key-binding (kbd "C-c c")))
+  (emo-control/body))
 
 (setq esmod-original-cursor-color (face-background 'cursor))
 
@@ -107,6 +114,8 @@ TAIL is a prefix command, such as C-x or C-h."
 (defun esmod-cmd-4 (lead tail)
   (if (esmod-is-unbound lead tail) tail
     (or (when (string= tail "u") #'esmod-universal-arg)
+        (when (and (string= lead "C-c ")
+                   (string= tail "c")) #'esmod-cc-cc)
         (esmod-is-a-subhydra lead tail)
         `(call-interactively (key-binding (kbd ,(concat lead tail)))))))
 
@@ -187,7 +196,8 @@ display in the hydra hint, defaulting to the value of
                         ;; (setq exwm-input-line-mode-passthrough t)
                         :post (esmod-decolorize-cursor)
                         ;; (setq exwm-input-line-mode-passthrough nil)
-                        :foreign-keys run)
+                        ;; :foreign-keys run
+                        )
      ,@(if doctitle (list doctitle) '())
      ,@(mapcar (lambda (char) (esmod-head-4 lead (string char)))
                (or keys esmod-hydra-keys))
@@ -200,8 +210,8 @@ display in the hydra hint, defaulting to the value of
                ;; List of extra heads to go in the hydra.
                ;; For example ("C-f" . ("C-f" nil nil :exit t))
                `((,pop-key . (,pop-key nil nil :exit t))
-                 (,parent . ("<backspace>" ,parent nil :exit t)))) extras)))
-
+                 (,parent . ("<backspace>" ,parent nil :exit t)))) extras)
+     ))
 
 (defun esmod-define-local-hydra (key keymap)
   (when (symbolp keymap) ;; only those with names like org-mode-map
@@ -290,6 +300,7 @@ display in the hydra hint, defaulting to the value of
 
 (esmod-scan)
 (esmod-generate-hydras)
+
 
 ;; (esmod-defmode emo-cxa       "C-x a "  "CTL-X-A" nil emo-cx/body t)
 ;; (esmod-defmode emo-cx4       "C-x 4 "  "CTL-X-4" nil emo-cx/body t)
