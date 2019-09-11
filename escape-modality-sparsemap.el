@@ -1,29 +1,29 @@
 ;; escape-modality-sparsemap.el -- Modifications to the Emacs keymap
 
-(defun esmod-stringify (x)
+(defun esm-stringify (x)
   "Like `char-to-string', but accepts string input."
   (if (characterp x) (char-to-string x) x))
 
-(defun esmod-copy-key (copier copied key)
+(defun esm-copy-key (copier copied key)
   ;; Transform in case the key is coming from a string-to-list operation
-  (let ((key (esmod-stringify key)))
+  (let ((key (esm-stringify key)))
     (global-set-key (kbd (concat copier key))
                     (global-key-binding (kbd (concat copied key))))))
 
-(defun esmod-copy-key-1 (prefix copying-key copied-key)
-  (let ((copying-key (esmod-stringify copying-key))
-        (copied-key (esmod-stringify copied-key)))
+(defun esm-copy-key-1 (prefix copying-key copied-key)
+  (let ((copying-key (esm-stringify copying-key))
+        (copied-key (esm-stringify copied-key)))
     (global-set-key (kbd (concat prefix copying-key))
                     (global-key-binding (kbd (concat prefix copied-key))))))
 
-(defvar esmod-C-x-C-key-overwrites-C-x-key t)
+(defvar esm-C-x-C-key-overwrites-C-x-key t)
 
-(defun esmod-flatten-ctl-x ()
+(defun esm-flatten-ctl-x ()
   ;; Prevent clobbering useful commands. Would take the useful command and bind
   ;; it elsewhere, but Emacsers remember these bindings. They're friendly,
   ;; familiar.
   ;; Should go in user init file.
-  (if esmod-C-x-C-key-overwrites-C-x-key
+  (if esm-C-x-C-key-overwrites-C-x-key
       (progn
         ;; Bind here stuff from ctl-x <KEY> that you want to keep.
         ;; (global-set-key (kbd "C-x C-b") #'switch-to-buffer)
@@ -40,34 +40,34 @@
     (global-set-key (kbd "C-x o") #'delete-blank-lines))
 
   ;; - TODO: make this a function that can recover the previous keymap.
-  (if esmod-C-x-C-key-overwrites-C-x-key
-      (dolist (x (esmod-get-hydra-keys))
+  (if esm-C-x-C-key-overwrites-C-x-key
+      (dolist (x (esm-get-hydra-keys))
         (global-set-key (kbd (concat "C-x " x))
                         (key-binding (kbd (concat "C-x C-" x)))))
-    (dolist (x (esmod-get-hydra-keys))
+    (dolist (x (esm-get-hydra-keys))
       (global-set-key (kbd (concat "C-x C-" x))
                       (key-binding (kbd (concat "C-x " x)))))))
 
-(defmacro esmod-backup-keymap (keymap)
-  "Backup under the name esmod-backup-KEYMAP, unless it already exists."
-  `(let ((backup (intern (concat "esmod-backup-" (symbol-name ',keymap)))))
+(defmacro esm-backup-keymap (keymap)
+  "Backup under the name esm-backup-KEYMAP, unless it already exists."
+  `(let ((backup (intern (concat "esm-backup-" (symbol-name ',keymap)))))
      (unless (and (boundp backup)
                   ((not (eq nil backup))))
        ;; Maybe you should use `copy-keymap' here
        (set backup ,keymap))))
 
-(defun esmod-flatten-keymap (keymap)
+(defun esm-flatten-keymap (keymap)
   "An example of KEYMAP is org-mode-map. Only acts on stuff under C-c for now."
-  (dolist (key (esmod-get-hydra-keys))
+  (dolist (key (esm-get-hydra-keys))
     (define-key keymap (kbd (concat "C-c " key))
       (lookup-key keymap (kbd (concat "C-c C-" key))))))
 
-(defmacro esmod-restore-keymap (keymap)
-  `(let ((backup (intern (concat "esmod-backup-" (symbol-name ',keymap)))))
+(defmacro esm-restore-keymap (keymap)
+  `(let ((backup (intern (concat "esm-backup-" (symbol-name ',keymap)))))
      (when (and (boundp backup) ((not (eq nil backup))))
        (setq ,keymap backup))))
 
-(defvar esmod-all-keys-on-keyboard
+(defvar esm-all-keys-on-keyboard
   (append
    (split-string
     "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./~!@#$%^&*()_+{}|:\"<>?"
@@ -80,16 +80,16 @@
   "If you want to customize this to your local layout, try
 copying the source.")
 
-(defvar esmod-all-keys-on-keyboard-without-shift
-  (seq-difference esmod-all-keys-on-keyboard
+(defvar esm-all-keys-on-keyboard-without-shift
+  (seq-difference esm-all-keys-on-keyboard
                   (split-string "~!@#$%^&*()_+{}|:\"<>?" "" t)))
 
-(defun esmod-super-translate-to-ctl-meta ()
-  (dolist (key esmod-all-keys-on-keyboard)
+(defun esm-super-translate-to-ctl-meta ()
+  (dolist (key esm-all-keys-on-keyboard)
     (define-key key-translation-map
       (kbd (concat "s-" key)) (kbd (concat "C-M-" key)))))
 
-(defun esmod-super-map-from-ctl-meta ()
+(defun esm-super-map-from-ctl-meta ()
   (dolist (key (string-to-list
                 "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./~!@#$%^&*()_+{}|:\"<>?"))
     (global-set-key (kbd (concat "s-" (string key)))
@@ -135,28 +135,28 @@ copying the source.")
                φ2))))) smartparens-mode-map))
 
 
-(defmacro esmod-kill-shift-1 ()
+(defmacro esm-kill-shift-1 ()
   "Make it not matter whether or not Shift is pressed."
   `(progn ,@(cl-mapcar
              (lambda (loser winner)
-               `(progn (esmod-copy-key-1 "C-" ,loser ,winner)
-                       (esmod-copy-key-1 "M-" ,loser ,winner)
-                       (esmod-copy-key-1 "C-x " ,loser ,winner)
-                       (esmod-copy-key-1 "C-x C-" ,loser ,winner)
-                       (esmod-copy-key-1 "C-M-" ,loser ,winner)
+               `(progn (esm-copy-key-1 "C-" ,loser ,winner)
+                       (esm-copy-key-1 "M-" ,loser ,winner)
+                       (esm-copy-key-1 "C-x " ,loser ,winner)
+                       (esm-copy-key-1 "C-x C-" ,loser ,winner)
+                       (esm-copy-key-1 "C-M-" ,loser ,winner)
                        ))
              "~!@#$%^&*()_+{}:<>?\"|" ;; loser: default binds overwritten
              "`1234567890-=[];,./'\\" ;; winner: its commands stay
              )))
 
-(defun esmod-shift-map-from-unshifted ()
-  (esmod-kill-shift-1)
+(defun esm-shift-map-from-unshifted ()
+  (esm-kill-shift-1)
   ;; (global-set-key (kbd "C-~") (global-key-binding (kbd "C-`")))
   ;; (global-set-key (kbd "M-~") (global-key-binding (kbd "M-`")))
   ;; (global-set-key (kbd "C-M-~") (global-key-binding (kbd "C-M-`")))
   (setq org-support-shift-select t))
 
-(defun esmod-hyper-alt-maps-from-ctl-meta-maps ()
+(defun esm-hyper-alt-maps-from-ctl-meta-maps ()
   "Populate the right half of the keyboard with Hyper and Alt
 hotkeys, unbinding the Control and Meta hotkeys.
 
@@ -185,12 +185,12 @@ WARNING: Destructive, run only once."
   (define-key key-translation-map (kbd "H-h") (kbd "<DEL>"))
 
   ;; Change right Ctl and Meta into Hyper and Alt
-  (dolist (var esmod-xmodmap-rules)
+  (dolist (var esm-xmodmap-rules)
     (when (or (string-match "keycode 108" var)
               (string-match "keycode 105" var))
-      (delq var esmod-xmodmap-rules)))
-  (push "keycode 108 = Hyper_R" esmod-xmodmap-rules)
-  (push "keycode 105 = Alt_R" esmod-xmodmap-rules)
-  (esmod-xmodmap-reload))
+      (delq var esm-xmodmap-rules)))
+  (push "keycode 108 = Hyper_R" esm-xmodmap-rules)
+  (push "keycode 105 = Alt_R" esm-xmodmap-rules)
+  (esm-xmodmap-reload))
 
 (provide 'escape-modality-sparsemap)

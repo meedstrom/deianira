@@ -6,7 +6,7 @@
 ;; Idea: Make C-m send Return and C-h send Backspace, via xmodmap? Cleaner?
 ;; Or use key-translation-map for C-h, and use the same method to make
 ;; Backspace send something else so you don't waste a key.
-(defvar esmod-xmodmap-rules
+(defvar esm-xmodmap-rules
   '(;; necessary for xcape to send them
     "keycode any = F13"
     "keycode any = F14"
@@ -17,7 +17,7 @@
     "keycode any = F24"
     "keycode any = F25"))
 
-(defvar esmod-xcape-rules
+(defvar esm-xcape-rules
   '("Control_L=F13"
     "Control_R=F13"
     "Meta_L=F14"
@@ -27,14 +27,14 @@
     "Super_L=F15"
     "Super_R=F15"))
 
-(defun esmod-xmodmap-reload ()
+(defun esm-xmodmap-reload ()
   (interactive)
   (when (executable-find "xmodmap")
-    (message "Loading esmod-xmodmap-rules.")
+    (message "Loading esm-xmodmap-rules.")
     (shell-command
-     (concat "xmodmap -e '" (string-join esmod-xmodmap-rules "' -e '") "'"))))
+     (concat "xmodmap -e '" (string-join esm-xmodmap-rules "' -e '") "'"))))
 
-(defun esmod-xcape-reload ()
+(defun esm-xcape-reload ()
   (interactive)
   (when (executable-find "xcape")
     (if (executable-find "pkill")
@@ -43,9 +43,9 @@
           (shell-command "killall -9 xcape")
         (message "Program pkill not found, so not killing previous instances of xcape.")))
     (shell-command
-     (concat "xcape -e '" (string-join esmod-xcape-rules ";") "'"))))
+     (concat "xcape -e '" (string-join esm-xcape-rules ";") "'"))))
 
-(defun esmod-xkbset-enable-sticky-keys ()
+(defun esm-xkbset-enable-sticky-keys ()
   (interactive)
   (when (executable-find "xkbset")
     (shell-command "xkbset sticky -twokey -latchlock; xkbset exp =sticky;")))
