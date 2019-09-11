@@ -1,6 +1,5 @@
 ;; escape-modality-sparsemap.el -- Modifications to the Emacs keymap
 
-
 (defun esmod-stringify (x)
   "Like `char-to-string', but accepts string input."
   (if (characterp x) (char-to-string x) x))
@@ -17,21 +16,14 @@
     (global-set-key (kbd (concat prefix copying-key))
                     (global-key-binding (kbd (concat prefix copied-key))))))
 
-
-(defvar esmod-ctl-x-ctl-key-overwrites-ctl-x-key t
-  "If non-nil, rebind all C-x <KEY> keys to duplicates of C-x
-C-<KEY>, in the process removing everything that was on C-x
-<KEY>. If nil, do the opposite, removing everything that was on
-C-x C-<KEY>.")
+(defvar esmod-C-x-C-key-overwrites-C-x-key t)
 
 (defun esmod-flatten-ctl-x ()
-  "Replace everything bound to C-x C-<KEY> with what's bound to
-C-x <SAME KEY>, or the opposite, depending on the value of
-`esmod-ctl-x-ctl-key-overwrites-ctl-x-key'."
-  ;; Prevent clobbering useful commands. Would normally take the useful
-  ;; command and bind it elsewhere, but Emacsers remember these bindings,
-  ;; changed prefix or no.
-  (if esmod-ctl-x-ctl-key-overwrites-ctl-x-key
+  ;; Prevent clobbering useful commands. Would take the useful command and bind
+  ;; it elsewhere, but Emacsers remember these bindings. They're friendly,
+  ;; familiar.
+  ;; Should go in user init file.
+  (if esmod-C-x-C-key-overwrites-C-x-key
       (progn
         ;; Bind here stuff from ctl-x <KEY> that you want to keep.
         ;; (global-set-key (kbd "C-x C-b") #'switch-to-buffer)
@@ -47,81 +39,26 @@ C-x <SAME KEY>, or the opposite, depending on the value of
     (global-set-key (kbd "C-x x") #'exchange-point-and-mark)
     (global-set-key (kbd "C-x o") #'delete-blank-lines))
 
-  ;; Overwrite a whole class of keys so that we always have the freedom to either
-  ;; hold down the modifier or not and execute the same command.
   ;; - TODO: make this a function that can recover the previous keymap.
-  (if esmod-ctl-x-ctl-key-overwrites-ctl-x-key
-      (progn
-        (global-set-key (kbd "C-x ,") (key-binding (kbd "C-x C-,")))
-        (global-set-key (kbd "C-x .") (key-binding (kbd "C-x C-.")))
-        (global-set-key (kbd "C-x /") (key-binding (kbd "C-x C-/")))
-        (global-set-key (kbd "C-x ;") (key-binding (kbd "C-x C-;")))
-        (global-set-key (kbd "C-x a") (key-binding (kbd "C-x C-a")))
-        (global-set-key (kbd "C-x b") (key-binding (kbd "C-x C-b")))
-        (global-set-key (kbd "C-x c") (key-binding (kbd "C-x C-c")))
-        (global-set-key (kbd "C-x d") (key-binding (kbd "C-x C-d")))
-        (global-set-key (kbd "C-x e") (key-binding (kbd "C-x C-e")))
-        (global-set-key (kbd "C-x f") (key-binding (kbd "C-x C-f")))
-        (global-set-key (kbd "C-x g") (key-binding (kbd "C-x C-g")))
-        (global-set-key (kbd "C-x h") (key-binding (kbd "C-x C-h")))
-        (global-set-key (kbd "C-x i") (key-binding (kbd "C-x C-i")))
-        (global-set-key (kbd "C-x j") (key-binding (kbd "C-x C-j")))
-        (global-set-key (kbd "C-x k") (key-binding (kbd "C-x C-k")))
-        (global-set-key (kbd "C-x l") (key-binding (kbd "C-x C-l")))
-        (global-set-key (kbd "C-x m") (key-binding (kbd "C-x C-m")))
-        (global-set-key (kbd "C-x n") (key-binding (kbd "C-x C-n")))
-        (global-set-key (kbd "C-x o") (key-binding (kbd "C-x C-o")))
-        (global-set-key (kbd "C-x p") (key-binding (kbd "C-x C-p")))
-        (global-set-key (kbd "C-x q") (key-binding (kbd "C-x C-q")))
-        (global-set-key (kbd "C-x r") (key-binding (kbd "C-x C-r")))
-        (global-set-key (kbd "C-x s") (key-binding (kbd "C-x C-s")))
-        (global-set-key (kbd "C-x t") (key-binding (kbd "C-x C-t")))
-        (global-set-key (kbd "C-x u") (key-binding (kbd "C-x C-u")))
-        (global-set-key (kbd "C-x v") (key-binding (kbd "C-x C-v")))
-        (global-set-key (kbd "C-x w") (key-binding (kbd "C-x C-w")))
-        (global-set-key (kbd "C-x x") (key-binding (kbd "C-x C-x")))
-        (global-set-key (kbd "C-x y") (key-binding (kbd "C-x C-y")))
-        (global-set-key (kbd "C-x z") (key-binding (kbd "C-x C-z"))))
-    (global-set-key (kbd "C-x C-,") (key-binding (kbd "C-x ,")))
-    (global-set-key (kbd "C-x C-.") (key-binding (kbd "C-x .")))
-    (global-set-key (kbd "C-x C-/") (key-binding (kbd "C-x /")))
-    (global-set-key (kbd "C-x C-;") (key-binding (kbd "C-x ;")))
-    (global-set-key (kbd "C-x C-a") (key-binding (kbd "C-x a")))
-    (global-set-key (kbd "C-x C-b") (key-binding (kbd "C-x b")))
-    (global-set-key (kbd "C-x C-c") (key-binding (kbd "C-x c")))
-    (global-set-key (kbd "C-x C-d") (key-binding (kbd "C-x d")))
-    (global-set-key (kbd "C-x C-e") (key-binding (kbd "C-x e")))
-    (global-set-key (kbd "C-x C-f") (key-binding (kbd "C-x f")))
-    (global-set-key (kbd "C-x C-g") (key-binding (kbd "C-x g")))
-    (global-set-key (kbd "C-x C-h") (key-binding (kbd "C-x h")))
-    (global-set-key (kbd "C-x C-i") (key-binding (kbd "C-x i")))
-    (global-set-key (kbd "C-x C-j") (key-binding (kbd "C-x j")))
-    (global-set-key (kbd "C-x C-k") (key-binding (kbd "C-x k")))
-    (global-set-key (kbd "C-x C-l") (key-binding (kbd "C-x l")))
-    (global-set-key (kbd "C-x C-m") (key-binding (kbd "C-x m")))
-    (global-set-key (kbd "C-x C-n") (key-binding (kbd "C-x n")))
-    (global-set-key (kbd "C-x C-o") (key-binding (kbd "C-x o")))
-    (global-set-key (kbd "C-x C-p") (key-binding (kbd "C-x p")))
-    (global-set-key (kbd "C-x C-q") (key-binding (kbd "C-x q")))
-    (global-set-key (kbd "C-x C-r") (key-binding (kbd "C-x r")))
-    (global-set-key (kbd "C-x C-s") (key-binding (kbd "C-x s")))
-    (global-set-key (kbd "C-x C-t") (key-binding (kbd "C-x t")))
-    (global-set-key (kbd "C-x C-u") (key-binding (kbd "C-x u")))
-    (global-set-key (kbd "C-x C-v") (key-binding (kbd "C-x v")))
-    (global-set-key (kbd "C-x C-w") (key-binding (kbd "C-x w")))
-    (global-set-key (kbd "C-x C-x") (key-binding (kbd "C-x x")))
-    (global-set-key (kbd "C-x C-y") (key-binding (kbd "C-x y")))
-    (global-set-key (kbd "C-x C-z") (key-binding (kbd "C-x z")))))
+  (if esmod-C-x-C-key-overwrites-C-x-key
+      (dolist (x (esmod-get-hydra-keys))
+        (global-set-key (kbd (concat "C-x " x))
+                        (key-binding (kbd (concat "C-x C-" x)))))
+    (dolist (x (esmod-get-hydra-keys))
+      (global-set-key (kbd (concat "C-x C-" x))
+                      (key-binding (kbd (concat "C-x " x)))))))
 
-(defmacro esmod-backup-and-flatten-keymap (keymap)
+(defmacro esmod-backup-keymap (keymap)
+  "Backup under the name esmod-backup-KEYMAP, unless it already exists."
   `(let ((backup (intern (concat "esmod-backup-" (symbol-name ',keymap)))))
-     (unless (and (boundp backup) ((not (eq nil backup))))
-       (set backup ,keymap))
-     (esmod-flatten-keymap ,keymap)))
+     (unless (and (boundp backup)
+                  ((not (eq nil backup))))
+       ;; Maybe you should use `copy-keymap' here
+       (set backup ,keymap))))
 
 (defun esmod-flatten-keymap (keymap)
-  "Probably only works with named keymaps. Only acts on stuff under C-c for now."
-  (dolist (key (esmod-hydra-keys))
+  "An example of KEYMAP is org-mode-map. Only acts on stuff under C-c for now."
+  (dolist (key (esmod-get-hydra-keys))
     (define-key keymap (kbd (concat "C-c " key))
       (lookup-key keymap (kbd (concat "C-c C-" key))))))
 
@@ -133,21 +70,15 @@ C-x <SAME KEY>, or the opposite, depending on the value of
 (defvar esmod-all-keys-on-keyboard
   (append
    (split-string
-    "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./~!@#$%^&*()_+{}|:\"<>?" "" t)
+    "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./~!@#$%^&*()_+{}|:\"<>?"
+    "" t)
    (split-string
     "<left> <right> <up> <down> <SPC> <RET> <backspace> <delete>
      TAB <f1> <f2> <f3> <f4> <f5> <f6> <f7> <f8> <f9> <f10> <f11>
-     <f12> <print> <insert> <next> <prior> <home> <end>"  "\s\\|\n" t)))
-
-;; deprec
-(defvar esmod-all-keys-on-keyboard-9
-  (nconc (mapcar (lambda (char) (esmod-stringify char))
-                 (string-to-list "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./~!@#$%^&*()_+{}|:\"<>?"))
-         '("<left>" "<right>" "<up>" "<down>" "<SPC>" "<RET>"
-           "<backspace>" "<delete>" "TAB" "<f1>" "<f2>" "<f3>"
-           "<f4>" "<f5>" "<f6>" "<f7>" "<f8>" "<f9>" "<f10>"
-           "<f11>" "<f12>" "<print>" "<insert>" "<next>" "<prior>"
-           "<home>" "<end>")))
+     <f12> <print> <insert> <next> <prior> <home> <end>"
+    "\s\\|\n" t))
+  "If you want to customize this to your local layout, try
+copying the source.")
 
 (defvar esmod-all-keys-on-keyboard-without-shift
   (seq-difference esmod-all-keys-on-keyboard
@@ -157,17 +88,6 @@ C-x <SAME KEY>, or the opposite, depending on the value of
   (dolist (key esmod-all-keys-on-keyboard)
     (define-key key-translation-map
       (kbd (concat "s-" key)) (kbd (concat "C-M-" key)))))
-
-;; (defun esmod-super-translate-to-ctl-meta ()
-;;   (dolist (key (nconc (mapcar (lambda (char) (esmod-stringify char))
-;;                               (string-to-list "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./~!@#$%^&*()_+{}|:\"<>?"))
-;;                       '("<left>" "<right>" "<up>" "<down>" "<SPC>" "<RET>"
-;;                         "<backspace>" "<delete>" "TAB" "<f1>" "<f2>" "<f3>"
-;;                         "<f4>" "<f5>" "<f6>" "<f7>" "<f8>" "<f9>" "<f10>"
-;;                         "<f11>" "<f12>" "<print>" "<insert>" "<next>" "<prior>"
-;;                         "<home>" "<end>")))
-;;     (define-key key-translation-map (kbd (concat "s-" key))
-;;       (kbd (concat "C-M-" key)))))
 
 (defun esmod-super-map-from-ctl-meta ()
   (dolist (key (string-to-list
@@ -215,11 +135,9 @@ C-x <SAME KEY>, or the opposite, depending on the value of
                φ2))))) smartparens-mode-map))
 
 
-
-
 (defmacro esmod-kill-shift-1 ()
   "Make it not matter whether or not Shift is pressed."
-  `(progn ,@(mapcar*
+  `(progn ,@(cl-mapcar
              (lambda (loser winner)
                `(progn (esmod-copy-key-1 "C-" ,loser ,winner)
                        (esmod-copy-key-1 "M-" ,loser ,winner)
@@ -230,16 +148,6 @@ C-x <SAME KEY>, or the opposite, depending on the value of
              "~!@#$%^&*()_+{}:<>?\"|" ;; loser: default binds overwritten
              "`1234567890-=[];,./'\\" ;; winner: its commands stay
              )))
-
-;; unused
-(defmacro esmod-kill-shift ()
-  `(progn ,@(mapcar*
-             (lambda (loser winner)
-               `(global-set-key
-                 (kbd (concat "C-" (string ,loser)))
-                 (global-key-binding (kbd (concat "C-" (string ,winner))))))
-             "~!@#$%^&*()_+{}:<>?\"|"
-             "`1234567890-=[];,./'\\")))
 
 (defun esmod-shift-map-from-unshifted ()
   (esmod-kill-shift-1)
