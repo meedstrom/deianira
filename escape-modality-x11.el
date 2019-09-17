@@ -1,5 +1,5 @@
 ;; escape-modality-x11.el
-;; Copyright (C) 2019 Martin Edstrom
+;; Copyright (C) 2019 Martin Erik Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -17,49 +17,41 @@
 ;; to disable all ubuntu / gnome hotkeys, use
 ;; https://github.com/fatso83/dotfiles/blob/master/utils/scripts/gnome-key-bindings
 
+;; TODO: Switch to not shell-command so you can output to esm-debug without
+;; overwriting it.
+
+(require 'escape-modality-common)
 (eval-when-compile (require 'subr-x)) ;; string-join
 
-;; Idea: Make C-m send Return and C-h send Backspace, via xmodmap? Cleaner?
-;; Or use key-translation-map for C-h, and use the same method to make
-;; Backspace send something else so you don't waste a key.
-(defvar esm-xmodmap-rules
-  '(;; necessary for xcape to send them
-    "keycode any = F13"
-    "keycode any = F14"
-    "keycode any = F15"
-    "keycode any = F16"
-    "keycode any = F17"
-    "keycode any = F23"
-    "keycode any = F24"
-    "keycode any = F25"))
-
-(defvar esm-xcape-rules
-  '("Control_L=F13"
-    "Control_R=F13"
-    "Meta_L=F14"
-    "Meta_R=F14"
-    "Alt_L=F14"
-    "Alt_R=F14"
-    "Super_L=F15"
-    "Super_R=F15"))
+(defun esm-run (x)
+  (start-process-shell-command x nil x))
 
 (defun esm-xmodmap-reload ()
   (interactive)
-  (when (executable-find "xmodmap")
-    (message "Loading esm-xmodmap-rules.")
-    (shell-command
-     (concat "xmodmap -e '" (string-join esm-xmodmap-rules "' -e '") "'"))))
+  (let* ((shell-command-dont-erase-buffer t)
+         (rules (string-join esm-xmodmap-rules "' -e '"))
+         (cmd (concat "xmodmap -e '" rules "'")))
+    (when (executable-find "xmodmap")
+      (shell-command cmd (or (esm-debug-buffer) "*Messages*")))))
 
-(defun esm-xcape-reload ()
+(defun esm-xcape-reload (&optional output-buffer)
   (interactive)
-  (when (executable-find "xcape")
-    (if (executable-find "pkill")
-        (shell-command "pkill xcape")
-      (if (executable-find "killall")
-          (shell-command "killall -9 xcape")
-        (message "Program pkill not found, so not killing previous instances of xcape.")))
-    (shell-command
-     (concat "xcape -e '" (string-join esm-xcape-rules ";") "'"))))
+  (let* ((shell-command-dont-erase-buffer t)
+         (rules (string-join esm-xcape-rules ";"))
+         (cmd (concat "xcape -e '" rules "'")))
+    (when (executable-find "xcape")
+      (esm-xcape-kill)
+      (start-process-shell-command "xcape"
+                                   (or (esm-debug-buffer) output-buffer)
+                                   cmd))))
+
+(defun esm-xcape-kill ()
+  (interactive)
+  (if (executable-find "pkill")
+      (esm-run "pkill xcape")
+    (if (executable-find "killall")
+        (esm-run "killall -9 xcape")
+      (warn "Not killing previous instances of xcape."))))
 
 (defun esm-xkbset-enable-sticky-keys ()
   (interactive)

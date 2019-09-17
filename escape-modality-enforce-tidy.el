@@ -1,5 +1,5 @@
-;; escape-modality-sparsemap.el -- Modifications to the Emacs keymap
-;; Copyright (C) 2019 Martin Edstrom
+;; escape-modality-enforce-tidy.el -- Cleaning up all keymaps
+;; Copyright (C) 2019 Martin Erik Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -14,39 +14,12 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-(eval-when-compile (require 'escape-modality-x11))
-
-(defun esm-stringify (x)
-  "Like `char-to-string', but accepts string input."
-  (if (characterp x) (char-to-string x) x))
-
-(defun esm-copy-key (copier copied key)
-  ;; Transform in case the key is coming from a string-to-list operation
-  (let ((key (esm-stringify key)))
-    (global-set-key (kbd (concat copier key))
-                    (global-key-binding (kbd (concat copied key))))))
-
-(defun esm-copy-key-1 (prefix copying-key copied-key)
-  (let ((copying-key (esm-stringify copying-key))
-        (copied-key (esm-stringify copied-key)))
-    (global-set-key (kbd (concat prefix copying-key))
-                    (global-key-binding (kbd (concat prefix copied-key))))))
+;; This file can probably be spun out as a separate package.
+(require 'escape-modality-common)
 
 (defvar esm-C-x-C-key-overwrites-C-x-key t)
 
 (defun esm-flatten-ctl-x ()
-  ;; Prevent clobbering useful commands. Should go in user init file.
-  (if esm-C-x-C-key-overwrites-C-x-key
-      (progn
-        (global-set-key (kbd "C-x C-a") (key-binding (kbd "C-x a"))) ;;abbrev-map
-        (global-set-key (kbd "C-x C-h") #'mark-whole-buffer)
-        (global-set-key (kbd "C-x C-n") #'narrow-to-region))
-    (global-set-key (kbd "C-x e") #'eval-last-sexp)
-    (global-set-key (kbd "C-x f") #'find-file)
-    (global-set-key (kbd "C-x c") #'save-buffers-kill-emacs)
-    (global-set-key (kbd "C-x x") #'exchange-point-and-mark)
-    (global-set-key (kbd "C-x o") #'delete-blank-lines))
-
   (if esm-C-x-C-key-overwrites-C-x-key
       (dolist (x (esm-get-hydra-keys))
         (unless   (eq nil (key-binding (kbd (concat "C-x C-" x))))
@@ -55,7 +28,13 @@
     (dolist (x (esm-get-hydra-keys))
       (unless   (eq nil (key-binding (kbd (concat "C-x " x))))
         (global-set-key (kbd (concat "C-x C-" x))
-                        (key-binding (kbd (concat "C-x " x))))))))
+                        (key-binding (kbd (concat "C-x " x)))))))
+  ;(print "Flattened ctl-x-map." (esm-debug-buffer))
+  )
+
+(defun esm-copy-key (prefix new-key reference-key)
+  (global-set-key (kbd (concat prefix new-key))
+                  (global-key-binding (kbd (concat prefix reference-key)))))
 
 ;; TODO: make a fn that works for unnamed prefix maps
 (defmacro esm-backup-keymap (keymap)
@@ -63,16 +42,15 @@
 already been done."
   `(let ((backup (intern (concat "esm-backup-" (symbol-name ',keymap)))))
      (unless (and (boundp backup)
-                  ((not (eq nil backup))))
+                  (not (eq nil backup)))
        ;; Maybe you should use `copy-keymap' here
        (set backup ,keymap))))
 
 (defmacro esm-restore-keymap (keymap)
   `(let ((backup (intern (concat "esm-backup-" (symbol-name ',keymap)))))
      (when (and (boundp backup)
-                ((not (eq nil backup))))
+                (not (eq nil backup)))
        (setq ,keymap backup))))
-
 
 ;; experimental
 (defmacro esm-with (map &rest body)
@@ -117,7 +95,7 @@ keymap spec."
     (define-key key-translation-map
       (kbd (concat "s-" key)) (kbd (concat "C-M-" key)))))
 
-;; under surgery
+;; unused
 (defun esm-super-map-from-ctl-meta ()
   (dolist (key esm-all-keys-on-keyboard)
     (global-set-key (kbd (concat "s-" key))
@@ -160,28 +138,49 @@ keymap spec."
          (if (string-match "^<C-M-" keystring)
              (define-key smartparens-mode-map
                (kbd (concat "<s-" (substring keystring 5)))
-               φ2))))) smartparens-mode-map))
+               φ2)))))
+   smartparens-mode-map))
 
-
-(defmacro esm-kill-shift-1 ()
+(defmacro esm-flatten-shift-map ()
   "Make it not matter whether or not Shift is pressed."
   `(progn ,@(cl-mapcar
              (lambda (loser winner)
-               `(progn (esm-copy-key-1 "C-" ,loser ,winner)
-                       (esm-copy-key-1 "M-" ,loser ,winner)
-                       (esm-copy-key-1 "C-x " ,loser ,winner)
-                       (esm-copy-key-1 "C-x C-" ,loser ,winner)
-                       (esm-copy-key-1 "C-M-" ,loser ,winner)))
-             "~!@#$%^&*()_+{}:<>?\"|" ;; loser: default binds overwritten
-             "`1234567890-=[];,./'\\" ;; winner: its commands stay
+               `(progn (esm-copy-key "C-" ,loser ,winner)
+                       (esm-copy-key "M-" ,loser ,winner)
+                       (esm-copy-key "C-x " ,loser ,winner)
+                       (esm-copy-key "C-x C-" ,loser ,winner)
+                       (esm-copy-key "C-M-" ,loser ,winner)))
+             (split-string "~!@#$%^&*()_+{}:<>?\"|" "" t) ;; loser: default binds overwritten
+             (split-string "`1234567890-=[];,./'\\" "" t) ;; winner: its commands stay
              )))
 
-(defun esm-shift-map-from-unshifted ()
-  (esm-kill-shift-1)
-  ;; (global-set-key (kbd "C-~") (global-key-binding (kbd "C-`")))
-  ;; (global-set-key (kbd "M-~") (global-key-binding (kbd "M-`")))
-  ;; (global-set-key (kbd "C-M-~") (global-key-binding (kbd "C-M-`")))
-  (setq org-support-shift-select t))
+(defun esm-kill-shift ()
+  "Unbind."
+  (dolist (x esm-all-keys-on-keyboard-except-shifted-symbols)
+    (global-unset-key (kbd (concat "S-" x)))
+    (global-unset-key (kbd (concat "C-S-" x)))
+    (global-unset-key (kbd (concat "M-S-" x)))
+    (global-unset-key (kbd (concat "C-M-S-" x))))
+  (dolist (x esm-all-shifted-symbols)
+    (global-unset-key (kbd (concat "C-" x)))
+    (global-unset-key (kbd (concat "M-" x)))
+    (global-unset-key (kbd (concat "C-M-" x)))
+    (global-unset-key (kbd (concat "C-x C- " x)))
+    (global-unset-key (kbd (concat "C-x " x)))))
+
+(defun esm-restem (reference-stem leaf new-stem)
+  (global-set-key (kbd (concat new-stem leaf))
+                  (global-key-binding (kbd (concat reference-stem leaf)))))
+
+(defun esm-super-from-ctl ()
+  (dolist (x esm-all-keys-on-keyboard)
+    (esm-restem "C-"     x "s-")
+    (esm-restem "C-x "   x "s-x ")
+    (esm-restem "C-x C-" x "s-x s-")
+    (esm-restem "C-h "   x "s-h ")
+    (esm-restem "C-h C-" x "s-h s-")
+    )
+  (define-key key-translation-map (kbd "s-g") (kbd "C-g")))
 
 (defun esm-hyper-alt-maps-from-ctl-meta-maps ()
   "Populate the right half of the keyboard with Hyper and Alt
@@ -220,4 +219,4 @@ WARNING: Destructive, run only once."
   (push "keycode 105 = Alt_R" esm-xmodmap-rules)
   (esm-xmodmap-reload))
 
-(provide 'escape-modality-sparsemap)
+(provide 'escape-modality-enforce-tidy)

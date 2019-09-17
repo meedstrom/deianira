@@ -1,5 +1,5 @@
 ;; escape-modality.el -- indescribable as yet
-;; Copyright (C) 2019 Martin Edstrom
+;; Copyright (C) 2019 Martin Erik Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -19,28 +19,44 @@
 (require 'hydra)
 (require 'escape-modality-common)
 (require 'escape-modality-x11)
-(require 'escape-modality-sparsemap)
-(eval-when-compile 'subr) ;; split-string
+(require 'escape-modality-enforce-tidy)
 (eval-when-compile (require 'subr-x)) ;; string-join
 
 ;;;;;;;;;;;;;;;
 ;;; Micro level
+
+;; wip. So they can be unbound by simply disabling the mode
+(setq esm-mode-map (make-sparse-keymap))
+(define-key esm-mode-map (kbd "<f35>") 'esm-control/body)
+(define-key esm-mode-map (kbd "<f34>") 'esm-meta/body)
+(define-key esm-mode-map (kbd "<f33>") 'esm-super/body)
+
+(define-minor-mode esm-mode
+  "Bind hydras on Control, Meta etc if `esm-xcape-rules' are
+enabled and functional.
+
+Not to be confused with binding hydras on every prefix key, which
+is to be done only if you hate which-key."
+  nil
+  "ESM"
+  'esm-mode-map)
+
 
 ;; TODO: adapt to changing frame sizes
 (defvar esm-colwidth
   (let ((optimal (- (round (frame-parameter nil 'width) 10) 4)))
     (max optimal 8)))
 
-
-(defvar esm-quitters '("C-q" "C-s" "C-g" "C-u" "M-x" "M-u" "s-u" "C-2" "C-c c"))
+(defvar esm-quitters '(;;"C-q"
+                       "C-s" "C-g" "s-s" "s-g" "C-u" "M-x" "M-u" "s-u" "C-2" "C-c c"))
 
 (defvar esm-noquitters '("C-2 t" "C-2 n" "C-2 p" "C-x ;" "C-x x" "C-x q"
                            "C-x h" "C-x u" "C-x i" "C-x p" "C-x l" "C-x 1"
                            "C-x 2" "C-x 3" "C-x 0" "C-c c"))
 
-(defun esm-is-a-subhydra (lead tail)
+(defun esm-is-a-subhydra (stem leaf)
   "Returns the hydra body in question."
-  (if-let ((x (cdr (assoc (concat lead tail) esm-live-hydras))))
+  (if-let ((x (cdr (assoc (concat stem leaf) esm-live-hydras))))
       (intern (concat x "/body"))))
 
 (defun esm-universal-arg (arg)
@@ -54,7 +70,7 @@
 ;; wip; inspired by esm-cc-cc
 (defun esm-wrapper (hotkey)
   (call-interactively (key-binding (kbd hotkey)))
-  (if (string-match "^C" lead)
+  (if (string-match "^C" hotkey)
       (esm-control/body)))
 
 (defun esm-cc-cc (arg)
@@ -75,43 +91,49 @@
 (defun esm-decolorize-cursor ()
   (set-cursor-color esm-original-cursor-color))
 
-(defun esm-is-named-prefix (lead tail)
+(defun esm-is-named-prefix (stem leaf)
   (car-safe
-   (member (global-key-binding (kbd (concat lead tail))) esm-named-prefixes)))
+   (member (global-key-binding (kbd (concat stem leaf))) esm-named-prefixes)))
 
 (defvar esm-named-prefixes '(Control-X-prefix
-                               mode-specific-command-prefix
-                               ctl-x-4-prefix
-                               ctl-x-5-prefix
-                               vc-prefix-map
-                               help-command
-                               2C-command
-                               ESC-prefix
-                               projectile-command-map))
+                             mode-specific-command-prefix
+                             ctl-x-4-prefix
+                             ctl-x-5-prefix
+                             vc-prefix-map
+                             help-command
+                             2C-command
+                             ESC-prefix
+                             projectile-command-map))
 
-(defun esm-is-bound (lead tail)
-  (let ((cmd (global-key-binding (kbd (concat lead tail)))))
+(defun esm-cmd (stem leaf)
+  (global-key-binding (kbd (concat stem leaf))))
+
+(defun esm-is-bound (stem leaf)
+  (not (eq nil (esm-cmd stem leaf))))
+
+(defun esm-is-bound* (stem leaf)
+  (let ((cmd (global-key-binding (kbd (concat stem leaf)))))
     (not (eq cmd nil))))
 
-(defun esm-is-unbound (lead tail)
-  (not (esm-is-bound lead tail)))
+(defun esm-is-unbound (stem leaf)
+  (not (esm-is-bound stem leaf)))
 
-(defun esm-is-unnamed-prefix (lead tail)
-  (let ((cmd (global-key-binding (kbd (concat lead tail)))))
+(defun esm-is-unnamed-prefix (stem leaf)
+  (let ((cmd (global-key-binding (kbd (concat stem leaf)))))
     (not (symbolp cmd))))
 
 
-(defun esm-is-prefix-or-unbound (lead tail)
-  "Return t if the hotkey described by concatenating LEAD and
-TAIL is a prefix command, such as C-x or C-h."
+(defun esm-is-prefix-or-unbound (stem leaf)
+  "Return t if the hotkey described by concatenating STEM and
+LEAF is a prefix command, such as C-x or C-h."
   (string-match
    "prefix\\|nil\\|help-command\\|2C-command"
-   (symbol-name (let ((cmd (global-key-binding (kbd (concat lead tail)))))
+   (symbol-name (let ((cmd (global-key-binding (kbd (concat stem leaf)))))
                   (when (symbolp cmd) cmd)))))
 
-(defun esm-is-prefix-or-unbound-4 (lead tail)
-  (when (or (esm-is-a-subhydra lead tail)
-            (esm-is-unbound lead tail))
+(defun esm-is-prefix-or-unbound-4 (stem leaf)
+  (when (or (esm-is-a-subhydra stem leaf)
+            (esm-is-unbound stem leaf))
     t))
 
 ;;;;;;;;;;;;;;;;;;;;;
@@ -127,28 +149,31 @@ TAIL is a prefix command, such as C-x or C-h."
               esm-hydra-keys)
         chords))
 
-(defun esm-cmd-conservative (lead tail)
-  (if (esm-is-prefix-or-unbound lead tail)
-      tail
-    `(call-interactively (key-binding (kbd ,(concat lead tail))))))
+(defun esm-cmd-conservative (stem leaf)
+  (if (esm-is-prefix-or-unbound stem leaf)
+      leaf
+    `(call-interactively (key-binding (kbd ,(concat stem leaf))))))
 
-(defun esm-cmd-4 (lead tail)
-  (if (esm-is-unbound lead tail) tail
-    (or (when (string= tail "u") #'esm-universal-arg)
-        (when (and (string= lead "C-c ")
-                   (string= tail "c")) #'esm-cc-cc)
-        (esm-is-a-subhydra lead tail)
-        `(call-interactively (key-binding (kbd ,(concat lead tail)))))))
+(defun esm-cmd-4 (stem leaf)
+  (if (esm-is-unbound stem leaf) leaf
+    (or (when (string= leaf "u")
+          #'esm-universal-arg)
+        (when (and (string= stem "C-c ")
+                   (string= leaf "c"))
+          #'esm-cc-cc)
+        (esm-is-a-subhydra stem leaf)
+        `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
 
-(defun esm-cmd-3 (lead tail)
-  (or (when (string= tail "u") #'esm-universal-arg)
-      (esm-is-a-subhydra lead tail)
-      `(call-interactively (key-binding (kbd ,(concat lead tail))))))
+(defun esm-cmd-3 (stem leaf)
+  (or (when (string= leaf "u")
+        #'esm-universal-arg)
+      (esm-is-a-subhydra stem leaf)
+      `(call-interactively (key-binding (kbd ,(concat stem leaf))))))
 
-(defun esm-hint-3 (lead tail)
-  (let* ((sym (or (esm-is-a-subhydra lead tail)
-                  (esm-is-named-prefix lead tail)
-                  (global-key-binding (kbd (concat lead tail)))))
+(defun esm-hint-3 (stem leaf)
+  (let* ((sym (or (esm-is-a-subhydra stem leaf)
+                  (esm-is-named-prefix stem leaf)
+                  (global-key-binding (kbd (concat stem leaf)))))
          (name (if (symbolp sym) (symbol-name sym) " ")))
     (if (string= name "nil")
         " "
@@ -156,54 +181,54 @@ TAIL is a prefix command, such as C-x or C-h."
           (substring name 0 esm-colwidth)
         name))))
 
-(defun esm-key-4 (lead tail)
-  "Return either TAIL or a string containing a single space. This
+(defun esm-key-4 (stem leaf)
+  "Return either LEAF or a string containing a single space. This
 can be used to make a visibly blank spot in a hydra for hotkeys
 that are unbound."
-  (if (esm-is-unbound lead tail) " " tail))
+  (if (esm-is-unbound stem leaf) " " leaf))
 
-(defun esm-key (lead tail)
-  "If the given hotkey is bound to a command, return TAIL,
+(defun esm-key (stem leaf)
+  "If the given hotkey is bound to a command, return LEAF,
 otherwise return a space character. This can be used to
 make a visibly blank spot in a hydra for hotkeys that are unbound."
-  (if (stringp (esm-cmd-conservative lead tail)) " " tail))
+  (if (stringp (esm-cmd-conservative stem leaf)) " " leaf))
 
-(defun esm-exit-almost-never (lead tail)
-  (when (or (member (concat lead tail) esm-quitters)
-            (esm-is-unbound lead tail))
+(defun esm-exit-almost-never (stem leaf)
+  (when (or (member (concat stem leaf) esm-quitters)
+            (esm-is-unbound stem leaf))
     t))
 
-(defun esm-exit-4 (lead tail)
-  (cond ((member (concat lead tail) esm-quitters) '(:exit t))
-        ((member (concat lead tail) esm-noquitters) '(:exit nil))
-        ((esm-is-a-subhydra lead tail) '(:exit t)) ;; very important
-        ((esm-is-unbound lead tail) '(:exit t))
+(defun esm-exit-4 (stem leaf)
+  (cond ((member (concat stem leaf) esm-quitters) '(:exit t))
+        ((member (concat stem leaf) esm-noquitters) '(:exit nil))
+        ((esm-is-a-subhydra stem leaf) '(:exit t)) ;; very important
+        ((esm-is-unbound stem leaf) '(:exit t))
         (t '()))) ;; defer to hydra's default behavior
 
-(defun esm-exit-2 (lead tail)
-  (cond ((member (concat lead tail) esm-quitters) '(:exit t))
-        ((member (concat lead tail) esm-noquitters) '(:exit nil))
-        ((esm-is-prefix-or-unbound lead tail) '(:exit t))
+(defun esm-exit-2 (stem leaf)
+  (cond ((member (concat stem leaf) esm-quitters) '(:exit t))
+        ((member (concat stem leaf) esm-noquitters) '(:exit nil))
+        ((esm-is-prefix-or-unbound stem leaf) '(:exit t))
         (t '()))) ;; defer to hydra's default behavior
 
-(defun esm-head-4 (lead tail)
-  `( ,(esm-key-4 lead tail) ,(esm-cmd-4 lead tail) ,(esm-hint-3 lead tail)
-     ,@(esm-exit-4 lead tail)))
+(defun esm-head-4 (stem leaf)
+  `( ,(esm-key-4 stem leaf) ,(esm-cmd-4 stem leaf) ,(esm-hint-3 stem leaf)
+     ,@(esm-exit-4 stem leaf)))
 
-(defun esm-head-3 (lead tail)
-  `( ,tail ,(esm-cmd-3 lead tail) ,(esm-hint-3 lead tail)
-           ,@(esm-exit-2 lead tail)))
+(defun esm-head-3 (stem leaf)
+  `( ,leaf ,(esm-cmd-3 stem leaf) ,(esm-hint-3 stem leaf)
+           ,@(esm-exit-2 stem leaf)))
 
-(defun esm-head-invisible (lead tail)
-  `( ,(esm-key lead tail) ,(esm-cmd-conservative lead tail) nil
-     :exit ,(esm-exit-almost-never lead tail)))
+(defun esm-head-invisible (stem leaf)
+  `( ,(esm-key stem leaf) ,(esm-cmd-conservative stem leaf) nil
+     :exit ,(esm-exit-almost-never stem leaf)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Macro level: tying it all together.
 
 
 (defmacro esm-defmode
-    (name lead &optional doctitle pop-key parent exit keys)
+    (name stem &optional doctitle pop-key parent exit keys)
   "Make a hydra with many heads.
 
 Optional argument EXIT controls whether the hydra's heads exit by
@@ -220,9 +245,9 @@ display in the hydra hint, defaulting to the value of
                         ;; :foreign-keys run
                         )
      ,@(if doctitle (list doctitle) '())
-     ,@(mapcar (lambda (char) (esm-head-4 lead (string char)))
+     ,@(mapcar (lambda (char) (esm-head-4 stem (string char)))
                (or keys esm-hydra-keys))
-     ,@(mapcar (lambda (tail) (esm-head-invisible lead tail))
+     ,@(mapcar (lambda (leaf) (esm-head-invisible stem leaf))
                '("<left>" "<right>" "<up>" "<down>" "<SPC>" "=" "\\" "'" "`"))
      ;; ,@(mapcar (lambda (chord) (esm-head-invisible "" chord))
      ;; esm-all-simple-chords)
@@ -266,7 +291,7 @@ display in the hydra hint, defaulting to the value of
            (heads        (intern (concat x "/heads")))
            (body         (intern (concat x "/body")))
            (keymap       (intern (concat x "/keymap")))
-           (lead (concat key " "))
+           (stem (concat key " "))
            (parent-key (substring key 0 -2)) ;; Doesnt bug with <RET>, strange!
            (parent-symname (cdr (assoc parent-key esm-live-hydras)))
            (parent-body (cond ((string= parent-key "C") #'esm-control/body)
@@ -275,8 +300,8 @@ display in the hydra hint, defaulting to the value of
                               ((assoc parent-key esm-live-hydras)
                                (intern (concat parent-symname "/body"))))))
       (eval `(progn
-               (esm-defmode ,title       ,lead ,key nil ,parent-body t)
-               (esm-defmode ,nonum-title ,lead ,(concat "\n\n" key) nil ,body t "qwertyuiopasdfghjkl;zxcvbnm,./")
+               (esm-defmode ,title       ,stem ,key nil ,parent-body t)
+               (esm-defmode ,nonum-title ,stem ,(concat "\n\n" key) nil ,body t "qwertyuiopasdfghjkl;zxcvbnm,./")
                (define-key ,nonum-keymap "u" #'hydra--universal-argument)
                (dotimes (i 10)
                  (define-key ,keymap (int-to-string i) nil))))
@@ -286,37 +311,58 @@ display in the hydra hint, defaulting to the value of
 
 (defun esm-scan ()
   "Scan for global prefix keys to populate `esm-live-hydras'.
-This may take a couple of seconds, so you may want to save the
-results in your init file and set the variable directly."
+This may take a couple of seconds, so you may want to set the
+variable in your init file directly, by copy-pasting the output
+of this function."
   (setq esm-live-hydras nil)
-  (dolist (x esm-whole-keyboard)
+  (dolist (x (esm-whole-keyboard))
     (when (keymapp (global-key-binding (kbd x)))
-      (push `(,x . ,(esm-dub-from-key x)) esm-live-hydras))))
+      (push `(,x . ,(esm-dub-from-key x))
+            esm-live-hydras))))
 
 (defun esm-generate-hydras ()
   (dolist (x esm-live-hydras)
     (esm-define-global-hydra-maybe (car x) (cdr x))))
 
-(setq esm-whole-keyboard
-      (let (biglist)
-        (dolist (chord esm-all-simple-chords)
-          (dolist (key esm-all-keys-on-keyboard-without-shift)
-            (push (concat chord " " key) biglist))
-          (push chord biglist))
-        biglist))
+;; I guess it's not really the whole keyboard
+(defun esm-whole-keyboard ()
+  (let (biglist)
+    (dolist (chord esm-all-simple-chords)
+      (dolist (key esm-all-keys-on-keyboard-except-shifted-symbols)
+        (push (concat chord " " key) biglist))
+      (push chord biglist))
+    biglist))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Change Emacs state. Should go in user init file.
 
 ;; Stage 1
+
+(setq esm-debug "*Escape-modality debug*")
+(setq esm-C-x-C-key-overwrites-C-x-key t)
+
+;; Prevent clobbering useful commands. Should go in user init file.
+(if esm-C-x-C-key-overwrites-C-x-key
+    (progn
+      (global-set-key (kbd "C-x C-a") (key-binding (kbd "C-x a"))) ;;abbrev-map
+      (global-set-key (kbd "C-x C-h") #'mark-whole-buffer)
+      (global-set-key (kbd "C-x C-n") #'narrow-to-region))
+  (global-set-key (kbd "C-x e") #'eval-last-sexp)
+  (global-set-key (kbd "C-x f") #'find-file)
+  (global-set-key (kbd "C-x c") #'save-buffers-kill-emacs)
+  (global-set-key (kbd "C-x x") #'exchange-point-and-mark)
+  (global-set-key (kbd "C-x o") #'delete-blank-lines))
+
 (esm-flatten-ctl-x)
 
 ;; Stage 2
-(esm-shift-map-from-unshifted)
+(esm-kill-shift)
 
 ;; Stage 3
 ;; (esm-super-map-from-ctl-meta)
 ;; (esm-super-translate-to-ctl-meta)
+(esm-super-from-ctl)
 
 ;; Stage 4
 
@@ -325,19 +371,10 @@ results in your init file and set the variable directly."
 
 ;; (add-hook 'buffer-list-update-hook #'esm-generate-hydras)
 
-;; (esm-defmode esm-cxa       "C-x a "  "CTL-X-A" nil esm-cx/body t)
-;; (esm-defmode esm-cx4       "C-x 4 "  "CTL-X-4" nil esm-cx/body t)
-;; (esm-defmode esm-cx5       "C-x 5 "  "CTL-X-5" nil esm-cx/body t)
-;; (esm-defmode esm-cx          "C-x "  "CTL-X"   nil esm-control/body t)
-;; (esm-defmode esm-c2          "C-2 "  "CTL-2"   nil esm-control/body t)
-;; (esm-defmode esm-cc          "C-c "  "CTL-C"   nil esm-control/body t)
-;; (esm-defmode esm-ch          "C-h "  "CTL-H"   nil esm-control/body t)
 (esm-defmode esm-control       "C-"  "CONTROL" "C-<f13>")
-;; (esm-defmode esm-ms          "M-s "  "META-S"  nil esm-meta/body t)
-;; (esm-defmode esm-mg          "M-g "  "META-G"  nil esm-meta/body t)
 (esm-defmode esm-meta          "M-"  "META"  "M-<f14>")
-;; (esm-defmode esm-sg        "C-M-g "  "S-G"   nil esm-super/body t)
-(esm-defmode esm-super       "C-M-"  "SUPER" "s-<f15>")
+;; (esm-defmode esm-super         "C-M-"  "SUPER" "s-<f15>")
+(esm-defmode esm-super         "s-"  "SUPER" "s-<f15>")
 
 (esm-defmode esm-control-nonum "C-"  "
 CONTROL" "C-<f13>" esm-control/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
@@ -419,14 +456,14 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
 
 (defun esm-update-keymap (m)
 
-  ;; Figure out the prefix/"lead" for this hydra by iterating until a head is found.
+  ;; Figure out the prefix/"stem" for this hydra by iterating until a head is found.
   (let* ((example
           (catch t
             (dotimes (i 30)
               (let ((cmd (cadr (elt heads i))))
                 (when (listp cmd) ;; when we find a (call-interactively ...)
                   (throw t (cadr (cadadr cmd))))))))
-         (lead (substring example 0 -1)))
+         (stem (substring example 0 -1)))
 
     ;; Go thru heads one by one
     (mapcar
@@ -440,12 +477,12 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
          ;; corresponding hotkey has changed, return a new head.
          (let ((cmd (cadr head)))
            (if (and (stringp cmd)
-                    (esm-is-bound lead cmd))
-               (esm-head-4 lead cmd)
+                    (esm-is-bound stem cmd))
+               (esm-head-4 stem cmd)
 
              ;; Otherwise, check if it's a (call-interactively).
              (if (listp cmd)
-                 (esm-head-4 lead (car head))
+                 (esm-head-4 stem (car head))
 
                ;; Otherwise, return head unmodified.
                head)
@@ -457,7 +494,7 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
 ;; Instead of re-generating hydra, maybe you'll have luck with altering the /keymap.
 (defun esm-update-hydra-maybe (heads)
 
-  ;; Figure out the prefix/"lead" for this hydra by iterating until a head is found.
+  ;; Figure out the prefix/"stem" for this hydra by iterating until a head is found.
   (let* ((heads esm-Cx/heads)
          (example
           (catch t
@@ -465,26 +502,26 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
               (let ((cmd (cadr (elt heads i))))
                 (when (listp cmd) ;; when we find a (call-interactively ...)
                   (throw t (cadr (cadadr cmd))))))))
-         (lead (substring example 0 -1)))
+         (stem (substring example 0 -1)))
 
     (if (catch t
           (mapc (lambda (head)
                   (if (> (length (car head)) 1)
                       nil
                     (let ((cmd (cadr head)))
-                      (cond ((and (stringp cmd) (esm-is-bound lead cmd))
+                      (cond ((and (stringp cmd) (esm-is-bound stem cmd))
                              (throw t t))
-                            ((and (listp cmd) (esm-is-unbound lead (car head)))
+                            ((and (listp cmd) (esm-is-unbound stem (car head)))
                              (throw t t))))))
                 heads))
-        (eval '(esm-define-global-hydra-maybe (substring lead 0 -1))))))
+        (eval '(esm-define-global-hydra-maybe (substring stem 0 -1))))))
 
 
 ;; let's use htis in place of the update-hints thing. Return a list of heads for
 ;; passing to hydra--format, but also actually set this thing globally.
 (defun esm-update-heads (heads)
 
-  ;; Figure out the prefix (aka "lead") for this hydra by iterating until a
+  ;; Figure out the prefix (aka "stem") for this hydra by iterating until a
   ;; head is found, any head.
   (let* ((example
           (catch t
@@ -492,7 +529,7 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
               (let ((cmd (cadr (elt heads i))))
                 (when (listp cmd) ;; when we find a (call-interactively) form
                   (throw t (cadr (cadadr cmd))))))))
-         (lead (substring example 0 -1)))
+         (stem (substring example 0 -1)))
 
     ;; Go thru heads one by one
     (mapcar
@@ -506,12 +543,12 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
          ;; corresponding hotkey has changed, return a new head.
          (let ((cmd (cadr head)))
            (if (and (stringp cmd)
-                    (esm-is-bound lead cmd))
-               (esm-head-4 lead cmd)
+                    (esm-is-bound stem cmd))
+               (esm-head-4 stem cmd)
 
              ;; Otherwise, check if it's a (call-interactively).
              (if (listp cmd)
-                 (esm-head-4 lead (car head))
+                 (esm-head-4 stem (car head))
 
                ;; Otherwise, return head unmodified.
                head)
