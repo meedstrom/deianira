@@ -1,0 +1,1450 @@
+#+TITLE: Sparsemap
+#+AUTHOR: Martin Edström
+
+* Severe issues (fix before release)
+- [ ] Test different DEs. 
+  - [ ] Ubuntu
+    - Alt does not emit f14
+  - [ ] Gnome
+    - (use https://github.com/fatso83/dotfiles/blob/master/utils/scripts/gnome-key-bindings)
+  - [ ] LXQt
+    - Just works, I think?
+  - [ ] Sway
+- [ ] Exit key on s-<f15> or <f15> depending on sticky keys. Both?
+- [ ] Should Right Ctl emit F23?
+- [ ] Double-check behavior of unlisted keys.
+- [ ] What to do about C-SPC
+- [X] A simple command that kills xcape, bringing emacs back to normal.
+- [X] Let commands print out what they do to a debug buffer.
+- [ ] Create tests
+- [ ] Remap inside all minor-mode-maps
+* Issues
+- [ ] Migrate to map-keymap (so esm-whole-keyboard truly is the whole e.g.)
+- [ ] An escape-modality-mode to buffer-locally bind the hydras, that is, esm-Cx/body and ilk.
+
+* Newerererer
+** Epiphany 1
+Don't bother to move the Control key! Just duplicate its bindings as Super bindings! 
+
+This copies Apple; lets the modern interface (emacs) be separate from legacy interfaces (terminal emulators and GUI windows), both of which use Control extensively. It's a funny stroke of fate that on X-based distros, /everything/ is bound under Control, so it's easy to pack it all away. On Mac OS, they've actually changed Firefox and other GUI programs to use Command, so it would be harder to set up a clean EXWM.
+
+In addition, your Emacs distro will continue to just work without EXWM, since the Super key is rarely occupied. Crucially, there is no need to swap places of modifiers, since you never did it in the first place. And the untouched original Control hotkeys let other people use your Emacs, for however much that's worth.
+
+** Epiphany 2
+
+It should be simple to decouple ESC from Meta. IIRC, all Meta keys really live in esc-prefix (and meta combinations get translated to ESC sequences). So what you do is:
+
+1) Nullify the translation logic, wherever it is (input-decode-map, function-key-map, ...).
+2) Loop thru esc-prefix and bind all meta keys directly to the same commands.
+3) Wipe esc-prefix clean.
+
+** Tidy and violating the law
+
+Sparsemap is a shit name because Emacs has the preexisting notion of a sparse keymap.
+
+Name it "the tidy rules" or something.
+
+The rules: Flatten, no mixing, no repeatable actions on "good hotkeys" (see Xah), etc.
+
+Binds that violate the rules follow. Note that you don't have to change the base Emacs keys, just duplicate Control keys as Hyper or Super keys and decline to bring along certain design choices.
+
+NOT REPEATABLE, YET OCCUPYING GOOD KEY
+C-q
+C-t
+C-h <map>
+C-x <map>
+C-c <map>
+C-g
+C-u
+C-w
+C-s and C-r (when you use Swiper or similar search framework)
+C-o, C-j, C-m and RET (in general not often repeated; I had the experience that eliminating RET is much easier than eliminating TAB)
+M-z
+M-w
+M-x
+M-s <map>
+M-g <map>
+M-o <map>
+
+REPEATABLE, YET BAD KEY
+C-x ;
+C-x t
+C-M-w
+
+ANOTHER KEY ALREADY DOES ITS JOB
+C-m
+C-i
+C-[
+
+COULD HYDRA FOR REPEATABILITY INSTEAD OF OCCUPYING GOOD KEY
+C-l and M-r
+C-s and C-r (even when you use isearch)
+
+COULD HYDRA IN GENERAL
+C-x <left> and C-x <right>
+
+FORBIDDEN KEYS
+C-x SPC
+C-SPC
+<C-return>
+<M-return>
+<S-return>
+
+COMBO MODIFIERS
+<C-M-return>
+<C-S-return>
+<M-S-return>
+<C-M-S-return>
+
+
+
+Autocreate a hydra with all commands starting with e.g. "pdf-tools-".
+
+* Newererer
+Suppose you only want the hydra persistent for one key, eg M-bbbbb and then start typing w/o exiting hydra explicitly. Then this addon becomes rather different.
+
+But how to catch user intention?
+
+.
+
+*Name change*
+
+Escape-modality sounds like using the escape key as a mode, or using it for several things.
+
+Fully Generalized Pseudo-Modality: FGPM
+
+Generalized Pseudo-Modality: GPM, genpse, genmod genpm gepse
+
+Pseudo-modality
+
+. 
+
+
+* Newerer
+Alternative setup:
+
+Generate hydra full of (call-interactively), no exceptions. Then we have a bunch of functions named "hydra/lambda-X". Update the /keymap to make keys point to either the string "X" (thus making it a foreign key) or this lambda whenever your mode changes, and update /hint accordingly (trivial).
+
+Drawback: docstrings for various heads will be outdated, but we could find a way to clear those.
+
+Alternative setup 2:
+
+Re-generate all hydras every time Emacs changes mode. This is at least better than re-generating on every keypress.
+* Differences to god-mode
+I found about God-mode only after making this package. It has similar goals, but meets them in a different way. I prefer my way, obviously.
+
+** Difference 1
+God-mode uses a toggle-key to let you avoid using modifier keys. This fear of modifiers, shared with Evil-mode, Vim and most software, is a symptom of the disease that affects every schooled touch-typist: the concept of "home keys". 
+
+When you prefer to stay on the home keys, even Alt can be experienced as uncomfortable, you have to turn your wrists inward, and keys far from the home keys feel like a stretch to get to. The QWERTY design slows you down, the staggered rows are unergonomic, and so on. Contrary to the usual solution -- designing keyboards and keymaps to cooperate with /your/ self-limitation -- you can retrain your brain not to need home keys to orient itself. The brain is a very able learner. Once you've done so, any keyboard is *equally ergonomic* to any other.
+
+Instead of describing how I touch-type without home keys, I'll just show some pictures of how you'd learn to touch-type my way:
+
+[ picture of homemade wrist cast: chopstick with tape ]
+
+Instead of bending the wrist (much), move the whole arm.
+
+[ picture of books in front of laptop to disallow coming in from the front ]
+
+See how the keys beside Spacebar are now very good thumb keys?
+
+[ picture of pouring ketchup on the palmrests to discourage landing ]
+
+Your hands shouldn't "park", prevent them from parking so they remain mobile.
+
+Now you have two duties: 1) forget the home keys, and 2) never look at the keyboard -- ideally scratch the labels off the keys. If you undertake this project, I envy you the fun.
+
+** Difference 2: a to z
+
+Another difference. I wanted to see how I would solve the problem of input on the Planck and similar keyboards. Under that constraint, I arrived at an elegant solution I never would've arrived at otherwise.
+
+For starters, all hotkeys are bound to lowercase letters from a to z, *nothing else*. That makes escape-modality very portable -- it does not matter which national keyboard layout you have enabled, nor does it matter if you have a Planck, a laptop keyboard, or a larger Xd75re keyboard. All you need are the letters from A to Z in the English alphabet, and two or three modifier keys. Though it is a major comfort bonus to also have a Return key, Space key and punctuation keys. Easy standards to meet, right? ;-)
+
+** Difference 3: Hydra + Xcape
+
+God-mode and Spacemacs implement the idea of leader keys, but only have one such key. Evil/Vi has several keymaps called modes, but they are extensive and need deliberate exiting (i.e. you must press "i" before you can start typing).
+
+- Escape-modality uses multiple leader keys, not one. 
+- It uses Hydra to merge the idea of leader keys and modes, considering them
+  the same thing, and gives you a faster way to exit them than Vi does.
+- It uses Xcape to merge the idea of leader keys and modifiers, considering
+  them the same thing, so that you can choose to hold down the leader key like
+  a modifier for a temporary access to its keys that lets up the instant you
+  release the key.
+
+Spacemacs has the luxury of using Space as a leader key, but this comes at the cost of Vim's tradeoffs, needing you to exit Input mode to reach it. In Escape-modality, Space is always one of several "exit keys", and as you'd expect with hydras, it inputs a space character simultaneously, so it's like you were never in a different mode.
+
+** Difference 4:
+
+God-mode more or less keeps all default keybindings (as in xs corresponds to C-x C-s). Escape-modality is similar but keeps only a set of basic keybindings, destroying the rest because they do not fit its paradigm.
+
+The paradigm is:
+- C-x C-s must not be different from C-x s. This is so we can type ~<ctl> x s~
+  without confusion. (God-mode does a similar thing: in God-mode ~C-x C-s~ is ~xs~, and
+  ~C-x s~ is ~x SPC s~, which is to say, that the keybindings not involving control
+  get remapped to a longer sequence involving SPC. This could be any key, so we
+  could do something similar in escape-modality.)
+  - Flattening the keymap in this fashion has a side benefit. *I no longer keep
+    track of whether I am holding down Control* to do ~C-x C-q~. I can release it
+    midway through and do ~C-x q~, since it is bound to the same thing. Or vice
+    versa, if it's more comfortable to keep holding it down. I can even just
+    press these keys in sequence with no overlap: ~<control> x q~ one at a time, or press them
+    /all/ without releasing any: ~C-x-q~ (if my keyboard supports multi key
+    rollover). It is all the same.
+- Lowercase letters only. In god-mode, shift-G is the leader for
+  C-M-<something>, and owing to keeping the default Emacs hotkeys, those
+  hotkeys that involve symbols like !, :, % and { continue to exist. In
+  Escape-modality, Shift is only ever for text insertion, not commands.
+
+* Newer note to self
+
+So assume a laptop keyboard. Your thumb keys are not in the middle, that's the spacebar. So, say you have only one Control and one Meta, each on their side of the spacebar, then half the hotkeys on the keyboard lose the possibility of one-handed operation (important). This by the way looks like the primary reason to have more centred thumb keys. If you have separate thumb key clusters then you end up having to mirror them for optimal comfort (not strictly a problem unless the thumb key clusters have a very limited number of keys as on a laptop keyboard which only has two per cluster). 
+
+Anyway, *practical rule*: say you have Super on the left side and Hyper on the right, then you should not assign semantic meanings to either. Super hotkeys should sit primarily in the left half of the keyboard and Hyper hotkeys primarily in the right half. They could even both be Super, but for having two-handed hotkeys open for less common commands.
+
+While awkward, important hotkeys from Control and Meta layers could be duplicated in Super and Hyper on a case-by-case basis.
+
+--------
+
+When deleting words, sometimes you want to delete all special characters in front of the previous word, and sometimes you want to keep some. Examples:
+
+- delete leading asterisks in an Org headline but nothing above that line
+  - (Alternative fix: make backward-kill-word stop at newline, unless point was
+    already at a newline)
+- delete opening parens in some lisp but not the preceding token along with them
+
+It's nice to not have to alternately press and release a modifier during a process of deletion. This is a great example of what commands you'd bind on an enormous keypad. You could have a whole cluster of different deletion keys, and dance your fingers over them to delete very efficiently. No more spamming M-d where C-k is appropriate or vice versa.
+
+Taking a page from that idea, we should have all deletion hotkeys under one modifier. Rather than <DEL>, M-<DEL>, C-k and C-M-k, we'd just have a 'flat' arrangement such as M-u, M-i, M-o and M-p (or any other set of neighbouring keys). If you keep the normal unmodified backspace function for familiarity, you'd still have a duplicate under this modifier so you do not have to release the modifier for single character deletion.
+
+In the meantime...
+
+#+BEGIN_SRC elisp
+;; I don't use Insert
+(global-set-key (kbd "<insert>") #'backward-kill-word)
+#+END_SRC
+
+How would I go about this flat arrangement? Just do, I suppose: just start re-binding. Don't look beyond the keys being replaced. This ties into the greater question of how to redesign the Emacs keybindings, which seems to require a lot of theory work. The antifragile path is to adaptively make small changes -- even if it might not arrive at /the/ optimal keymap, it's always better than what you had before, and requires no intellect.
+
+I ran into an issue with having multiple modifier keys: switching between them is annoying. If I just bind some Hyper keys for deletion I will have to switch modifier more often than if I find a way to shoehorn them into the Meta keymap.
+
+It's interesting. When I was using the standard locations of Control and Meta, and only the left-hand instances thereof, they were still easy to combine (or alternate between). Why? Because I used different fingers: the pinky for Control and the thumb for Meta.
+
+That's a cue, kind of. 
+
+The modifier-operating fingers should be allowed to /stay/ where they are during a sequence of commands. When I think about it, moving my thumb between the Super and Alt keys sucks: it's always been a sucky element. I should have noticed that earlier. The antifragile path is to /notice/ sucky elements so you can do something about them.
+
+This remarkable discovery means that there's no use having multiple thumb keys, no use for the Preonic. Laptop keyboards already have two or more thumb keys.
+
+Other consequences: there's a highly limited number of 'good' modifier keys. Capslock, Left Alt, Right Alt, and Right Shift maybe. Honestly Backspace or Enter might be a good location for a modifier key.
+
+I can have four modifiers if each of these keys get their own modifier. Though following the rule of comfort that any given hotkey should be operable by a single hand lends merit to mirroring modifiers across the keyboard: you do not lose any one-hand hotkeys anyway. Making each modifier unique lets you bind infrequently-used commands to two-handed hotkeys, but you lose the cleanness associated with having nothing but one-hand hotkeys, and it might be worth adopting that constraint so you come up with alternatives e.g. longer hotkey sequences as part of nested 'menus' (hydras) to make space.
+
+It's strange how I used to use only the left-hand instances of Control and Meta. In fact I still do that, the left-hand instance of the key previously labelled Alt, is my only Control key. I do recognize that C-k is more comfortable when I use the right Control key and sometimes I will use the right Control key, but not when I'm in the midst of a series of commands.
+
+Perhaps this is the time to splice the Control keymap: put half of them on Hyper, and make Enter operate as Hyper (with xcape if not override Enter). Just to kill the habit of two-handed hotkeys.
+
+It'll be weird. C-f, C-p are on different sides, so I'd have to press C-f, H-p alternately. Ah, C-H-p should do the same thing as H-p -- so you don't have to release the left Control.
+
+But seriously... When you are holding down Control anyway, it doesn't seem uncomfortable to use the whole keyboard. Something's missing from my theory.
+
+Data: Super-p (my hotkey for launching an app) is annoying. C-k is annoying. But C-a C-k is not annoying.
+
+Hypothesis: Only the /first/ hotkey in the series must be on a single hand for comfort (provided that the following hotkeys use the same modifier).
+
+Insight: Even if your commands are all bound to hotkey sequences of length one (i.e. you have no sequences), you still end up pressing hotkeys in sequence, because you execute *commands* in sequence. For example C-a C-k.
+
+Insight: You cannot predict the order in which commands will be executed. They may come in any order, for example C-k C-a is as feasible as C-a C-k. That means you cannot try to bind, say, commands that tend to follow another, to the half of the keyboard opposite the half where the modifier is. Not strictly true: you could collect statistics or guess, as some combinations do occur more often than others, but I'd like a more uniform solution.
+
+Insight: The current system with mirroring Control and Meta across the keyboard is pretty good, you just need to train yourself out of using only one side.
+
+Insight: Making /all/ hotkeys single-hand operable might simply be too good: you lose too many slots.
+
+Insight: If you had a Preonic or similar keyboard, you could have Control in the middle and easily operate it with either hand, though you'd have to learn to use all fingers for hotkeys e.g the middle or ring finger when you want to press C-k.
+
+You'd still not be able to put more than two modifiers on the spacebar row because it opens up the risk of having to move a thumb /during/ operation. If there was an additional row then you'd free up another two keys because that key is accessible by both thumbs without having them crash into each other. Seems like a diamond-shaped four-key cluster would be best as thumb keys: when a thumb moves off a given modifier, another thumb can take over (or that thumb can move to the other modifier in the first place and remove the necessity for the first to move).
+
+OK, a diamond-shaped cluster is not necessary. Take a Preonic, the middle two keys on the spacebar row and the two keys above those, and we have a cluster of four.
+
+It strikes me that this whole problem may just come from having a preexisting keymap for Control (and Meta) such that navigation and editing keys are scattered across the keyboard. If we had e.g all nav on the left side then it would be less awkward. That said, mirroring lets you switch modifier less often in any case (we don't actually want to have to switch between LCtrl and RCtrl, which would be the case if RCtrl was Hyper). In lieu of centred thumb keys then we have to mirror.
+
+Hypothesis: For use as modifiers, thumb keys should be accessible by either thumb without being blocked by the other thumb. For example, a two-by-two thumb key cluster in the middle of the keyboard is fine, but a one-by-four row is not fine, neither is a split keyboard with a group of two thumb keys on either half.
+
+Hypothesis: If keys are not accessible in the fashion described above, then for use as modifiers, they should be mirrored i.e. a copy should be present on the other side.
+
+Insight: Remarkably, the laptop keyboard's wide spacebar may be a force that pushes me to put a healthy angle on my wrists, because straightening them makes the LAlt and RAlt keys easier to hit with thumbs. In addition, doing this makes textbook touch-typing feel ridiculous. If I still go through a training program, I should remember to keep them straightened, because that's where I want my wrists.
+
+Alas, the idea of straight wrists kills the idea of a shared thumb key cluster. Even as I type this in my bed, the middle of the spacebar is quite a reach for my thumbs; my wrists are coming over the sides of the laptop.
+
+Just goes to show. It's not so important, just duplicate the thumb keys. On a Preonic, if you want four thumb keys, use up eight keys. Four in the left half, four in the right half. They needn't even meet in the middle, you can have some junk in the middle.
+
+The Big Question boils down to: make available a whole array of two-handed hotkeys, or be able to hold down a modifier without switching so much?
+
+Doing the former means we must either 1) turn C-k into a two-handed hotkey (even when executing it in isolation) and ditto for many others, or 2) come up with a whole new keymap for the basic nav&edit commands.
+
+Another remarkable thing: combining modifiers with both hands is unfun for the same reason that two-handed hotkeys are. Thus, you benefit by being able to use all fingers, as is generally the case when you mirror modifiers and especially when they are not all in the middle, but not the case when you have unique modifiers in the middle.
+
+I think the Preonics, Nyquists and other creations of this world still suffer from the touch-typist's curse. Also Xah and Grant are even touch-typists but still see that the greatest blessing is more keys. I'd love an enormous, contiguous grid for experimentation and iteration. It also looks /really/ professional. It has to have more keys than I know what to do with, so I feel safe binding stuff wildly. Initially I say 8x16, so I should get 10x20 to call it safe.
+
+Full set of deletion keys:
+
+
+#+BEGIN_QUOTE
+Agile keyboard design rocks. You slowly whittle away at the thousands of options that you think you want. You slowly whittle away at the hundreds of features that you need. You slowly whittle away at reality and cost. You eventually end up with what you didn’t know that you needed.
+#+END_QUOTE
+
+#+BEGIN_QUOTE
+Elisp let’s you fail fast and find what is right. It should be the same with designing keyboard layouts.
+#+END_QUOTE
+-- Grant Rettke in favor of large grid keyboards
+
+---------------
+
+So the number row is perhaps a waste of good keys. If the semicolon could function as a Raise/Lower key that gives you a numpad then you have a /more/ convenient access to numbers (it's all in where the toggle key is located). You acquire ten keys in exchange for one, a good trade.
+
+Of course embedded numpads are awkward when you want to type terms like "8x16" or "1920x1080" in flowing prose, to say nothing of programming. A partial solution is to keep the rest of the keyboard bound to the usual things. A strong solution is having the option to hold down the toggle key so that the layer isn't sticky.
+
+With a freed up number row, you get to have parens as first class keys. How would you do the remap in software?
+
+On TTY, the answer is =loadkeys=. It's a simple format. Manage a personal loadkeys file. It's surprising that you haven't yet.
+
+In X, the answer is =xmodmap=, which despite the name is not just about modifiers. It has a similar (same?) format to =loadkeys=. Use =xev= to discover scancodes and the name of the action they're currently bound to. Example output of pressing PgDn in =xev=:
+
+: state 0x10, keycode 115 (keysym 0xff56, Next), same_screen YES,
+
+The scancode is 115 and the action is named Next. Say you want to swap PgUp and PgDn, then do this:
+
+: xmodmap -e "keycode 110 = Next"
+: xmodmap -e "keycode 115 = Prior"
+
+That's simple enough, but what about shift-modified keys? Pressing Shift+9 lets us know that X detects keycodes 50 and 18 separately. There's no separate keycode for the combination of Shift and 9. An exception can be control-modified keys, since they exist on their own in the ASCII table.
+
+To see the whole current keymap, do ~xmodmap -pke~.
+
+You may find that keycode 18 is bound to "9 parenleft 9 parenright brackenright". The last two are likely AltGr business.
+
+To invert 9 and paren, do this:
+
+: xmodmap -e "keycode 18 = parenleft 9"
+
+Now we have not defined the combination of this key with Meta, but the combination can still be used by Emacs. They still happen and can be detected by any program, they are just not bound to the X equivalent of insert-char anymore. This shows you how programs (GTK?) handle hotkeys like Shift+9: the X server is really attempting to send a left paren by default. The program discards the left paren it received, so to speak, doesn't put it in any text field, and does something else instead. Meta+9 is a little simpler to handle, there is no attempt at character insertion to begin with shipping together with the key event. You /could/ unbind Shift+9 so that it does nothing and still have Emacs detect Shift+9 and perform an insert-char, if you cared to.
+
+Interesting stuff happens to hotkeys in Emacs. M-( is bound to insert-parentheses, which inserts a pair of parens at point. Normally you'd have to press shift+alt+9 going by the physical labels on your keyboard, now after your remap above you only have to press alt+9. As you'd expect, but you might have been thinking that M-( was a shorthand for M-S-9 and thus wouldn't be able to do M-( at all after the remap. Don't worry.
+
+I'm probably wrong about some things.
+
+Emacs won't detect keycode 18 as keycode 18. It detects a nine. If you use xmodmap to remap keycode 18 to "a" then Emacs will receive an "a". Nevermind where "a" is in the ASCII table, which Emacs has no knowledge of. It's like Emacs itself is a text input field. It has an invisible input field covering its frame. It receives /text/, not /key events/. How strange that it can detect M-(.
+
+------
+
+My experience with having CapsLock as M-x has taught me some precious things. That pinky keys are amazing for a certain set of commands, those that start a prompt or sequence. That single-key commands are just wonderful, even if sticky modifiers come close. And the niceness of tab and =[]=, for any command, shows that an extra column of "macro keys" is irreplaceable. Thus, Subatomic or Xd75re are much better than the Preonic.
+
+The *sole, main* reason you'd use a Planck or Contra is cost-saving. I wonder if you could make a Planck with a couple extra columns, it's cheaper than a Subatomic. The extra columns are *more important* than the extra row.
+
+Addendum: This exists! It's called the ECO keyboard, 4x14 layout. Price comes to about $40, shipping $25, not counting switches or keycaps. /u/se7en9057 is offering assembly service, though you miss out on learning something for the sake of it. Remember, a small skill acquired here and there add up and suddenly you're comfortable doing something pretty advanced.
+
+--------
+
+Good marketing: 
+
+Only binding commands to letter keys from A to Z means that our hotkey set is very portable. It doesn't matter which country's logical layout is active. It doesn't matter if the user's keyboard is no larger than a Planck.
+
+-------
+
+I really dislike moving my thumb between the Win key and Alt key. So easy to confuse them. The confusion should clear with practice, but is there an alternative?
+
+What I thought recently is that both hands having access to the same modifiers does the trick in theory.
+
+Test it. Control and Meta are full of hotkeys. Bind them on both sides of the spacebar: see if you can learn.
+
+---------
+
+In the ivy prompt, C-n is rebound to =ivy-next-line=, and similar rebindings happen for a lot of hotkeys. If your hydra only contains the global keymap, like =next-line=, it will not be usable in ivy.
+
+So bind the hydra heads to =(call-interactively (key-binding (kbd "C-n")))=. The hint cannot change dynamically unless you set hydra-bodyname/hint yourself, but it's not a big deal.
+
+-------
+
+Grease:
+- [ ] Inform the user of a lot of stuff: all the recursed prefixes and combined
+  modifiers.
+  - Use the argument: you don't need to know every Emacs function, but isn't it
+    time you know every /bound/ Emacs function?
+  - Point out patterns and clusters.
+    - C-x v, vc-prefix, isn't something you'll use if you use magit, so you can
+      bind magit to it (for buffers visiting Git-controlled files).
+    - C-M-f, C-M-u, C-M-d, M-), C-M-k deal with sexps, thus overlap with
+      smartparens.
+- [ ] Help. Either h or C-h is bound in every hydra to inform you on the next
+  key you press, or you can press A-<key> in any hydra to inform you of <key>.
+  Perhaps Alt is straight-up the "help character"; or =h= is, and you can
+  key-chord it with anything to get help on the thing.
+
+How to override the programmatic assignment of bindings? Example: unbind C-g in *all* hydras to prevent users developing the habit to exit that way. Or bind =Control x= to ctl-x-hydra.
+
+If you manually set each hydra it would be easier. But, an idea, modify =(my-head)= to have a conditional clause, to bind different stuff according to a list of overrides.
+
+: conditional  .  what to bind
+: (("" . "C-g") . nil)
+: (("C-" . "x") . ctl-x-hydra) 
+
+-------
+
+Change binding of backtick key because it's so rarely used. Bascically it should be on one of the function keys because other commands e.g. M-x would be enormously more valuable where backtick is currently.
+
+The same for tab. Tab could be on F2.
+
+You can write a list of relatively disused keys in descending order of disuse: Escape, backtick, backslash, brackets, equals, tab...
+
+Backtick is a very reachable key, as is escape, so those are high priority for replacement.
+
+Escape is also known to Emacs as ~C-[~. With that knowledge, you can get rid of it. You might not get rid of RET even though ~C-m~ is the same, because it may be useful enough to warrant its own key. Escape definitely warrant it. Neither DEL, when I think about it (~C-h~). That key should be bound to backward-kill-word, if any deletion command at all.
+
+Reminder: GUI Emacs probably uses key-translation-map to achieve the legacy equivalence between ESC and ~C-[~ -- so, you can create other, new, equivalences if you want.
+
+Equivalences
+- ~C-i~ is TAB
+- ~C-[~ is ESC
+- ~C-m~ is RET
+- ~C-h~ is DEL
+
+The canonical left Control key is one of the worst keys on the keyboard. You could use it for some single-key action.
+
+Good modifier/leader key locations:
+- Backtick (for some things, mainly relating to number row)
+- Tab
+- Capslock
+- Left shift
+- Two keys to the left of spacebar
+- Two keys to the right of spacebar
+- Right shift (though my right hand is not used to splaying very far -- practice)
+- Enter
+- Backspace
+
+Though the above list looks full of options, using them all could lead to confusion or pinky overuse.
+
+1. The Shift keys should be "sticky" so there is no need to hold them down.
+   1. Something else could act as shift, e.g. F6, but the default locations on
+      the edges of the keyboard is very natural, they permit you to do "finger
+      rolls" -- provided they are "sticky".
+2. The keys by spacebar should be Control and Meta (worth testing, anyway).
+   1. The Emacs keymap, as it is, might need you to switch rapidly between
+      Control and Meta (to say nothing of combining them). If it's obstructive
+      having them next to each other, move Control to Capslock and RET.
+      However, operating Control with thumb is extremely luxuriant, so it's
+      worth putting in the learning effort, or really filling the Super keymap
+      with things you use a lot.
+3. Backtick and ESC are awkward for any particularly extensive keymap, they
+   would best pop up hydras of limited size, just like the function keys, only
+   easier and quicker to find. Ditto goes for backslash, bracket keys.
+4. IME, it is easy to get confused between the keys on the left edge of the
+   keyboard, thus I'm inclined to leave a gap, e.g. not use Tab as a modifier
+   and instead use backtick as one.
+5. OTOH, the brain can likely adapt to using all five.
+   1. In this vein, it is clear we can even use Left Control, if only for
+      combos/sequences with Z, X and C.
+   2. Backtick for combos with numbers feel natural off the bat, but you can
+      quickly adapt to use of top row and some of home row, like F and G.
+      - Add thumbs into the game and you can use the whole left half of the
+        keyboard, though admittedly it would be nice to keep them ready for
+        modifier use.
+      - DEL is a counterpart to backtick, works the same way: number row,
+        some of the top and home rows (the middle of the home row).
+   3. TAB and backslash can be combined with most any keys.
+   4. Capslock and RET can be combined with most any keys.
+   5. Will all the above lead to *overuse of pinkies?*
+      - Exercise: tape up your pinkies into flexion and use the ring fingers
+        instead. Those combos that are uncomfortable, do not bind.
+      - Tie up your pinkies *AND* index fingers for maximum fun.
+      - Just because we're declaring these combos available, does not mean
+        we will bind or use them much.
+   6. Since it is nice to stay on one modifier, I feel I would mostly use
+      one, e.g. Super.
+      - Hot tip: Don't think of them as modifiers! They are *NOT* going to be
+        used for spammable editing commands (that's the purview of Control,
+        Meta, maybe Super). They are rarely going to be held down, so think
+        of them as hydras or other sequence-starters such as M-x.
+      - Imagine very large hydras sprouting out of TAB. Just fine, right?
+      - The Same-Hand principle still applies. TAB's hydra-heads should be
+        on the left half of the board. Backslash's hydra heads on the right
+        half of the board. Thus, they could be named the same.
+      - Once again, you'll think more clearly if you think of defining
+        hydras or simply ask "would M-x be nice here?". TAB and backtick
+        definitely fit the bill IMO, gloriously so.
+
+From points 5.1 thru 5.4, we can draw a map of keys that are OK for chording, thus OK for spamming. A compressed representation:
+
+- Backtick: Just numbers and QWERTDFG
+- Tab: Just 2345,QWERT,SDFG,V  (idk, ymmv)
+- Capslock: most
+- LShift: most
+- LCtrl: ZXCV
+
+
+- Backspace: Just numbers and UIOP[  (ymmv)
+- Backslash: 0-= OP[] L;
+- Enter: most except middle of keyboard
+- RShift: ditto
+
+Remember about backtick, tab, backspace, backslash: they are amazing hydra locations and should be primarily for that. It's nice to know where to put spammable actions, but don't worry about reserving space. Bind your heads to the best keys, first-come first-serve. You can always refactor the keymap later.
+
+Really, this is a general rule: all pinky keys are best as sticky keys, not modifiers to be held down. Thumbs can be held down without drawback.
+
+As an aside, the implications for a Preonic over laptop keyboard is that the Preonic lets you have more modifiers-to-be-held-down, i.e. thumb keys, and this frees up the pinky keys for more things like M-x, shell-command, ivy-switch-buffer, good hydras you find online, and similar "sequence starters". 
+
+The benefit I actually *predict* in the Preonic over a laptop keyboard is:
+- Capslock and RET freed
+- LShift and RShift freed
+- RCtrl acquired (not present on laptop in traditional place)
+
+The first two items rest on the assumptions that your thumbs can in fact handle the increased workload. Can they learn to switch rapidly between Control, Meta and Super independently of each other? We also assume that the presence of Space and Shift in the very middle does not slow us down.
+
+If the above is true, then what the Preonic gives us, aside psychic and some physiologic comfort, is *five* extra equivalents of "CapsLock as M-x".
+
+By the way, a cool experiment with the Preonic: exactly half the keys as leader keys, giving us the maximum possible amount of combinations. The outermost columns, the topmost row, the bottommost row, i.e. all the edge keys, add up to 30 leader keys. The interior area is also 30 keys.
+
+You could give those leader keys fancy specialized names. "That's the smartparens key". "You have a smartparens key"?
+
+------------
+
+The thought of moving backtick and backslash to F1 and F12 respectively, has an underlying motivation. That perhaps people have a numbers-and-symbols layer anyway.
+
+Assume a Planck user (or just someone who decided that the number row can be put to better use). What does it mean?
+
+There's a "Raise" key or some such, sitting next to the Space key. It obviously permits sticky operation, modal operation (instead of double-tap, perhaps tap once and then a pinky-key that says "stay persistent!") as well as chorded operation, in case you cared.
+
+*This is solved.* If on a board with extra thumb keys, you can implement this layer, it'll be awesome. On a laptop board, you compensate with function keys.
+
+#+BEGIN_SRC elisp
+(defhydra num-transient (nil nil :exit t)
+  ("a" num-persistent/body)
+  ("s" (insert "("))
+  ("d" (insert ")"))
+
+  ("9" nil) ("8" nil)
+  
+  ("u" (insert "1"))
+  ("i" (insert "2"))
+  ("o" (insert "3"))
+  ("j" (insert "4"))
+  ("k" (insert "5"))
+  ("l" (insert "6"))
+  ("m" (insert "7"))
+  ("," (setq unread-command-events (listify-key-sequence "8")))
+  ("." (call-interactively (key-binding "9")))
+  ;; Considering that you want to enter commands in magit and any other buffer,
+  ;; (insert) is not good enough. maybe (call-interactively (key-binding "9"))
+  ;; if you can unset the hydra bind, or (setq unread-command-events
+  ;; (listify-key-sequence "9")) though it suffers from the same issue.
+  
+  (";" num-persistent/body))
+
+(global-set-key (kbd "<f9>") #'num-transient/body)  
+#+END_SRC
+
+In the spirit of antifragile exploration, you should perhaps unbind the number row and *try this* right away.
+
+----------
+
+A discovery! My laptop's function key row does not combine with Shift, it is not recognized.
+
+Now I cannot put the backtick and backslash on the function key row. So I have to learn to use the num layer.
+
+Remaps to do
+
+- C-h backspace
+- Backspace to M-x
+- Backtick to ivy-switch-buffer
+- Fn key row: twelve different hydras
+  1) a central hydra for leftovers. The most used hydras get their own fn key.
+  2) a help-hydra (because we use help a lot), with customize-variable
+  3) package hydra (refresh-contents, list, install, desc, github
+  4) sp-hydra
+  5) major mode-hydra (esp eshell)
+- Tab
+- Backslash to RET? Later.
+- RET to Super
+- The numpad layer
+- Escape (must be remapped in xmodmap; exwm should have a simulation that turns it back into esc)
+- Insert to backward
+
+How one would bind a numpad layer in X11: check out the xmodmap table and edit it by hand. Mod2, Mod3 and Mod5 tend to be unused (Mod5 might be AltGr?). Then use an utility to grant "sticky" or "locked" operation.
+
+: xkbset sticky -twokey
+
+Remember that I primarily want leader keys, not modifiers. Keeping the option to use the leader keys in chorded fashion is why we're starting by binding modifiers.
+
+If the leader keys were to be like Spacemacs SPC, "sticky keys" is the primary thing desired, not locked keys. The leader key need not be a hydra with a mixture of exiting and nonexiting heads. It can be a normal modifier, sticky, with small hydras on some of its bindings. However, I want locked operation so I can do C-ffffffbbfb. Thus, we need either a hydra with a mixture of heads, or xkbset locking (which means all "heads" are nonexiting, including punctuation...), or all of the nonexiting hotkeys bind to a hydra which is a little redundant.
+
+No, the nums/symbols layer is the only thing xorg should manage. Theoretically Emacs could do it too with input-decode-map and similar, if you're a freak who wants to do /everything/ with Lisp. 
+
+
+#+BEGIN_SRC elisp
+(global-set-key (kbd "M-`") #')
+(global-set-key (kbd "<f19>") #')  ;; actually escape key
+(global-set-key (kbd "<f18>") #')  ;; actually tab key
+(global-set-key (kbd "C-<f18>") #')
+(global-set-key (kbd "M-<f18>") #')
+(global-set-key (kbd "`") #')
+
+(defun normie-mode ()
+  (blink-cursor-mode)
+  (global-set-key (kbd "`") #'self-insert-command)
+  (mass-keymap-change))
+#+END_SRC
+
+--------
+
+Another marketing point to ensure I meet:
+- "You no longer need which-key"
+
+Maybe an alternative to hydra:
+#+BEGIN_SRC elisp
+(defun control-dwim ()
+  (interactive)
+  (call-interactively (key-binding this-key)) ;; stored externally
+  (event-apply-control-modifier))
+
+(global-set-key physically-control-key #'(event-apply-control-modifier))
+(global-set-key "\C-a" #'(control-dwim))
+#+END_SRC
+
+Or easier, advise every control hotkey. to apply a control modifier afterwards, with exceptions.
+
+-------------
+
+To do:
+For each hydra, bind all modifiers the given hydra is not themed around, to  nonexiting heads.
+
+To do: bind capital letters...
+
+-------------
+
+The only combination hotkeys should be those that can be done by pinky and
+thumb, so if Super is on capslock, then s-M-f. Though that makes a good argument for why Control should be on capslock - a lot of people are already doing it, and used to combining C-M, and the default Control location is also a pinky key. Takes work off you if you don't have to reinvent these hotkeys. Mind, you need a new hydra for the C-M-keys.
+
+Arguments /against/ Control on capslock is that this highly used modifier should be under a thumb, not a pinky. IDK. Seems the pinky modifier is more suited to single-action sorts of commands, not spammable commands. 
+
+Some can be spammed. Remember this list of chordable combos:
+
+#+BEGIN_QUOTE
+- Backtick: Just numbers and QWERTDFG
+- Tab: Just 2345,QWERT,SDFG,V  (idk, ymmv)
+- Capslock: most
+- LShift: most
+- LCtrl: ZXCV
+
+
+- Backspace: Just numbers and UIOP[  (ymmv)
+- Backslash: 0-= OP[] L;
+- Enter: most except middle of keyboard
+- RShift: ditto
+#+END_QUOTE
+
+Ok, so capslock would work as Control, it's just a question of workload. I'd prefer to minimize it. That leads to this fork in the road:
+
+Commit to the Meta-Ctl-Space-Ctl-Meta "Symbolics layout". Bind C-s-keys programmatically to what was C-M-keys. Or commit to Capslock as Control and use the expected locations of Meta and Super. The choice does not meaningfully affect my hydras. In both cases, Super is the "extra" map. This could be trivial to make a boolean switch for, later.
+
+ (note to self: just like with temporarily unbinding RET, I am trying the Symbolics style to learn. Specifically to see if the thumbs can handle rapid switching.)
+
+
+The C-m issue...  When I bind H-m to what C-m is bound to, H-m will still not act like RET in things like an ivy prompt. H-m has to translate to RET.
+
+I wonder if I should just undo the default key-translation-maps, but that would screw over tty users unless loadkeys can also bind C-m to other things and isn't bound to these traditions.
+
+No, less drastic is to just translate H-m to RET too. This is temporary anyway, a learning device. Really Ctl should have the whole default Ctl map available.
+
+* New note to self
+The first crux of my vision is done: The set of hacks allowing either chorded or sequential keypress. I am fast getting used to the increased comfort! Mere 15 minutes with disabled chords will do the trick! In hindsight it may be possible to implement them with xkbset sticky keys if the tool is sufficiently advanced. Some fixes:
+- [ ] +C-f14 & M-f13 should be C-M even if you personally never use C-M+
+  - In fact xcape does this, though key rollover sometimes fails.
+#+BEGIN_SRC elisp
+(define-key function-key-map (kbd "C-<f14>") (lambda () 
+                                              (kbd "<ESC>"))
+                                              (event-apply-control-modifier))
+#+END_SRC
+
+The other crux of my vision is simplifying the Emacs keymap by exploiting extra modifiers (and hydras I guess). Left to do:
+- [ ] Integrate other people's hydras, put on newly cleared locations
+  - [ ] Window management
+  - [ ] text scale adjust
+  - [ ] M-< M-> equivalents
+- [X] Meta-arrow, Control-arrow etc
+- [X] Ctl X map 
+- [ ] Ctl X map should match hydra-ctl-x
+- [ ] (hard) adapting to modes e.g. magit, org
+- [ ] M-!, M-:, see section [[Combined modifiers]]
+
+The final crux is /grease/. The Hydra solution allows overview of the keymap in real time: this is grease. More grease:
+- [ ] Add a modifier (say alt, maybe spc) combo for a-z in all modes that
+  lets you type lowercase letters without exiting mode
+  - PS: I don't know what I was thinking here? Seems like it's binding A-a
+    through A-z to input events, i.e. an embedded keyboard in a keyboard.
+    Perhaps worth doing if you want to stay in meta-hydra or ctl-x-hydra and
+    just type something quick e.g. insert a period.
+- [ ] (hard) Return to previous mode on pressing g or bksp
+- [ ] +(hard) hydra-ctl-x return to hydra-ctl on any head+ (weird)
+- [ ] Tips in the readme
+  - [ ] How to disable regular Ctrl keys
+  - [ ] How to disable unmodified arrow keys
+  - [ ] How to re-enable non-hydra bindings
+  - [ ] Encourage practicing entering another mode directly without exit before
+  - [ ] The available exits: anything not a lowercase letter or a number. The
+    mode key itself too.
+  - [ ] Encourage re-wiring brain
+  - [ ] note that if c-m-arrow keys in org mode have been rebound, org should work fine in the tty (there may be a hydra)
+
+--------
+
+Curiously, now that I got all default-bound chords to work as usual, it is easy to accidentally use them and not sequences. Uncomfortable, feels confusing! Am noticing inconsistencies: it is important to fix ctl-x-map so it follows the rules.
+
+Further, ship the package with chords disabled, because 15 minutes under that strict limitation is very rewarding. Turn them on later. We can implement this by unbinding everything but C-g, so that only the hydras remain. We may need the transient hydras from earlier commit (9af0c14) if we want to enable only the chords that have an equivalent in hydras.
+
+--------
+
+Some new thoughts: Combos involving SPC, RET, DEL should perhaps always be unbound. So you can do those actions directly. This strikes me especially when I've marked a region and then want to DEL it: DEL should do DEL! And when I am navigating around and want to add a space, it should not start marking a region. It's generally nice for letting you start /typing/: you don't just have C-g to exit nav mode, you have any of these three.
+
+Add to that any capital letter. Hydra does this by default! Capital letters exit the hydra.
+
+Maybe "anything that's not a lowercase letter exits".
+
+The braces [] are nice keys for bindings on the US kbd. OTOH, the Atreus lacks extra columns. Assume you have Atreus, or that Planck users put braces on raise/lower in any case.
+-------
+
+Speaking of Planck/Preonic/Atreus. Due to lack of spots, you benefit if you can just get rid of many "named" keys like Backspace, Enter, Tab.
+ 
+- You can get rid of the bksp key by having C-h do bksp. F1 does not exist either, so where to put help? Well, duh, put it on s-h.
+- You obviously get rid of the two Shifts and Capslock in any case. 
+- You can get rid of TAB since C-i is hardbound to it. 
+- You can get rid of RET since C-m is hardbound to it.
+- ESC is not so easy to get rid of, but it occurs to me that the Meta key may be able to double as ESC rather than doubling as F13...
+
+So we've gotten rid of everything that sits on the sides. The lowermost row of keys contains the modifiers
+- Shift / Space
+- Control
+- Alt
+- Meta / ESC
+- Super
+- Hyper
+
+and six vacancies.
+
+On a standard keyboard, to simulate a Preonic, pretending the 13th-15th columns don't exist, do this:
+- make =TAB= do =[=, and make =[= do =]=
+- make Rshift do backslash, so it's a pair with forward slash
+- put equals sign on either Lshift or Capslock.
+
+We're left with one vacancy in the main area, for seven total. The obvious next thought is to make them all leader keys (but not modifiers). This is not doable on a standard keyboard though. 
+
+Suppose you wanted to give a normal user Alt and Hyper, iow you wanted to be able to transition between laptops and special keyboards. Obviously, you've done the above remaps, so you have a vacancy on Lshift maybe, so you do the following.
+- SandS (it breaks typing so badly so maybe not)
+- put Hyper on key labelled LShift (pref Rshift actually for similarity to special keyboard)
+- put Alt on key labelled LSuper
+- put Control on key labelled LAlt
+- put Meta on key labelled RAlt
+- put Super on key labelled RCtrl
+
+The result on the spacebar row is:
+
+: Alt Control SandS Meta Super
+
+Now wait a second. Suppose we did not use SandS, so we have a discrete Shift key. On the Preonic, I'd make my lowermost row maybe this:
+
+: Alt Control Space   Shift Meta Super Hyper
+
+The Hyper key is in a disadvantaged position. There are two solutions:
+- Put it on a key like Capslock for pinky operation.
+- Add thumb keys, which on Preonic means moving edge columns to central columns.
+
+Now, suppose I don't have a number row (the likely situation). Then the contents of the edge columns are disposable anyhow, as you will make a numbers-symbols layer. Could this layer be transferred to normal keyboards? Of course! It just takes another leader key. Do we want to 'waste' a modifier like Alt or Hyper, or leave it up to firmware and key-chord (depending)? The latter. Actually it occurs to me that we could destroy the Shift layer too and use it for binding commands, using firmware and key-chord to type capital letters.
+
+So we'd have two pseudo-modifiers (if on a laptop keyboard, we fake them with key-chord.el), one for numbers-symbols and one for capital letters. It is surprisingly analogous to the Raise and Lower keys on the default Planck configuration. We have /six/ modifiers for commands!
+
+We may want to leave Shift as is so that we have an even amount of keys to put on the lowermost row. Of course if your Planck has a double-width space then we can use Shift too. This is pure aesthetics. Doesn't matter much if we have five or six modifiers for commands.
+
+In fact I think we can use Super for numbers & symbols. Why? Because I was already thinking of leaving a modifier for the user.
+
+--------
+
+TL;DR of the above:
+
+- leave LShift as is
+- put Alt on originally LSuper
+- put Control on originally LAlt
+- leave Space as is
+- put Meta on originally RAlt
+- put Super on originally RCtrl
+- put Hyper on originally RShift
+
+Or on Planck:
+
+: Alt Control Space Shift Meta Super Hyper
+
+Make Super a layer for input of numbers and symbols. It's no more difficult than pressing shift+4 shift+5 shift+6... Of course, this needs key-translation-map or custom firmware, to work as e.g. numeric prefixes. The hydra for Super will be handicapped for such use and mainly for typing.
+
+In addition,
+- make Meta send ESC if possible
+- put a brace key where Tab is
+- put equals key on capslock, whatever
+- put DEL on C-h
+  - encourage autocorrection and not typing wrong to begin with
+- use EXWM to pass TAB with C-i, RET with C-m, the like.
+
+--------
+
+Adapting to modes can be done by:
+- mapping e.g. mwim to [remap move-beginning-of-line] rather than C-a directly.
+  - might need to map it to [remap org-move-beginning-of-line] too
+  - does not seem to work?
+- constructing/borrowing a hydras for popular packages, org in particular
+- coming up with new keybinds for e.g. C-M-RET, M-S-down to follow the rule of
+  one single modifier.
+
+--------
+
+Ask Oleh Krehel (i will need a github):
+- +how to bind exits to self-insert-command without collating them in the hints+
+- how to bind a head to (eval `(,(key-binding "\C-x b")))
+- how to keyboard-quit with a hydra head
+- how to goto previously active hydra body without being aware which body that was
+- how to let a head's command be redefined by [remap command] elsewhere
+- how to have a small delay before visually showing the hydra
+- I had many more questions but solved them. You might find my hydras interesting.
+
+--------
+
+How to come up with keybind alternatives?
+
+- org-mode: C-M-RET, M-S-down, C-c [ ...
+- set-mark-command: C-SPC
+- shell-command: M-!
+- can hydra-ctl-x replace ctl-x-map now? Should C-x bind to hydra-ctl-x? NO
+  - If so, then it must contain bindings for C-x that are the same as x
+  - If not, then perform the remap at the end of sparsemap. Do it in any case.
+    - Good because currently if I press CTL x e too fast it does C-x e which is not normally eval-last-sexp.
+- sexp-wise motion: C-M-b, C-M-k, C-M-u
+
+What's an approach needing no creativity? First-in, first-out, as each missing bind occurs to you.
+- ~s-q~ shell-command
+- s-w set-mark-command
+- s-e org-agenda-file-to-front
+- s-r calc-dispatch
+
+Since shell-command used to be operated wholly by left hand, make it familiar? Change the binding to ~A-q~, since I imagine Alt operated by left thumb.
+
+
+--------
+
+Astonishingly, ~CONTROL n~ does not work in ivy. That's because next-line should be remapped to ivy-next-line. This is same problem as with mwim.
+
+How to somehow apply minor mode map to a hydra?
+
+For each new buffer created, buffer-locally bind a key to a programmatically created hydra that binds to whatever's in the keymap of that buffer.
+
+That's the ultimate goal of escape-modality; it is in sparsemap that any actual changes to the emacs keymap should be done (changes that propagate to escape-modality's hydras).
+
+--------
+
+ship sparsemap in "extremely familiar" mode, where SPC stays bound. New users have enough to learn.
+
+less familiar modes:
+- unbind similar commands in different maps eg ctrl-bksp should not do same thing as meta-bksp: can cause confusion re which mode you're in
+- destroy binds outside main area
+- unbind C-x o and other suboptimal things
+
+Encourage that modifications be done after learning the least-familiar mode.
+
+--------
+
+* solved
+
+Does this
+
+: (define-key 'whatever-map [remap move-beginning-of-line] #'org-move-beginning-of-line)
+
+... remap what the command was mapped to, or remap the actual function so it can never be called itself?
+
+It seems to be the latter, fortunately. Bound find-file in my hydra, it did counsel-find-file instead.
+
+-------------
+
+Problem: keyboard-quit just exits out of hydra, not whatever else. So I am stuck in find-file or M-x. I can't even ~2 g~ -- no diff.
+
+Maybe :pre could unbind F13 and bind instead the various heads to F13 <key>. Then :post restores the simple F13 bind.
+
+Maybe we could have a key-translation-map that turns on once inside a hydra, turning g into C-g.
+
+(define-key key-translation-map "g" "\C-g")
+(define-key key-translation-map "g" "g")
+
+(keyboard-translate "g" "\C-g")
+
+----------------
+
+Suppose I did not tell xmodmap to =clear Mod1=. Instead it stays on RAlt, I just make sure that LAlt loses it in favour of Control.
+
+The effect? The LAlt key itself sends F13, but chording it with other stuff sends cotnrol-modified stuff as usual. Should've known.
+
+This will solve the problem of missing M-p in counsel-M-x and all similar problems -- solve the problem of having to define everything in our hydra -- and obviate the transient hydra (maybe).
+
+* In a nutshell
+
+Sparsemap is an alteration to the Emacs keymap. It can be described as combining the best of Vim with the best of Emacs, but it is just Emacs used in a creative way, and is easily learned by Emacsers. It rests on the following set of assumptions, all of which must be met.
+
+- Your keyboard has at least six thumb keys
+- Your software supports hydras (good thing Oleh Krehel exists)
+- Your software supports a key acting as both F13 and a modifier (Xorg does with =xcape=)
+
+The name "sparse map" comes from the preference to spread out your bindings onto Control, Alt, Meta, Super and Hyper, not filling any of them, to give the user the ability to put "related" keybindings under the same modifier (like having Vim modes, but much more ad-hoc).
+
+This package is for you if
+- You see the value of modes but think that Emacs' killer feature over modal
+  editors like Vim is being able to stay in the equivalent of "Input mode",
+  i.e. precisely its nonmodality. This has caused you to scratch your head in
+  confusion.
+- You prefer a variety of modifiers over ever more inventive combinations of
+  Control and Meta.
+- You like =which-key=, but want to see every last keybinding there is.
+- You aren't attracted to Vim.
+
+If you do not have a board with thumb keys, you perhaps benefit more from this package, because thumb keys by themselves are enough to make anything ergonomic.
+
+This package is not for you if
+- You pair-program on Emacs and need standard hotkeys
+- Your thumbs easily tire due to atrophy
+- You don't have thumbs
+
+** Notes
+*Sparsemap puts a lot of default hotkeys and conventions right in the blender*. There is no single "reserved prefix command for the user" -- you take charge of the whole keymap, because it adheres to no standard now.
+* A blog post
+
+I have reinvented input in Emacs.  My solution is two packages that expect each other's presence for now:
+
+- escape-modality
+- sparsemap
+
+*Escape-modality* enables you to use your Emacs keybindings in either a chorded fashion (the Emacs default) or a sequential fashion (akin to having 'sticky modifiers'). There are some subtleties. First, the sequential operation is implemented with hydras, so pressing Control or Meta puts you in what can be termed a mode. These modes behave differently from Vim modes in that they exit more easily: you can often just start typing without pressing an equivalent of ~i~ for "Input mode". In addition, you have the freedom to sometimes chord and sometimes use the hydra, depending on what is suitable in the context -- therefore, you cut the downsides of modal editing and keep the upsides. 
+
+*Sparsemap* assumes that you have extra modifier keys you're willing to use, and aggressively redefines the Emacs keymap. It gets rid of complicated keybinds such as M-!, C-x C-=, C-0 M-x, C-M-% and C-c C-e l o. It follows the rules that keybindings should use only one modifier, only pair them to lowercase letter keys from a to z, and be agnostic on whether you have to keep that modifier pressed for the whole sequence or not (in other words, C-x f and C-x C-f are bound to the same action). That last part was motivated by the desire to be able to 'type' all your commands without any chords, e.g. to input ~C-c C-e l o~ you can simply press these five keys in sequence, not holding anything down: ~<CONTROL> celo~. Users of Spacemacs can compare this to having several leader keys: each of Control, Alt, Meta, Super and Hyper is a leader key, which also means that your key sequences are much shorter (often just one key) than they would be in Spacemacs.
+
+The combination of these two packages makes a potent brew, because when we get rid of hotkeys that involve DEL, RET, SPC, period, comma, dash or capital letters, they become exits out of your hydra. You'd be surprised how often this is felt! In addition, the result is distinctly comfier than Vim in that no commands involve capital letters, unlike Vim. In addition again, remaps such as C-c C-x C-l to just ~s-l~ mean that many commands can be called directly with a chord, making the chord a real alternative to the hydra in many cases. Either you press ~<SUPER>~ and ~l~ at the same time or you press them in sequence. The difference in input styles will simply be "do you intend to run just one command and keep typing" and "do you intend to run several commands now".
+
+While we're at it, I like to recommend a couple improvements unrelated to these packages, just to keep piling on the power boosts:
+
+- Thumb keys :: Get a keyboard with thumb keys - one for all six of Shift, Alt, Control, Meta, Super and Hyper.
+- SandS :: "Shift and Space", turn the space key into Shift and let it input a space only when released. No clear improvement in the presence of the above, other than clearing a spot for another thumb key, but a massive improvement on a regular keyboard. For what it's worth, this is the main component of how I would fix Vim/Spacemacs, but I'm not a Vimmer so I may have missed something.
+
+I owe thanks to abo-abo and the contributors to hydra, which has taken a lot of work off my back as well as giving me the concept of a hydra to begin with. Creative reimaginations of keyboards from the Maltron to the Planck, as well as attempts to get more out of the spacebar such as SandS and Spacemacs, have also given me inspiration. My two packages may seem simple, but it has taken me a really roundabout route over many years to arrive to this solution.
+
+The package is named after Escape Velocity, a video game from the nineties where you steer a spacecraft flying low over valleys and between mountains at unreasonable speed. It was hard to steer the thing, but you felt awesome when you managed. Escape-modality tries to get out of your way and not impose speed limits on your ability to tell Emacs to do things, especially when combined with Sparsemap, but first you must learn to steer. Disabling your main Control key for fifteen minutes does wonders. The name also alludes to escaping Vim's style of modal editing.
+
+If you do not want Sparsemap, I recommend unbinding any combination involving the following keys, in roughly descending priority:
+
+- DEL
+- RET
+- SPC
+- parens
+- quotes
+- braces
+- any sentence-breaker: period, comma, ...
+- any capital letter
+- any operator: dash, slash, plus, equals, ...
+- stuff coming at the start of keywords: dollar-sign, at-sign, hash...
+
+* Background
+
+Why on Earth would someone bother to do large-scale remapping of Emacs hotkeys? If the defaults are a problem, you can just use Evil-mode, right?
+
+I actually began to learn Evil, after geeking out far too much about hotkeys for years and concluding that the ideal follows many of the rules Vim appeared to. My qualifications: I wrote much of the Deskthority page on [[https://deskthority.net/Alternative_Keyboard_Layouts][alternative keyboard layouts]] in 2012.
+
+My first thoughts as I was learning Vim led me to a few new insights. Blew my mind at the time. Evil's not needed! If you already use it, it's good enough, but I'm fond of my solution.
+
+For starters, much (90%) of the ergonomic problem with Emacs goes away if you have thumb keys. Working on the remainder is just "optimizing to the asymptote", so if you value your time, you can close this tab and go buy yourself a Preonic, Nyquist, ErgoDox, Atreus, Kinesis, TrulyErgonomic, Maltron or other keyboard (I have no affiliation to any of these). When you've done that, you can use any editor in the world provided they have advanced editing commands at all. I'd go so far as to say Atom, VSCode, Notepad++, Sublime Text are ergonomic when you have thumb keys.
+
+If you're still reading, you wanna know what more I arrived at, or you wonder what can be done without thumb keys. Well. +What advantages can you get if you design the keymap around the assumption that you have many thumb keys?+
+
+** Theory
+
+I was disappointed in Vim because (1) it has to ESC and (2) it still uses modifiers (Shift). Vimmers are probably used to that but I was hoping to try something modifierless. A huge patch for Vim would be shipping the "SandS" hack, which turns the spacebar into Shift when held down.
+
+#+BEGIN_QUOTE
+How would you do Vim if it was redesigned? I'm a noob at Vim so far, but:
+
+- Lay down a Law of No Modifiers -- not even Shift -- just define longer key
+  sequences if you run out of keybindings. Typing is more fun than chording.
+- To obviate longer key sequences, add more modes. Maybe sparse modes that
+  self-exit like an Emacs hydra if the command executed rarely needs other
+  commands in this mode to follow.
+  + They need not be semantic. Call them "Red mode", "Blue mode", "Green mode"
+    etc, or Meta mode, Super mode, Hyper mode.
+  + Give each mode a dedicated key to access it that works in all modes (such
+    as the preexisting Meta key, Super key and Hyper key, whadda ya know?).
+    This removes the need to ESC out of your current mode. Waste of keys?
+    Perhaps, but then again you have a bunch of new modes allowing you to
+    execute a great ton of commands in two keystrokes regardless. Perhaps we
+    should have so many modes that *no commands* need three keystrokes?
+    - Lay down a Law of Two Keystrokes: never exceed two. A beautiful
+      combination with the Law of No Modifiers.
+    - Bundle a hydra for all repeatable commands (important if modes self-exit).
+      + What we're doing here is reinventing modes overall: making them
+        partially persistent, not fully persistent (like Vim) or nonpersistent
+        (like Emacs), and making them a bit more numerous, without turning into
+        Emacs which has so many different command prefixes that there's no
+        notion of any "mode".
+  + Don't exit to Normal mode, exit to the mode you were previously in.
+  + Like the other modes, even Input mode shouldn't need to be escaped out of
+    with ESC (this is the killer feature of Emacs). That means that your mode
+    keys must be the keys that used to be Shift, Capslock etc, unless you
+    accept the next suggestion in this list.
+  + Expect certain features of the keyboard: a lot of thumb keys.
+    - Each dedicated mode key can be under a thumb, and permit sticky as well
+      as chorded operation. The latter means that you hold it down to execute a
+      command from another mode, then upon release are returned to the mode you
+      were in previously.
+      + These mode keys can have physical red, blue, green keycaps which would
+        correspond to colors in Emacs modeline. Huge UX factor: you /see/ what
+        holding down Ctrl does (temporarily enters the Ctrl mode) and what
+        pressing Ctrl does (enters it straight).
+
+So that's my new Vim, which is nothing like Vim anymore. Probably terrible. I should lay off on the theory and talk when I have experience.
+
+[...]
+
+Feature request of Hydra (if not extant): Backspace to back up in the command sequence. May get rarely used, but the freedom to do so gives a psychological benefit like you're in a free-input text field (compare the Vim ex command line).
+
+A surprising sort of amendment you might like to the idea of six mode keys under thumbs: that any mode opened by the left thumb ONLY has commands on the left half of the keyboard, and a similar rule for the right. The command after the command (second step in the chain) is more free to be bound anywhere. This lets us chord super-comfortably and the sticky operation of the modifier is almost not needed.
+
+Plus, important: let's say it's =RED p o= (and RED is under the right thumb). Then you can type =RED-p o=, as we established, but this must also be bound to the same thing: =RED-p RED-o=. So you do not need to release the modifier. This is the most important in cases when the second command is still under the same hand, but you can do this for all bindings since the bindings are free.
+
+There's no reason not to include sticky operation, but supposing we didn't, *we could express the whole scheme a bit more familiarly to Emacsers: all commands are either made of a chord involving a thumb, or start with that. If they start with that, there is only ever one more keystroke*. Commands never involve two different modifiers, not combined and not in sequence either. As an afterthought, sticky operation is also enabled so you can type instead of chord depending on your mood.
+
+[...]
+
+And it seems I've coalesced my thoughts into "Use five modifiers, not just Control and Meta!" Whether you choose to call the sticky (and hydrafied) operations an equivalent to Vim's modes is entirely academic. It's also important that these modifiers be on thumb keys, and ideally the first key following the modifier is on the same half of the keyboard that the modifier is on.
+#+END_QUOTE
+
+This package has two choices (it could let the user decide). Default setting: Auto-duplicate bindings such as ~C-x f~ to ~C-x C-f~ because emacsers are used to it. Benefit: Don't need to release the modifier, if you like holding it down. 
+
+Alternative setting: don't do the above. Benefit: you can exit any hydra by pressing any modifier hotkey (and do what that hotkey does in the same step). Good if you 'type' your hotkeys with sticky keys, so you do not suffer by doing ~C-x f~ (releasing the modifier sucks) but rather type ~CONTROL x f~ anyway.
+
+Bear in mind that with five modifiers, many hotkeys are /not/ of the form ~C-x f~ in any case -- more likely you just have ~s-f~. Which makes the latter setting far more valuable.
+
+Since both Emacs and Vim put numeric arguments on the number row, no hotkeys can be bound to the number row. Exceptions like C-x 2 exist because of prefix, but rarely is there a hotkey in the style of C-x C-2. The remainder like M-% should be rebound. As it happens, that means it is harmless to forgo the number row as on keyboards like the Planck or for people who just prefer the embedded numpad.
+
+** Summary
+To sum up, we have these rules:
+
+1) Modifiers only permitted on the first hotkey in a sequence, so no ~C-c C-x
+   C-l~, always ~C-c x l~.
+   - But use all modifiers (Ctrl Alt Meta Super Hyper), so most hotkeys are of
+     the form ~C-c~, no longer.
+2) Do not combine modifiers e.g. no C-M-& or M-{.
+3) Any modifier-hotkey executed inside a hydra should passthru (exit the hydra
+   and do what the hotkey should do in the same step).
+   - This is automatically possible given that rule 1 is met.
+4) Each modifier can also be used as a hydra.
+5) A held-down modifier-hotkey returns you to previous hydra afterwards.
+6) The number row is never used for keybinds, as it's used for numeric arguments.
+   - In fact, we try to bind everything to letter keys.
+
+Some amendments post scriptum:
+
+- The entire keymap definable purely with hydras.
+- Stay within the main 30 keys.
+- For marketing points: "In sparsemap you barely use C-x". Do not actually deconstruct C-x: lots of work there.
+
+* Advice
+** How to enable sticky keys, canonically
+
+It's very possible xkbset can do something like what I've done. Check if it can avoid being sticky if a chord is done, and be sticky if a sequence is done. Has small drawback of not letting you see the mode before you do something. Next, there is the question of what happens if you chord while sticky.
+
+If you use a desktop environment, there may be an option in your keyboard settings. If you write your own .xinitrc or .xsession, install =xkbset= and do something like this (borrowed from emacswiki):
+
+#+BEGIN_SRC sh
+  # Enable "sticky keys" for all modifier keys, while also enabling "latchlock"
+  # (i.e., pressing any modifier key twice in a row locks that key
+  # on) and disabling "twokey" (i.e., pressing any modifier key and another key
+  # at the same time permanently disables "sticky keys"). Note that enabling
+  # "sticky" automatically enables sticky keys for Apple- and Windows-specific
+  # modifier keys as well, including: <Shift>, <Ctrl>, <Alt>, <Fn>, and <Apple>.
+  xkbset -bell -feedback sticky -twokey latchlock
+  
+  # Disable expiration of "sticky keys" after the specified time in seconds. When
+  # expiration is enabled, sticky keys are permanently disabled after that many
+  # seconds. This is quite unhelpful.
+  xkbset exp 64 '=sticky' '=twokey' '=latchlock'
+#+END_SRC
+** How to enable SandS (unrelated)
+This tip is included for the sake of it. Sparsemap already eliminates hotkeys that involve Shift, so SandS just makes input of text itself easier. If you have a standard keyboard, you might instead consider Control on the spacebar.
+
+Install =xcape= if you want to do it the X11 way. The Emacs Lisp way is key-chord.el with a very low delay.
+
+** Rebind Ctrl to F13
+*** Conceptually simple solution
+
+This solution lets you experience life using /only/ the commands defined in your hydras.
+
+Step 1: apply this Xmodmap file, which will destroy the Control and Meta keys and leave you to use just F13 and F14:
+
+#+BEGIN_EXAMPLE
+keycode 64 = F13
+keycode 108 = F14
+clear Mod1
+clear Control
+#+END_EXAMPLE
+
+Step 2: Create a copy of each of your hydras. For the hydra named hydra-ctl, you might name the copy hydra-ctl-transient. In both these hydras, F13 should be bound to hydra-ctl-transient/body. The only difference between these hydras is that the latter has the key =:timeout .3=, which you might need to adjust depending on your key repeat delay (the timeout must be longer than the key repeat delay).
+
+Done!
+
+The practical effect is that pressing and releasing F13 will bring up =hydra-ctl=. Holding down F13 (for longer than your key repeat delay, usually 200-500 ms, many people recommend a low value for computer use in general, which also makes this solution comfortable) will do the same, but will send away the hydra when you release the key.
+
+The drawback is that if you do lightning-fast chords, e.g C-a in under 200 ms, the hydra will stay up, which goes against our intention.
+
+*** Better but ugly solution: Pure Xmodmap
+
+This will bind LAlt to F13, which we use to represent the Control key map, and RAlt to F14, which we use to represent the Meta key map. These changes are necessary. Put the following in a file =~/.Xmodmap=. To apply the changes, run ~xmodmap ~~/.Xmodmap~.
+
+#+BEGIN_EXAMPLE
+keycode 64 = F13
+keycode 108 = F14
+clear Mod1
+add Control = F13
+add Mod1 = F14
+add Mod1 = Meta_L
+#+END_EXAMPLE
+
+If you prefer to only load this Xmodmap when you load this package, add to your init file something like:
+
+#+BEGIN_SRC elisp
+(with-eval-after-load 'escape-modality
+  (when (executable-find "xmodmap")
+    (shell-command "xmodmap -e 'keycode 64 = F13'")
+    (shell-command "xmodmap -e 'keycode 108 = F14'")
+    (shell-command "xmodmap -e 'clear Mod1'")
+    (shell-command "xmodmap -e 'add Control = F13'")
+    (shell-command "xmodmap -e 'add Mod1 = F14'")
+    (shell-command "xmodmap -e 'add Mod1 = Meta_L'")))
+#+END_SRC
+
+Xmodmap is a bit of work to wrap your head around. I can't explain why you need =add Mod1 = Meta_L=. Suffice to say that this works; try it. The output of running just ~xmodmap~ should be something like the following, where the relevant lines are =control= and =mod1=:
+
+#+BEGIN_EXAMPLE
+shift       Shift_L (0x32),  Shift_R (0x3e)
+lock      
+control     Control_L (0x25),  F13 (0x40),  Control_R (0x69)
+mod1        F14 (0x6c),  Meta_L (0xcd)
+mod2        Num_Lock (0x4d)
+mod3      
+mod4        Super_L (0x85),  Super_R (0x86),  Super_L (0xce),  Hyper_L (0xcf)
+mod5        ISO_Level3_Shift (0x5c),  Mode_switch (0xcb)
+#+END_EXAMPLE
+
+Compared to the first solution, this solution gives you access to the original Control and Meta keymaps by holding down F13 and F14, not just what's in your hydra, and the length of time you spend holding down F13 is irrelevant.
+
+The drawback of this solution will be evident when you try to do a single chord action and don't want to see a hydra. Pressing =F13-a= will send =F13 C-a=, i.e. the hydra will pop up and immediately disappear as Emacs receives the C-a event. It's not beautiful.
+
+*** Best solution: Xcape + Xmodmap
+
+Xcape is what you would use to make the spacebar send Shift when held down. It is a fully general program: you can combine any key with any modifier. The difference from Xmodmap in the space-and-shift example is that Xmodmap would send an actual Space key and then modify the following key with Shift, whereas Xcape will never send a Space key unless you press and release the spacebar in isolation.
+
+
+To make LAlt behave as Control and send F13 on release, and make RAlt send F14
+on release:
+
+: xmodmap -e "remove Mod1 = Alt_L"
+: xmodmap -e "add Control = Alt_L"
+: xmodmap -e "keycode any = F13"
+: xmodmap -e "keycode any = F14"
+: xcape -e "Alt_L=F13"
+: xcape -e "Alt_R=F14"
+
+To make Space send Shift:
+
+: xmodmap -e "clear shift"  # destroy shift keys, optional
+: xmodmap -e "keycode 65 = Shift_L"
+: xmodmap -e "keycode any = space"
+: xcape -e "Shift_L=space"
+
+To make Space send Shift, and keep the Shift keys functioning as usual (they should not send Space on release):
+
+: # must be an existing keysym, so we must "waste" Hyper_L
+: xmodmap -e "keycode 65 = Hyper_L"
+: xmodmap -e "remove mod4 = Hyper_L"
+: xmodmap -e "add Shift = Hyper_L"
+: xmodmap -e "keycode any = space"
+: xcape -e "Hyper_L=space"
+
+** Unbind chords
+To try life without chords for a while, and train yourself to use key sequences, try this Xmodmap:
+
+#+BEGIN_EXAMPLE
+keycode 64 = F13
+keycode 108 = F14
+clear Mod1
+clear Control
+#+END_EXAMPLE
+
+** Exiting
+You don't need to exit any of the hydras manually by pressing the key that popped it up. You can always exit with punctuation, space, enter, and capital letters, which will do what they normally do. Try to never exit manually! That should pay off with practice.
+
+By turning on =(setq esmod-purism t)= you unbind space and punctuation from any command other than their own insertion. You'll have to bind =set-mark-command= to something else. For suggestions, see list.
+
+By turning on =(setq esmod-no-exit t)= you prevent your hydra from exiting via the key that popped it up.
+
+** Non-X11 systems
+Should be fine as long as you have /some/ utility that lets your Control key send F13 when released, Alt send F14, etc. Turn it on and the hydras should just work.
+
+** Prefix arguments
+We're all new to some aspect of Emacs or other. I never got around to using prefix arguments because I wasn't /sure/ if they're always keybound (did you know =Meta-123456789-= is bound as well as =Control-1234567890-=?), nor of the difference between ~C-u~ and ~C-1~. Let me clear it up for you and make you very happy.
+
+The fact is that hydras, by default, *always bind the number keys to numeric arguments*, and ~-~ to the negative argument. 
+
+By default also, Emacs always binds =Control-1234567890-= and =Meta-1234567890-= to prefix arguments. There /is/ no hotkey that goes ~C-4~, which you might be confusing with ~C-x 4~. That's one reason to get rid of hotkeys like the latter. Another reason is that the ~C-x~ hydra won't have functioning prefix arguments.
+
+I added Alt, Super and Hyper, so we also have =Alt-1234567890-=, =Super-1234567890-= and =Hyper-1234567890-=, all bound to prefix arguments just as they are in the corresponding hydras.
+
+A separate point of confusion: ~C-u~ is not ~C-1~. You can't do ~C-3~ and expect it to be like ~C-u C-u C-u~, which is something else entirely. So we also need the ~u~ key, not just the numbers and minus keys. I considered binding ~M-u~, ~s-u~, ~H-u~ and ~A-u~ to the same, but I have an ally in hydra.el, which doesn't bother (instead, C-u is bound in all hydras).
+
+* List of bindings
+# Much of these lists were collected by running ~emacs -Q~ and then pressing ~<f1> b~.
+** Control and Meta, first level
+*** Background
+
+Control has charwise and linewise motion and deletion, as usual.
+
+Meta has wordwise and sentencewise motion and deletion, as usual.
+
+Some odds and ends also remain bound: I tried to guess which ones you'd want when working in a modal style (hydra).
+
+*** Hotkeys in use
+
+Full list of hotkeys (alphabetic and under only Control or only Meta), that *remain as they are:* 
+
+- ~C-/~ -- =(undo)=
+- ~C-a~ -- =(move-beginning-of-line)=
+- ~C-b~ -- =(backward-char)=
+- ~C-c~ -- prefix
+- ~C-d~ -- =(delete-char)=
+- ~C-e~ -- =(move-end-of-line)= 
+- ~C-f~ -- =(forward-char)=
+- ~C-g~ -- =(keyboard-quit)=
+- ~C-k~ -- =(kill-line)=
+- ~C-l~ -- =(recenter-top-bottom)=
+- ~C-n~ -- =(next-line)=
+- ~C-p~ -- =(previous-line)=
+- ~C-u~ -- =(universal-argument)=
+- ~C-v~ -- =(scroll-up-command)=
+- ~C-w~ -- =(kill-region)=
+- ~C-x~ -- prefix
+- ~C-y~ -- =(yank)=
+
+
+- ~M-a~ -- =(backward-sentence)=
+- ~M-b~ -- =(backward-word)=
+- ~M-c~ -- =(capitalize-word)=
+- ~M-d~ -- =(kill-word)=
+- ~M-e~ -- =(forward-sentence)=
+- ~M-f~ -- =(forward-word)=
+- ~M-g~ -- prefix (bunch of goto functions like next-error) -- could perhaps be replaced with ivy/helm functionality? Since this is a prefix, the hydra must be clever.
+- ~M-h~ -- =(mark-paragraph)=
+- ~M-j~ -- =(indent-new-comment-line)=
+- ~M-k~ -- =(kill-sentence)=
+- ~M-q~ -- =(fill-paragraph)=
+- ~M-v~ -- =(scroll-down-command)=
+- ~M-w~ -- =(kill-ring-save)=
+- ~M-y~ -- =(yank-pop)=
+
+*** Free hotkeys
+
+The following is a *list of free hotkeys.* If you liked something that lost a keybind, please do re-bind it. Now might be the time to consider putting them on Super/Hyper/Alt, but that's up to you. Remember that if you're feeling uncreative and ~s-j~ is taken, you can always move ~M-j~ to ~H-j~ (Hyper+j). That's the Emacs Way.
+
+- ~C-,~ -- wasn't bound
+- ~C-.~ -- wasn't bound
+- ~C-`~ -- wasn't bound
+- ~C-h~ -- was the help tree -- always been available under <f1>
+- ~C-i~ -- was TAB
+- ~C-j~ -- was =(return-indent)= -- moved to ~s-j~.
+- ~C-m~ -- was =(return)= -- moved to ~s-m~.
+- ~C-o~ -- was =(open-line)= -- moved to ~s-o~.
+- ~C-q~ -- was =(quoted-insert)= -- moved to ~s-q~.
+- ~C-r~ -- was =(isearch-backward)=
+- ~C-t~ -- was =(transpose-chars)=
+- ~C-z~ -- was =(suspend-frame)=
+
+
+- ~M-`~ -- was =(tmm-menubar)=
+- ~M-i~ -- was =(tab-to-tab-stop)=
+- ~M-l~ -- was =(downcase-word)=
+- ~M-m~ -- was =(back-to-indentation)= -- suggest mwim
+- ~M-n~ -- wasn't bound
+- ~M-o~ -- was the facemenu tree -- obsolete as it does not work with font-lock
+- ~M-p~ -- wasn't bound
+- ~M-r~ -- was =(move-to-window-line-top-bottom)= -- clumsy on modern tall windows, suggest avy, helm-swoop or just C-l or C-<up>
+- ~M-s~ -- was the isearch tree -- suggest swiper/helm
+- ~M-t~ -- was =(transpose-words)=
+- ~M-u~ -- was =(upcase-word)=
+
+** Changes to C-x prefix
+
+The so-called =Control-X-prefix= has a lot (a lot (a lot)) of keybindings. You could benefit from moving the ones you use out of the prefix to stand alone in the Super, Hyper and Alt keymaps. I'd ship my own choices, but on the off chance this package became popular, my choices would become standard, and I haven't put the appropriate thought into them. I can put my .emacs.d on GitHub though.
+
+What we have done is programmatically destroy half the bindings, so that there is no conflict between ~C-x <KEY>~ and ~C-x C-<KEY>~. Half the bindings are gone, so now we have to pick things to re-bind elsewhere.
+
+List of nested modifiers removed:
+
+- ~C-x <C-left>~  -- was (previous-buffer) -- removed as ~C-x <left>~ does same
+- ~C-x <C-right>~	-- was (next-buffer) -- removed as ~C-x <right>~ does same
+- ~C-x C-;~       -- was (comment-line) -- moved to ~C-x ;~
+- ~C-x C-+~   -- was (text-scale-adjust) -- removed for violating Rule 2
+- ~C-x C--~   -- was (text-scale-adjust) -- moved to ~s--~ because ~C-x -~ exists
+- ~C-x C-0~   -- was (text-scale-adjust) -- moved to ~s-0~ because ~C-x 0~ exists
+- ~C-x C-=~   -- was (text-scale-adjust) -- moved to ~s-=~ because ~C-x =~ exists
+- ~C-x C-SPC~ -- was (pop-global-mark)   -- moved to ~s-SPC~ because ~C-x SPC~ exists
+- ~C-x C-b~  -- was =(list-buffers)= -- 
+- ~C-x C-c~  -- was =(save-buffers-kill-terminal)= -- 
+- ~C-x C-d~  -- was =(list-directory)= -- 
+- ~C-x C-e~  -- was =(eval-last-sexp)= -- 
+- ~C-x C-f~  -- was =(find-file)= -- 
+- ~C-x C-k~  -- was =(kmacro-keymap)= -- 
+- ~C-x C-l~  -- was =(downcase-region)= -- 
+- ~C-x C-n~  -- was =(set-goal-column)= -- 
+- ~C-x C-o~  -- was =(delete-blank-lines)= -- 
+- ~C-x C-p~  -- was =(mark-page)= -- 
+- ~C-x C-q~  -- was =(read-only-mode)= -- 
+- ~C-x C-r~  -- was =(find-file-read-only)= -- 
+- ~C-x C-s~  -- was =(save-buffer)= -- 
+- ~C-x C-t~  -- was =(transpose-lines)= -- 
+- ~C-x C-u~  -- was =(upcase-region)= -- 
+- ~C-x C-v~  -- was =(find-alternate-file)= -- 
+- ~C-x C-w~  -- was =(write-file)= -- 
+- ~C-x C-x~  -- was =(exchange-point-and-mark)= -- 
+- ~C-x C-z~  -- was =(suspend-frame)= -- 
+- ~C-x SPC~  -- was =(rectangle-mark-mode)= -- 
+- ~C-x <~  -- was =(scroll-left)= -- 
+- ~C-x >~  -- was =(scroll-right)= -- 
+
+Ignored due to laying outside the main 30 keys
+
+C-x C-@		pop-global-mark
+C-x TAB		indent-rigidly
+C-x RET		Prefix Command
+C-x ESC		Prefix Command
+C-x $		set-selective-display
+C-x (		kmacro-start-macro
+C-x )		kmacro-end-macro
+C-x *		calc-dispatch
+C-x +		balance-windows
+C-x ^		enlarge-window
+
+** Changes to C-c prefix
+
+Someone else can tackle this.
+
+If C-x had a lot of bindings, well, Org-mode fills C-c with even more. Which isn't a bad thing. Some sort of translation could be figured out.
+
+Simple solution (personally) is to unbind all of C-c, then incrementally bind the Org commands you use over time.
+
+Lazy solution is to use them as they are.
+
+** Reference
+*** Recursed prefixes
+
+Here are the default recursed prefixes (parts of even longer command sequences). I have not touched them, as most do not contain nested modifiers.
+
+- ~C-x 4~    -- ctl-x-4-prefix (doing stuff in another window)
+- ~C-x 5~    -- ctl-x-5-prefix (doing stuff in another frame)
+- ~C-x 8~    -- unnamed (insertion of special characters)
+- ~C-x ESC~  -- unnamed (contains only ~C-x ESC ESC~)
+- ~C-x n~    -- unnamed (narrowing/widening)
+- ~C-x r~    -- unnamed (something about "registers" and "rectangles"?)
+- ~C-x a~    -- unnamed (abbrevs)
+- ~C-x RET~  -- unnamed (coding system, language environment)
+- ~C-x v~    -- vc-prefix-map (vc-mode stuff)
+
+*** Combined modifiers
+
+This is the *full list*.
+
+Fortunately, I don't have to touch these; their presence does not interfere with sparsemap's assumptions. But, I use a few of them and should come up with new binds at some point. Example: M-< could be H-g (Hyper+g). In hindsight, M-: was an all too bad binding for the command. Etc.
+
+: C-@		set-mark-command
+: C-]		abort-recursive-edit
+: C-_		undo
+:
+: C-M-@		mark-sexp
+: C-M-a		beginning-of-defun
+: C-M-b		backward-sexp
+: C-M-c		exit-recursive-edit
+: C-M-d		down-list
+: C-M-e		end-of-defun
+: C-M-f		forward-sexp
+: C-M-h		mark-defun
+: C-M-i		complete-symbol
+: C-M-j		indent-new-comment-line
+: C-M-k		kill-sexp
+: C-M-l		reposition-window
+: C-M-n		forward-list
+: C-M-o		split-line
+: C-M-p		backward-list
+: C-M-r		isearch-backward-regexp
+: C-M-s		isearch-forward-regexp
+: C-M-t		transpose-sexps
+: C-M-u		backward-up-list
+: C-M-v		scroll-other-window
+: C-M-w		append-next-kill
+: C-M-\		indent-region
+: 
+: M-!		shell-command
+: M-$		ispell-word
+: M-%		query-replace
+: M-&		async-shell-command
+: M-(		insert-parentheses
+: M-)		move-past-close-and-reindent
+: M-:		eval-expression
+: M-<		beginning-of-buffer
+: M->		end-of-buffer
+: M-?		xref-find-references
+: M-@		mark-word
+: M-^		delete-indentation
+: 
+: M-{		backward-paragraph
+: M-|		shell-command-on-region
+: M-}		forward-paragraph
+: M-~		not-modified
+: 
+: C-M-S-v		scroll-other-window-down
+: C-M-SPC		mark-sexp
+: C-M-%		query-replace-regexp
+: C-M--		negative-argument
+: C-M-.		xref-find-apropos
+: C-M-/		dabbrev-completion
+: C-M-0 .. C-M-9	digit-argument
+
+* Wish list
+** Layout-hotkey translator
+Since many fine folks like you who are interested in thumb keys are probably also interested in alternative layouts to QWERTY, it is difficult to meet the Same Hand principle:
+
+- That the first keystroke following a thumb keystroke should be made by the same hand.
+  
+In other words, that your hotkeys for a given modifier should be on the same half of the keyboard where the modifier itself is.
+
+Digression: The clever observer might realize there's no need for Alt or Hyper if we limit ourselves so, since we can just have duplicates of Control, Meta and Super on both halves (as is the norm), which doubles our keymaps.
+
+But we will use both halves regardless. [PS: that is, use the whole keyboard even for modifiers that are only present on one of the halves]
+
+- It is a matter of prioritization: the best keys get put on the same hand, the remainder is just fine on the other hand.
+- Further, the /second/ key in a sequence is just fine being on the other half. 
+- Further, it is practical to stick to established Emacs keys like f, b, n, p for navigation -- we were certainly not going to clear half the keymap for either Control or Meta and try to come up with new bindings. 
+- Lastly, it seems many Emacsers are used to just using one Control anyway, and removing Alt/Hyper just to add another Control key for extra comfort with half the Control binds, is no gain when these people won't even use it -- the tyranny of choice. Putting Hyper instead of Control there forces them to learn the paradigm.
+
+Back on topic: The Same Hand principle is great to keep in mind when you go binding Alt, Super and Hyper keys. So what happens if you have an alternative keyboard layout?
+
+The obvious solution [PS: ?] is to not ship any default bindings. Those we move from Control and Meta end up in the same locations as before, just under a different modifier.
+
+Supposing that someone ships an extensive default keymap, and this person thought of the Same Hand principle, maybe even several other principles, could we have a translation layer of sorts? [You need it anyway]
+
+Tell the layer what your layout looks like (Workman, Colemak, Dvorak...), and it will carry out the appropriate remaps [so that the Same Hand principle is in effect].
+** Explain how to function on standard keyboard
+Instead of thumb keys, use the keys that used to be Tab, Capslock, LShift, RShift, maybe Enter or the Alts. Should be an improvement over the vanilla use of Control in any case. Boosted still further by the addition of hydras and being able to 'type' your hotkeys rather than chord anything.
+
