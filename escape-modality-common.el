@@ -68,6 +68,11 @@
    esm-all-keys-on-keyboard-except-shifted-symbols
    esm-all-shifted-symbols))
 
+(defun esm-get-all-keys-on-keyboard ()
+  (append
+   esm-all-keys-on-keyboard-except-shifted-symbols
+   esm-all-shifted-symbols))
+
 (defvar esm-hydra-keys "1234567890qwertyuiopasdfghjkl;zxcvbnm,./")
 
 (defun esm-get-hydra-keys ()

@@ -17,6 +17,94 @@
 ;; This file can probably be spun out as a separate package.
 (require 'escape-modality-common)
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; instructive prior art: which-key--get-keymap-bindings
+;; (map-keymap 'readkey1 global-map)
+(defun readkey1 (ev def)
+  (print (key-description (list ev)) (get-buffer-create "*scratch*"))
+  (print def (get-buffer-create "*scratch*")))
+
+;; (map-keymap 'readkey2 global-map)
+(defun readkey2 (ev def)
+  (when (esm-of-interest def)
+    (print (key-description (list ev)))
+    (print def)))
+
+;;(substitute-command-keys "\\{org-mode-map}")
+
+;; map-keymap passes events to a function, and those events look like (list
+;; 67108918), and it turns out you can append instead of concat:
+;; (key-description (append (kbd "C-x") (list 67108918)))
+
+;; So we are trying to flatten the ctl-x-map. What does that mean? It's not
+;; replacing one modifier with another, it's not deleting one modifier, it's
+;; restemming keys with structure C-x ... to C-x C-... so we need the somewhat
+;; simplistic verb of 'restem' for now. But what if we could generalize to
+;; detect the structure of a key string so we can flatten everything,
+;; including M-g o and M-g M-o.
+;;
+;; The structure is ... take a string x which we'll say contains "M". Then (rx
+;; word-start x not-wordchar graphic) should match a step that
+;; contains M- in a key sequence. Make a list of these, say, and find those
+;; where it occurs again.
+;; Or do it all in one regexp:... wip
+;; (rx line-start (* (not space)) "M" eow
+;;     (* (seq
+;;         (group (* nonl)) bow "M" eow))
+;;     )
+
+;; (map-keymap (lambda (ev def)
+;;               (let* ((case-fold-search nil)
+;;                      (key (key-description (list ev)))
+;;                      (newkey (replace-regexp-in-string
+;;                               (rx line-start (* (not space)) "C" eow
+;;                                   (+ (seq
+;;                                       (group (* nonl)) bow "C" eow)))
+;;                               "\\1Y"
+;;                               key)))
+;;                 (and (esm-of-interest def)
+;;                      (print key)
+;;                      (print newkey))))
+;;             'Control-X-prefix)
+
+;; A far neater way of going about it. See, control-x-prefix
+;; isn't really included when you scan global-map, nor any other subkeymap.
+;; Well, they are, M-a is bound to ((a horrific (list) of (lists))), but you
+;; can decline to operate on those and instead recurse into them. That is,
+(defun esm-flatten-keymap (keymap)
+  (map-keymap (lambda (ev def)
+                (when (keymapp def)
+                  (esm-flatten-keymap def))
+                (and (commandp def)
+                     (esm-of-interest def)
+                     ;; do things
+                     )))
+  keymap)
+;; Ok, now realize that the "events" at each level do not involve sequences. So
+;; the hairiest you'd see is "C-M-S-k". A given modifier only appears once.
+;; The simplest you'd see is just "k". So, if a leaf occurs twice in a map,
+;; simply overlay one of them on all the others.
+
+
+(defun esm-flatten-keymap-2 (keymap)
+  (map-keymap
+   (lambda (ev def)
+     (when (keymapp def)
+       (esm-flatten-keymap-2 def)) ;; recurse
+     (when (and (commandp def)
+                (esm-of-interest def))
+       (let* ((key (key-description (list ev)))
+              (leaf (esm-get-leaf key)))
+         (when (not (equal key leaf))
+           (define-key keymap ev (lookup-key keymap (kbd leaf))))))))
+  keymap)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
 (defvar esm-C-x-C-key-overwrites-C-x-key t)
 
 (defun esm-flatten-ctl-x ()
@@ -29,12 +117,50 @@
       (unless   (eq nil (key-binding (kbd (concat "C-x " x))))
         (global-set-key (kbd (concat "C-x C-" x))
                         (key-binding (kbd (concat "C-x " x)))))))
-  ;(print "Flattened ctl-x-map." (esm-debug-buffer))
+                                        ;(print "Flattened ctl-x-map." (esm-debug-buffer))
   )
+
+;; Generalized flatten-ctl-x
+(defun esm-overlay (here lower-stem upper-stem)
+  "Duplicate bindings on UPPER-STEM so they also exist on LOWER-STEM,
+overwriting the latter for those leaves where both are bound."
+  (dolist (leaf (esm-get-hydra-keys))
+    (let ((upper-cmd (lookup-key here (kbd (concat upper-stem leaf)))))
+      (when (esm-of-interest upper-cmd)
+        (define-key here (kbd (concat lower-stem leaf))
+          upper-cmd)))))
+
+;; More smartly written
+(defun esm-restem-all-leaves (here lower-stem upper-stem)
+  "Duplicate bindings on UPPER-STEM so they also exist on LOWER-STEM,
+overwriting the latter for those leaves where both are bound."
+  (dolist (leaf (esm-get-hydra-keys))
+    (esm-restem* here leaf lower-stem upper-stem)))
+
+(defun esm-restem* (here leaf new-stem reference-stem)
+  (let ((ref-cmd (lookup-key here (kbd (concat reference-stem leaf)))))
+    (when (esm-of-interest ref-cmd)
+      (define-key here (kbd (concat new-stem leaf))
+        ref-cmd))))
+
+(defun esm-restem (reference-stem leaf new-stem)
+  (global-set-key (kbd (concat new-stem leaf))
+                  (global-key-binding (kbd (concat reference-stem leaf)))))
+
+;;  rename to esm-new-leaf? esm-copy-leaf?
+(defun esm-releaf (here stem new-leaf reference-leaf)
+  (define-key here (kbd (concat stem new-leaf))
+    (lookup-key here (kbd (concat stem reference-leaf)))))
+
 
 (defun esm-copy-key (prefix new-key reference-key)
   (global-set-key (kbd (concat prefix new-key))
                   (global-key-binding (kbd (concat prefix reference-key)))))
+
+;; Allows cmd to be a keymap, this is intended
+(defun esm-of-interest (cmd)
+  (and (not (eq cmd nil))
+       (not (eq cmd 'self-insert-command))))
 
 ;; TODO: make a fn that works for unnamed prefix maps
 (defmacro esm-backup-keymap (keymap)
@@ -168,9 +294,42 @@ keymap spec."
     (global-unset-key (kbd (concat "C-x C- " x)))
     (global-unset-key (kbd (concat "C-x " x)))))
 
-(defun esm-restem (reference-stem leaf new-stem)
-  (global-set-key (kbd (concat new-stem leaf))
-                  (global-key-binding (kbd (concat reference-stem leaf)))))
+
+
+
+
+
+(defun esm-super-from-ctl-2 ()
+  (map-keymap (lambda (ev def)
+                (let* ((case-fold-search nil)
+                       (key (key-description (list ev)))
+                       (newkey (replace-regexp-in-string
+                                (rx word-start "C" word-end) "s" key t)))
+                  (and (esm-of-interest def)
+                       (not (equal key newkey))
+                       (define-key global-map (kbd newkey) def))))
+              global-map))
+
+
+;; even better: map-keymap (key-description ) regexp replace
+(defvar esm-stem-equivalences
+  '(("C-"      "M-"      "s-")
+    ("C-x "    "M-x "    "s-x ")
+    ("C-x C-"  "M-x M-"  "s-x s-")
+
+    ;; better
+    ("C-" "C-x " "C-x C-")
+    ("M-" "M-x " "M-x M-")
+    ("s-" "s-x " "s-x s-")))
+
+;; unused
+(defun esm-super-from-ctl* ()
+  (let ((reference (nth 1 esm-stem-equivalences))
+        (new       (nth 3 esm-stem-equivalences)))
+    (dolist (i (length reference))
+      (dolist (leaf esm-all-keys-on-keyboard)
+        (esm-restem (nth i reference) leaf (nth i new))))))
+
 
 (defun esm-super-from-ctl ()
   (dolist (x esm-all-keys-on-keyboard)

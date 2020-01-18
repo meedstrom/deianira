@@ -1,5 +1,5 @@
 ;; escape-modality.el -- indescribable as yet
-;; Copyright (C) 2019 Martin Erik Edström
+;; Copyright (C) 2019 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -20,16 +20,31 @@
 (require 'escape-modality-common)
 (require 'escape-modality-x11)
 (require 'escape-modality-enforce-tidy)
+;; (require 'keymap-utils)
 (eval-when-compile (require 'subr-x)) ;; string-join
 
 ;;;;;;;;;;;;;;;
 ;;; Micro level
 
-;; wip. So they can be unbound by simply disabling the mode
-(setq esm-mode-map (make-sparse-keymap))
-(define-key esm-mode-map (kbd "<f35>") 'esm-control/body)
-(define-key esm-mode-map (kbd "<f34>") 'esm-meta/body)
-(define-key esm-mode-map (kbd "<f33>") 'esm-super/body)
+(defun esm-get-leaf (key)
+  (if (string-match "^<" key)
+      key
+    (car (last (split-string (esm-normalize key) "[ -]+")))))
+
+;; Is there a library for this kind of thing?
+(defun esm-normalize (key)
+  "Typical example to fix: C-<M-return> should be C-M-<return>."
+  (let* ((pieces (split-string key "[- ]" nil "[<>]"))
+         (big-pieces (seq-remove
+                      (lambda (p) (= 1 (string-bytes p))) pieces))
+         (op-needed (= 1 (length big-pieces)))
+         (last-piece (when op-needed
+                       (concat "<" (car big-pieces) ">"))))
+
+    (if (not op-needed)
+        key
+      (string-join (append (butlast pieces) (list last-piece))
+                   "-"))))
 
 (define-minor-mode esm-mode
   "Bind hydras on Control, Meta etc if `esm-xcape-rules' are
@@ -39,8 +54,9 @@ Not to be confused with binding hydras on every prefix key, which
 is to be done only if you hate which-key."
   nil
   "ESM"
-  'esm-mode-map)
-
+  '(((kbd "<f35>") . 'esm-control/body)
+    ((kbd "<f34>") . 'esm-meta/body)
+    ((kbd "<f33>") . 'esm-super/body)))
 
 ;; TODO: adapt to changing frame sizes
 (defvar esm-colwidth
@@ -80,7 +96,7 @@ is to be done only if you hate which-key."
   (call-interactively (key-binding (kbd "C-c c")))
   (esm-control/body))
 
-(setq esm-original-cursor-color (face-background 'cursor))
+(defvar esm--original-cursor-color (face-background 'cursor))
 
 (defun esm-colorize-cursor ()
   (let ((curr (symbol-name hydra-curr-body-fn)))
@@ -89,12 +105,13 @@ is to be done only if you hate which-key."
           ((string-match "^esm-CM\\|super" curr) (set-cursor-color "blue")))))
 
 (defun esm-decolorize-cursor ()
-  (set-cursor-color esm-original-cursor-color))
+  (set-cursor-color esm--original-cursor-color))
 
 (defun esm-is-named-prefix (stem leaf)
   (car-safe
    (member (global-key-binding (kbd (concat stem leaf))) esm-named-prefixes)))
 
+;; List of named prefixes (these are NOT keymaps)
 (defvar esm-named-prefixes '(Control-X-prefix
                              mode-specific-command-prefix
                              ctl-x-4-prefix
@@ -140,14 +157,14 @@ LEAF is a prefix command, such as C-x or C-h."
 ;;; Micro-macro level
 
 ;; "List of keys like C-a, C-e, M-f, M-g but not C-M-f or M-%."
-(setq esm-all-simple-chords
-      (let (chords)
-        (mapc (lambda (char)
-                (push (concat "C-" (string char)) chords)
-                (push (concat "M-" (string char)) chords)
-                (push (concat "C-M-" (string char)) chords))
-              esm-hydra-keys)
-        chords))
+(defvar esm-all-simple-chords
+  (let (chords)
+    (mapc (lambda (char)
+            (push (concat "C-" (string char)) chords)
+            (push (concat "M-" (string char)) chords)
+            (push (concat "C-M-" (string char)) chords))
+          esm-hydra-keys)
+    chords))
 
 (defun esm-cmd-conservative (stem leaf)
   (if (esm-is-prefix-or-unbound stem leaf)
@@ -223,7 +240,7 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
   `( ,(esm-key stem leaf) ,(esm-cmd-conservative stem leaf) nil
      :exit ,(esm-exit-almost-never stem leaf)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Macro level: tying it all together.
 
 
@@ -273,12 +290,12 @@ display in the hydra hint, defaulting to the value of
       (push `(,key . ,body) esm-live-hydras))))
 
 (defvar esm-live-hydras '(("C-c" . "esm-Cc")
-                            ("C-x" . "esm-Cx")
-                            ("C-h" . "esm-Ch")))
+                          ("C-x" . "esm-Cx")
+                          ("C-h" . "esm-Ch")))
 
 ;; Will bug w maps bound to -, like C--.
 (defun esm-dub-from-key (key)
-  "Return \"esm-Cxa\" if KEY is \"C-x a\"."
+  "If KEY is the string \"C-x a\", return \"esm-Cxa\"."
   (concat "esm-" (string-join (split-string key "[- ]"))))
 
 (defun esm-define-global-hydra-maybe (key &optional symname)
@@ -309,6 +326,7 @@ display in the hydra hint, defaulting to the value of
                                       ,key (esm-update-hints ,heads)))))))
 
 
+;; TODO: use accessible-keymaps function
 (defun esm-scan ()
   "Scan for global prefix keys to populate `esm-live-hydras'.
 This may take a couple of seconds, so you may want to set the
@@ -337,117 +355,118 @@ of this function."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Change Emacs state. Should go in user init file.
 
-;; Stage 1
+(defun esm-config ()
+  ;; Stage 1
 
-(setq esm-debug "*Escape-modality debug*")
-(setq esm-C-x-C-key-overwrites-C-x-key t)
+  (setq esm-debug "*Escape-modality debug*")
+  (setq esm-C-x-C-key-overwrites-C-x-key t)
 
-;; Prevent clobbering useful commands. Should go in user init file.
-(if esm-C-x-C-key-overwrites-C-x-key
-    (progn
-      (global-set-key (kbd "C-x C-a") (key-binding (kbd "C-x a"))) ;;abbrev-map
-      (global-set-key (kbd "C-x C-h") #'mark-whole-buffer)
-      (global-set-key (kbd "C-x C-n") #'narrow-to-region))
-  (global-set-key (kbd "C-x e") #'eval-last-sexp)
-  (global-set-key (kbd "C-x f") #'find-file)
-  (global-set-key (kbd "C-x c") #'save-buffers-kill-emacs)
-  (global-set-key (kbd "C-x x") #'exchange-point-and-mark)
-  (global-set-key (kbd "C-x o") #'delete-blank-lines))
+  ;; Prevent clobbering useful commands. Should go in user init file.
+  (if esm-C-x-C-key-overwrites-C-x-key
+      (progn
+        (global-set-key (kbd "C-x C-a") (key-binding (kbd "C-x a"))) ;;abbrev-map
+        (global-set-key (kbd "C-x C-h") #'mark-whole-buffer)
+        (global-set-key (kbd "C-x C-n") #'narrow-to-region))
+    (global-set-key (kbd "C-x e") #'eval-last-sexp)
+    (global-set-key (kbd "C-x f") #'find-file)
+    (global-set-key (kbd "C-x c") #'save-buffers-kill-emacs)
+    (global-set-key (kbd "C-x x") #'exchange-point-and-mark)
+    (global-set-key (kbd "C-x o") #'delete-blank-lines))
 
-(esm-flatten-ctl-x)
+  (esm-flatten-ctl-x)
 
-;; Stage 2
-(esm-kill-shift)
+  ;; Stage 2
+  (esm-kill-shift)
 
-;; Stage 3
-;; (esm-super-map-from-ctl-meta)
-;; (esm-super-translate-to-ctl-meta)
-(esm-super-from-ctl)
+  ;; Stage 3
+  ;; (esm-super-map-from-ctl-meta)
+  ;; (esm-super-translate-to-ctl-meta)
+  (esm-super-from-ctl)
 
-;; Stage 4
+  ;; Stage 4
 
-(esm-scan)
-(esm-generate-hydras)
+  (esm-scan)
+  (esm-generate-hydras)
 
-;; (add-hook 'buffer-list-update-hook #'esm-generate-hydras)
+  ;; (add-hook 'buffer-list-update-hook #'esm-generate-hydras)
 
-(esm-defmode esm-control       "C-"  "CONTROL" "C-<f13>")
-(esm-defmode esm-meta          "M-"  "META"  "M-<f14>")
-;; (esm-defmode esm-super         "C-M-"  "SUPER" "s-<f15>")
-(esm-defmode esm-super         "s-"  "SUPER" "s-<f15>")
+  (esm-defmode esm-control       "C-"  "CONTROL" "C-<f35>")
+  (esm-defmode esm-meta          "M-"  "META"  "M-<f34>")
+  ;; (esm-defmode esm-super         "C-M-"  "SUPER" "s-<f15>")
+  (esm-defmode esm-super         "s-"  "SUPER" "s-<f33>")
 
-(esm-defmode esm-control-nonum "C-"  "
+  (esm-defmode esm-control-nonum "C-"  "
 CONTROL" "C-<f13>" esm-control/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
-(esm-defmode esm-meta-nonum    "M-"  "
+  (esm-defmode esm-meta-nonum    "M-"  "
 META"  "M-<f14>" esm-meta/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
-(esm-defmode esm-super-nonum "C-M-"  "
+  (esm-defmode esm-super-nonum "C-M-"  "
 SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
 
-;; (dotimes (i 10)
-;;   (define-key esm-control/keymap (int-to-string i) nil)
-;;   (define-key esm-meta/keymap (int-to-string i) nil)
-;;   (define-key esm-super/keymap (int-to-string i) nil))
+  ;; (dotimes (i 10)
+  ;;   (define-key esm-control/keymap (int-to-string i) nil)
+  ;;   (define-key esm-meta/keymap (int-to-string i) nil)
+  ;;   (define-key esm-super/keymap (int-to-string i) nil))
 
-;; (defun esm-unbind-maybe (keymap key)
-;;   (when (eq 'hydra--digit-argument (lookup-key keymap (kbd key)))
-;;     (define-key keymap (kbd key) nil)))
+  ;; (defun esm-unbind-maybe (keymap key)
+  ;;   (when (eq 'hydra--digit-argument (lookup-key keymap (kbd key)))
+  ;;     (define-key keymap (kbd key) nil)))
 
-;; Clean up digit argument bindings
-(dolist (map (list esm-control/keymap
-                   esm-meta/keymap
-                   esm-super/keymap))
-  (dotimes (i 10)
-    (let ((key (kbd (int-to-string i))))
-      (when (eq (lookup-key map key) 'hydra--digit-argument)
-        (define-key map key nil)))))
+  ;; Clean up digit argument bindings
+  (dolist (map (list esm-control/keymap
+                     esm-meta/keymap
+                     esm-super/keymap))
+    (dotimes (i 10)
+      (let ((key (kbd (int-to-string i))))
+        (when (eq (lookup-key map key) 'hydra--digit-argument)
+          (define-key map key nil)))))
 
-(define-key esm-control-nonum/keymap "u" #'hydra--universal-argument)
-(define-key esm-meta-nonum/keymap "u" #'hydra--universal-argument)
-(define-key esm-super-nonum/keymap "u" #'hydra--universal-argument)
+  (define-key esm-control-nonum/keymap "u" #'hydra--universal-argument)
+  (define-key esm-meta-nonum/keymap "u" #'hydra--universal-argument)
+  (define-key esm-super-nonum/keymap "u" #'hydra--universal-argument)
 
-(with-eval-after-load 'org
-  (esm-backup-keymap org-mode-map)
-  (esm-flatten-keymap org-mode-map))
+  (with-eval-after-load 'org
+    (esm-backup-keymap org-mode-map)
+    (esm-flatten-keymap org-mode-map))
 
 
-;; the post at http://oremacs.com/2015/06/30/context-aware-hydra/ finally makes
-;; sense. Basically, hydra-foo/hint is a form that gets evalled every time a
-;; head is called. Typically this is just a (format) call, which returns a
-;; string (what you see in the minibuffer). But you can put other stuff in,
-;; making sure you return a string all the same. For example, you can
-;; (define-key hydra-foo/keymap "n" 'some-new-function), then return the result
-;; of (hydra--format ...).
+  ;; the post at http://oremacs.com/2015/06/30/context-aware-hydra/ finally makes
+  ;; sense. Basically, hydra-foo/hint is a form that gets evalled every time a
+  ;; head is called. Typically this is just a (format) call, which returns a
+  ;; string (what you see in the minibuffer). But you can put other stuff in,
+  ;; making sure you return a string all the same. For example, you can
+  ;; (define-key hydra-foo/keymap "n" 'some-new-function), then return the result
+  ;; of (hydra--format ...).
 
-;; For it to be context aware, the top-level form could be an (if) or (cond) or
-;; (let)... Returning different format strings if you like.
+  ;; For it to be context aware, the top-level form could be an (if) or (cond) or
+  ;; (let)... Returning different format strings if you like.
 
-;; the main thing is i want is hints reflecting what's on (key-binding)
-;; so re-eval that every time
+  ;; the main thing is i want is hints reflecting what's on (key-binding)
+  ;; so re-eval that every time
 
-;; Set the hint to what it normally is
-;; (setq esm-control-nonum/hint
-;;       '(eval (hydra--format nil '(nil nil :columns 10)
-;;                             "CONTROL" esm-control-nonum/heads)))
+  ;; Set the hint to what it normally is
+  ;; (setq esm-control-nonum/hint
+  ;;       '(eval (hydra--format nil '(nil nil :columns 10)
+  ;;                             "CONTROL" esm-control-nonum/heads)))
 
-;; Tip: check out the variable `yourhydra/heads' to see what you have to work with.
+  ;; Tip: check out the variable `yourhydra/heads' to see what you have to work with.
 
-;; Context-aware hints. Be aware this does not alter the .../heads variable at
-;; all. For that, eval something before the hydra--format.
-(dolist (x '(;; ("esm-cx" . "CTL-X")
-             ;; ("esm-cc" . "CTL-C")
-             ;; ("esm-sg" . "SUPER-G")
-             ("esm-super" . "SUPER")
-             ("esm-control" . "CONTROL")
-             ("esm-meta" . "META")))
-  ;; (set (intern (concat (car x) "/hint"))
-  ;; `(eval (progn (set (ca))
-  ;; (hydra--format nil '(nil nil :columns 10) ,(cdr x)
-  ;; (esm-update-heads ,(intern (concat (car x)
-  ;; "/heads")))))))
-  (let ((y (intern (concat (car x) "/heads"))))
-    (set (intern (concat (car x) "/hint"))
-         `(eval (progn (setq ,y (esm-update-heads ,y))
-                       (hydra--format nil '(nil nil :columns 10) ,(cdr x) ,y))))))
+  ;; Context-aware hints. Be aware this does not alter the .../heads variable at
+  ;; all. For that, eval something before the hydra--format.
+  (dolist (x '(;; ("esm-cx" . "CTL-X")
+               ;; ("esm-cc" . "CTL-C")
+               ;; ("esm-sg" . "SUPER-G")
+               ("esm-super" . "SUPER")
+               ("esm-control" . "CONTROL")
+               ("esm-meta" . "META")))
+    ;; (set (intern (concat (car x) "/hint"))
+    ;; `(eval (progn (set (ca))
+    ;; (hydra--format nil '(nil nil :columns 10) ,(cdr x)
+    ;; (esm-update-heads ,(intern (concat (car x)
+    ;; "/heads")))))))
+    (let ((y (intern (concat (car x) "/heads"))))
+      (set (intern (concat (car x) "/hint"))
+           `(eval (progn (setq ,y (esm-update-heads ,y))
+                         (hydra--format nil '(nil nil :columns 10) ,(cdr x) ,y)))))))
 
 
 (defun esm-update-all-keymaps ()
