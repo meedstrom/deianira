@@ -2,26 +2,45 @@
 #+AUTHOR: Martin Edström
 
 * Severe issues (fix before release)
-- [ ] Test different DEs. 
+- [-] Test different DEs. 
   - [ ] Ubuntu
     - Alt does not emit f14
-  - [ ] Gnome
     - (use https://github.com/fatso83/dotfiles/blob/master/utils/scripts/gnome-key-bindings)
-  - [ ] LXQt
+  - [X] LXQt
     - Just works, I think?
-  - [ ] Sway
+  - [ ] Sway  (perhaps with ewmctrl)
+- [ ] Trial it with org (tables, headlines)
+- [ ] In EXWM, blank the hydras (so that all keys exit) except for exwm-input-global-keys. This is better than the current behavior.
 - [ ] Exit key on s-<f15> or <f15> depending on sticky keys. Both?
 - [ ] Should Right Ctl emit F23?
 - [ ] Double-check behavior of unlisted keys.
 - [ ] What to do about C-SPC
 - [X] A simple command that kills xcape, bringing emacs back to normal.
 - [X] Let commands print out what they do to a debug buffer.
-- [ ] Create tests
+- [ ] Create unit tests
 - [ ] Remap inside all minor-mode-maps
+  - 
 * Issues
-- [ ] Migrate to map-keymap (so esm-whole-keyboard truly is the whole e.g.)
-- [ ] An escape-modality-mode to buffer-locally bind the hydras, that is, esm-Cx/body and ilk.
-
+- [ ] EXWM awareness
+  - A special rule in the hint-updating code that detects EXWM and then populates the hydra with simulation keys.
+    - A simulation key is roughly as follows:
+    - (dolist (key (list (kbd "C-S-<right>") (kbd "<delete>"))) (exwm-input--fake-key key))
+- [ ] Migrate to map-keymap (so esm-whole-keyboard truly is the whole, non-US bindings are included, etc)
+- [X] An escape-modality-mode to buffer-locally bind the hydras, that is, esm-Cx/body and ilk.
+- [-] Go to school
+  - [X] https://github.com/tarsius/keycast
+  - [X] https://github.com/tarsius/keymap-utils/
+  - [ ] https://gitlab.com/jjzmajic/hercules.el
+    - Use instead of hydra, may simplify code lots. Only need my x11 and tidying code.
+  - [ ] Bind some key-chords
+  - [ ] Mesh with ergoemacs 1 wk
+    - A git branch for this
+  - [ ] Vim 1 wk
+  - [ ] Try all nine Spacemacs modes
+  - [ ] Kakoune (heavy qterminal/multi-term use) 1 wk
+  - [ ] God-mode (just to know what to say to God-mode users) 1 wk
+  - [ ] Xah-fly-keys 1 wk
+- [X] (unrelated to this mode) bind something to translate to <menu>
 * Newerererer
 ** Epiphany 1
 Don't bother to move the Control key! Just duplicate its bindings as Super bindings! 
@@ -118,7 +137,6 @@ Generalized Pseudo-Modality: GPM, genpse, genmod genpm gepse
 Pseudo-modality
 
 . 
-
 
 * Newerer
 Alternative setup:
