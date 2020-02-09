@@ -1,4 +1,4 @@
-#+TITLE: Sparsemap
+#+TITLE: Deianira
 #+AUTHOR: Martin Edström
 
 * Severe issues (fix before release)
@@ -32,6 +32,8 @@
   - [X] https://github.com/tarsius/keymap-utils/
   - [ ] https://gitlab.com/jjzmajic/hercules.el
     - Use instead of hydra, may simplify code lots. Only need my x11 and tidying code.
+      - Basically, the one thing it's missing is keeping f34 and f35 synced with top ctl and meta maps. That is the valuable thing, not subkeymaps.
+    - Possible it cannot match the featureset I need. Hydra exposes more to hack on. Can you temp-exit a hydra with hercules? Can you colorise the cursor? Rename my module Deianira -- hydra-based which-key banisher, and slayer of Hercules.
   - [ ] Bind some key-chords
   - [ ] Mesh with ergoemacs 1 wk
     - A git branch for this
@@ -41,7 +43,86 @@
   - [ ] God-mode (just to know what to say to God-mode users) 1 wk
   - [ ] Xah-fly-keys 1 wk
 - [X] (unrelated to this mode) bind something to translate to <menu>
-* Newerererer
+* [2020-02-03] Note to self
+Spin out escape-modality-enforce-tidy as a separate package. Name? Mass-remap-utils?
+
+The rest of escape-modality, that deals with hydras, shall be named Deianira.
+
+They share some resources, which can be seen in escape-modality-common; they go to massmap, I guess.
+
+"massmap-lib" contains the functions and "massmap-tidy-mode" contains a reference implementation of tidying up the keymaps.
+
+----
+
+Deianira contains gems such as this.
+
+: (defun esm-cmd (stem leaf)
+:   (global-key-binding (kbd (concat stem leaf))))
+
+So, I need a redesign.
+
+Notes on vocabulary:
+- The colloquial terms "mode map" and "prefix key" refer to the same data type: the function =map-keymap= may iterate over a sparse keymap such as =org-mode-map=, but it may also iterate over everything under a prefix key. For example, in =org-mode-map=, =C-c= is bound not to any command but to an unnamed keymap, a large sexp of the form =(keymap CHARTABLE . ALIST)=. This keymap contains many org commands such as =C-v= -- which you'd know by its full description =C-c C-v=, but inside that keymap it is simply known as =C-v=. A takeaway is that sometimes you speak of using =map-keymap= over every mode-specific map, and sometimes you speak of recursing into subkeymaps (prefix keys) within that mode-specific map, which are, of course, not full mode-specific maps in themselves.
+
+My needs:
+
+- +For each sparse map (like org-mode-map), use map-keymap and recurse into subkeymaps.+
+- Do not create a full set of hydras for every mode-specific map. instead, since you in any case want to react to any changes in the locally accessible keybindings, have a single top-level hydra (for each of ctrl, meta, super), and redefine it based on what's locally available. Which is to say, iterate over all local key bindings every time a head is called!
+  - This is probably cleanest; let Emacs figure out the order in which the maps override each other and all that, look at the end result.
+  - This is difficult because there is no local-map variable (is there?). If so, you can't use map-keymap, and have to call =key-binding= on every imaginable =kbd=-compatible string.
+  - This is computationally intensive, because it requires calling a function like esm-scan every time, which I paste below.
+
+#+begin_src 
+(defun esm-scan ()
+  "Scan for global prefix keys to populate `esm-live-hydras'.
+This may take a couple of seconds, so you may want to set the
+variable in your init file directly, by pasting the output
+of this function."
+  (setq esm-live-hydras nil)
+  (dolist (x (esm-whole-keyboard))
+    (when (keymapp (key-binding (kbd x)))
+      (push `(,x  ,(esm-dub-from-key x))
+            esm-live-hydras))))
+#+end_src
+
+
+- Where the hell does which-key get the data?
+  - Answer: (describe-buffer-bindings (current-buffer))
+  - Try calling (which-key--get-current-bindings)
+
+Is there really no way to use which-key and hercules to achieve what I want?
+
+Let's say I use information from (describe-buffer-bindings) and shove the
+top-level Control keys into a keymap variable to which I give the creative name
+control-map, then bind f35 to it, then hercules should be able to work with it.
+Questions that remain:
+1. Can I choose which keys "exit" and which don't?
+2. Can I bind e.g. <f35> M-f and avoid having M-f show up in the which-key prompt?
+
++Looks like it might be able to do these things!+ 
+
+Looks like it can do #1 but not #2? Although, if you don't set :transient, the
+regular M-f (meaning you don't bind =<f35> M-f= at all) won't pop the hydra.
+
+#+begin_src elisp
+(require 'hercules)
+(require 'which-key)
+(require 'general)
+
+(setq my-control-map (make-keymap))
+
+(general-def :keymaps my-control-map
+  ,@(seq-filter (lambda (x) (string-match "^C-" x)))
+      (which-key--get-current-bindings)))
+
+(hercules-def
+ :toggle-funs #'my-control-mode
+ :keymap my-control-map)
+
+(general-def "<f35>" #'my-control-mode)
+#+end_src
+
+* Newerererer Note to self
 ** Epiphany 1
 Don't bother to move the Control key! Just duplicate its bindings as Super bindings! 
 
@@ -119,7 +200,7 @@ COMBO MODIFIERS
 
 Autocreate a hydra with all commands starting with e.g. "pdf-tools-".
 
-* Newererer
+* Newererer note to self
 Suppose you only want the hydra persistent for one key, eg M-bbbbb and then start typing w/o exiting hydra explicitly. Then this addon becomes rather different.
 
 But how to catch user intention?
@@ -138,7 +219,7 @@ Pseudo-modality
 
 . 
 
-* Newerer
+* Newerer note to self
 Alternative setup:
 
 Generate hydra full of (call-interactively), no exceptions. Then we have a bunch of functions named "hydra/lambda-X". Update the /keymap to make keys point to either the string "X" (thus making it a foreign key) or this lambda whenever your mode changes, and update /hint accordingly (trivial).
@@ -904,6 +985,17 @@ Suppose I did not tell xmodmap to =clear Mod1=. Instead it stays on RAlt, I just
 The effect? The LAlt key itself sends F13, but chording it with other stuff sends cotnrol-modified stuff as usual. Should've known.
 
 This will solve the problem of missing M-p in counsel-M-x and all similar problems -- solve the problem of having to define everything in our hydra -- and obviate the transient hydra (maybe).
+
+* Explanations 1
+
+You can still input ~C-x C-f~ and many of the usual keys! The main change is that ~C-x f~ does /the same thing, instead of doing something else/. In vanilla Emacs, that would mean that both do =find-file=, and there is no =set-fill-column= (what used to be ~C-x f~).
+
+Maybe you think that's dumb, but it's the way I like it. I have felt that it slowed me down, to have to keep such things in mind -- now, not having to worry about which modifiers are pressed, I can input commands faster, with less mental context-switching, and it's easier to remember their hotkeys.
+
+More importantly, the whole paradigm of escape-modality requires this change. It would absolutely clutter up our hydras if they had to contain extra sets of keys for each modifier (I never liked multi-page =which-key= displays). It would also not be possible to temporarily-exit transient maps, a magnificent trick.
+
+
+Discoverability --- Emacs is lacking discoverability. This package is a candidate for solving that. You shouldn't have to refer to the manual, elisp source files, readmes or ~C-h m~ to find out about hotkeys, you should be able to do it interactively, in the midst of work, without breaking flow. If you never knew ~C-x C-t~ existed or that you needed such a command, you should still be able to discover it after you have pressed ~C-x~.
 
 * In a nutshell
 

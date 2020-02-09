@@ -26,26 +26,6 @@
 ;;;;;;;;;;;;;;;
 ;;; Micro level
 
-(defun esm-get-leaf (key)
-  (if (string-match "^<" key)
-      key
-    (car (last (split-string (esm-normalize key) "[ -]+")))))
-
-;; Is there a library for this kind of thing?
-(defun esm-normalize (key)
-  "Typical example to fix: C-<M-return> should be C-M-<return>."
-  (let* ((pieces (split-string key "[- ]" nil "[<>]"))
-         (big-pieces (seq-remove
-                      (lambda (p) (= 1 (string-bytes p))) pieces))
-         (op-needed (= 1 (length big-pieces)))
-         (last-piece (when op-needed
-                       (concat "<" (car big-pieces) ">"))))
-
-    (if (not op-needed)
-        key
-      (string-join (append (butlast pieces) (list last-piece))
-                   "-"))))
-
 (define-minor-mode esm-mode
   "Bind hydras on Control, Meta etc if `esm-xcape-rules' are
 enabled and functional.
@@ -111,7 +91,7 @@ is to be done only if you hate which-key."
   (car-safe
    (member (global-key-binding (kbd (concat stem leaf))) esm-named-prefixes)))
 
-;; List of named prefixes (these are NOT keymaps)
+;; List of named prefixes (these are NOT keymap objects)
 (defvar esm-named-prefixes '(Control-X-prefix
                              mode-specific-command-prefix
                              ctl-x-4-prefix
@@ -160,9 +140,11 @@ LEAF is a prefix command, such as C-x or C-h."
 (defvar esm-all-simple-chords
   (let (chords)
     (mapc (lambda (char)
-            (push (concat "C-" (string char)) chords)
+            ;; (push (concat "C-" (string char)) chords)
             (push (concat "M-" (string char)) chords)
-            (push (concat "C-M-" (string char)) chords))
+            (push (concat "s-" (string char)) chords)
+            ;;(push (concat "C-M-" (string char)) chords)
+            )
           esm-hydra-keys)
     chords))
 
@@ -181,13 +163,7 @@ LEAF is a prefix command, such as C-x or C-h."
         (esm-is-a-subhydra stem leaf)
         `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
 
-(defun esm-cmd-3 (stem leaf)
-  (or (when (string= leaf "u")
-        #'esm-universal-arg)
-      (esm-is-a-subhydra stem leaf)
-      `(call-interactively (key-binding (kbd ,(concat stem leaf))))))
-
-(defun esm-hint-3 (stem leaf)
+(defun esm-hint (stem leaf)
   (let* ((sym (or (esm-is-a-subhydra stem leaf)
                   (esm-is-named-prefix stem leaf)
                   (global-key-binding (kbd (concat stem leaf)))))
@@ -215,26 +191,18 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
             (esm-is-unbound stem leaf))
     t))
 
-(defun esm-exit-4 (stem leaf)
+(defun esm-exit (stem leaf)
   (cond ((member (concat stem leaf) esm-quitters) '(:exit t))
         ((member (concat stem leaf) esm-noquitters) '(:exit nil))
         ((esm-is-a-subhydra stem leaf) '(:exit t)) ;; very important
         ((esm-is-unbound stem leaf) '(:exit t))
         (t '()))) ;; defer to hydra's default behavior
 
-(defun esm-exit-2 (stem leaf)
-  (cond ((member (concat stem leaf) esm-quitters) '(:exit t))
-        ((member (concat stem leaf) esm-noquitters) '(:exit nil))
-        ((esm-is-prefix-or-unbound stem leaf) '(:exit t))
-        (t '()))) ;; defer to hydra's default behavior
-
-(defun esm-head-4 (stem leaf)
-  `( ,(esm-key-4 stem leaf) ,(esm-cmd-4 stem leaf) ,(esm-hint-3 stem leaf)
-     ,@(esm-exit-4 stem leaf)))
-
-(defun esm-head-3 (stem leaf)
-  `( ,leaf ,(esm-cmd-3 stem leaf) ,(esm-hint-3 stem leaf)
-           ,@(esm-exit-2 stem leaf)))
+(defun esm-head (stem leaf)
+  "Return a \"head\" specification, in other words a list in the
+form (KEY COMMAND HINT EXIT) as requested by `defhydra'. "
+  `( ,(esm-key-4 stem leaf) ,(esm-cmd-4 stem leaf) ,(esm-hint stem leaf)
+     ,@(esm-exit stem leaf)))
 
 (defun esm-head-invisible (stem leaf)
   `( ,(esm-key stem leaf) ,(esm-cmd-conservative stem leaf) nil
@@ -262,7 +230,7 @@ display in the hydra hint, defaulting to the value of
                         ;; :foreign-keys run
                         )
      ,@(if doctitle (list doctitle) '())
-     ,@(mapcar (lambda (char) (esm-head-4 stem (string char)))
+     ,@(mapcar (lambda (leaf) (esm-head stem (string leaf)))
                (or keys esm-hydra-keys))
      ,@(mapcar (lambda (leaf) (esm-head-invisible stem leaf))
                '("<left>" "<right>" "<up>" "<down>" "<SPC>" "=" "\\" "'" "`"))
@@ -497,11 +465,11 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
          (let ((cmd (cadr head)))
            (if (and (stringp cmd)
                     (esm-is-bound stem cmd))
-               (esm-head-4 stem cmd)
+               (esm-head stem cmd)
 
              ;; Otherwise, check if it's a (call-interactively).
              (if (listp cmd)
-                 (esm-head-4 stem (car head))
+                 (esm-head stem (car head))
 
                ;; Otherwise, return head unmodified.
                head)
@@ -563,11 +531,11 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
          (let ((cmd (cadr head)))
            (if (and (stringp cmd)
                     (esm-is-bound stem cmd))
-               (esm-head-4 stem cmd)
+               (esm-head stem cmd)
 
              ;; Otherwise, check if it's a (call-interactively).
              (if (listp cmd)
-                 (esm-head-4 stem (car head))
+                 (esm-head stem (car head))
 
                ;; Otherwise, return head unmodified.
                head)
