@@ -25,28 +25,29 @@
 
 (defun esm-debug-buffer ()
   (when esm-debug
-    (esm-get-buffer-create esm-debug)))
+    (let ((buf (get-buffer-create esm-debug)))
+      (with-current-buffer buf
+        (setq-local truncate-lines t)
+        buf))))
 
-(defun esm-get-buffer-create (x)
-  (let ((buf (get-buffer-create x)))
-    (with-current-buffer buf
-      (setq-local truncate-lines t)
-      buf)))
+(defun esm-get-leaf (key)
+  (if (string-match "^<" key)
+      key
+    (car (last (split-string (esm-normalize key) "[ -]+")))))
 
-;; (defvar esm-all-keys-on-keyboard*
-;;   (append
-;;    (split-string
-;;     "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./~!@#$%^&*()_+{}|:\"<>?"
-;;     "" t)
-;;    (split-string
-;;     "<left> <right> <up> <down> <SPC> <RET> <backspace> <delete>
-;;      TAB <f1> <f2> <f3> <f4> <f5> <f6> <f7> <f8> <f9> <f10> <f11>
-;;      <f12> <print> <insert> <next> <prior> <home> <end>")))
-
-
-;; (defvar esm-all-keys-on-keyboard-without-shift
-;;   (seq-difference esm-all-keys-on-keyboard*
-;;                   (split-string "~!@#$%^&*()_+{}|:\"<>?" "" t)))
+;; Is there a library for this kind of thing?
+(defun esm-normalize (key)
+  "Typical example to fix: C-<M-return> should be C-M-<return>."
+  (let* ((pieces (split-string key "[- ]" nil "[<>]"))
+         (big-pieces (seq-remove
+                      (lambda (p) (= 1 (string-bytes p))) pieces))
+         (op-needed (= 1 (length big-pieces)))
+         (last-piece (when op-needed
+                       (concat "<" (car big-pieces) ">"))))
+    (if (not op-needed)
+        key
+      (string-join (append (butlast pieces) (list last-piece))
+                   "-"))))
 
 (defvar esm-all-keys-on-keyboard-except-shifted-symbols
   (append
@@ -92,8 +93,9 @@
     "keycode any = F28"))
 
 (defvar esm-xcape-rules
-  '("Control_L=F35"
-    "Control_R=F35"
+  '(
+    ;; "Control_L=F35"
+    ;; "Control_R=F35"
     "Meta_L=F34"
     "Meta_R=F34"
     "Alt_L=F34"

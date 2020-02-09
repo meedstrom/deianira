@@ -40,10 +40,16 @@
          (rules (string-join esm-xcape-rules ";"))
          (cmd (concat "xcape -e '" rules "'")))
     (when (executable-find "xcape")
-      (esm-xcape-kill)
+      ;; (esm-xcape-kill) ;; seems to kill the following process!
       (start-process-shell-command "xcape"
                                    (or (esm-debug-buffer) output-buffer)
                                    cmd))))
+
+(defun esm-xcape-kill-command ()
+  (if (executable-find "pkill")
+      "pkill xcape"
+    (if (executable-find "killall")
+        "killall -9 xcape")))
 
 (defun esm-xcape-kill ()
   (interactive)
