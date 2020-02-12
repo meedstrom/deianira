@@ -14,50 +14,34 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-;; to disable all ubuntu / gnome hotkeys, use
+;; to disable ubuntu / gnome hotkeys, use
 ;; https://github.com/fatso83/dotfiles/blob/master/utils/scripts/gnome-key-bindings
-
-;; TODO: Switch to not shell-command so you can output to esm-debug without
-;; overwriting it.
 
 (require 'escape-modality-common)
 (eval-when-compile (require 'subr-x)) ;; string-join
 
-(defun esm-run (x)
-  (start-process-shell-command x nil x))
-
-(defun esm-xmodmap-reload ()
+(defun esm-xmodmap-reload (&optional output-buffer)
   (interactive)
   (let* ((shell-command-dont-erase-buffer t)
          (rules (string-join esm-xmodmap-rules "' -e '"))
          (cmd (concat "xmodmap -e '" rules "'")))
     (when (executable-find "xmodmap")
-      (shell-command cmd (or (esm-debug-buffer) "*Messages*")))))
+      (start-process-shell-command cmd
+                                   (or (esm-debug-buffer) "*Messages*")
+                                   cmd))))
+
+(defvar esm-xcape-process)
 
 (defun esm-xcape-reload (&optional output-buffer)
   (interactive)
   (let* ((shell-command-dont-erase-buffer t)
-         (rules (string-join esm-xcape-rules ";"))
-         (cmd (concat "xcape -e '" rules "'")))
+         (rules (string-join esm-xcape-rules ";")))
     (when (executable-find "xcape")
-      ;; (esm-xcape-kill) ;; seems to kill the following process!
-      (start-process-shell-command "xcape"
-                                   (or (esm-debug-buffer) output-buffer)
-                                   cmd))))
-
-(defun esm-xcape-kill-command ()
-  (if (executable-find "pkill")
-      "pkill xcape"
-    (if (executable-find "killall")
-        "killall -9 xcape")))
-
-(defun esm-xcape-kill ()
-  (interactive)
-  (if (executable-find "pkill")
-      (esm-run "pkill xcape")
-    (if (executable-find "killall")
-        (esm-run "killall -9 xcape")
-      (warn "Not killing previous instances of xcape."))))
+      (and (boundp 'esm-xcape-process)
+           (process-live-p esm-xcape-process)
+           (kill-process esm-xcape-process))
+      (setq esm-xcape-process
+            (start-process "xcape" "*xcape*" "xcape" "-d" "-e" rules)))))
 
 (defun esm-xkbset-enable-sticky-keys ()
   (interactive)
