@@ -25,7 +25,7 @@
   - A special rule in the hint-updating code that detects EXWM and then populates the hydra with simulation keys.
     - A simulation key is roughly as follows:
     - (dolist (key (list (kbd "C-S-<right>") (kbd "<delete>"))) (exwm-input--fake-key key))
-- [ ] Migrate to map-keymap (so esm-whole-keyboard truly is the whole, non-US bindings are included, etc)
+- [ ] ((Migrate to map-keymap (so esm-whole-keyboard truly is the whole, non-US bindings are included, etc)))
 - [X] An escape-modality-mode to buffer-locally bind the hydras, that is, esm-Cx/body and ilk.
 - [-] Go to school
   - [X] https://github.com/tarsius/keycast
@@ -43,6 +43,35 @@
   - [ ] God-mode (just to know what to say to God-mode users) 1 wk
   - [ ] Xah-fly-keys 1 wk
 - [X] (unrelated to this mode) bind something to translate to <menu>
+* [2020-02-11] Notes
+
+Redesign needed:
+
+- Focus on the hydra-update mechanism, not on creating initial hydras that reflect global-map; forget global-map.
+- Do not use (global-key-binding). Use (key-binding). Obviously, update the hydras (redefine them) often.
+- Make three root hydras: control, meta, super. You may use (which-key--get-current-bindings) to define them (possibly making interim keymap variables), and then then map-keymap for each subkeymap to scan them.
+
+What do I need out of the hydra-update mechanism? How is it made?
+
+Basically it is just each hydra's hint function which returns a string for the hint, and you can make it do other things before returning the string. So you can make it re-define all heads if not the hydra itself, which I imagine could be buggy. All other hydras would be redefined according to the regular logic (esm-defmode specifically).
+
+So how does the package initialize? Well, it runs defmode for pre-created control, meta and super keymaps, and this action should recursively create every sub-hydra.
+
+There is no need for (which-key--get-current-bindings) if we use esm-whole-keyboard in creating the root hydras.
+
+------------
+[2020-02-12]
+
+This is hell.
+
+How about just running (esm-generate-hydras) on either :body-pre, :post or head hint?
+
+And all the magic is in there.
+
+
+
+
+
 * [2020-02-03] Note to self
 Spin out escape-modality-enforce-tidy as a separate package. Name? Mass-remap-utils?
 
@@ -62,7 +91,7 @@ Deianira contains gems such as this.
 So, I need a redesign.
 
 Notes on vocabulary:
-- The colloquial terms "mode map" and "prefix key" refer to the same data type: the function =map-keymap= may iterate over a sparse keymap such as =org-mode-map=, but it may also iterate over everything under a prefix key. For example, in =org-mode-map=, =C-c= is bound not to any command but to an unnamed keymap, a large sexp of the form =(keymap CHARTABLE . ALIST)=. This keymap contains many org commands such as =C-v= -- which you'd know by its full description =C-c C-v=, but inside that keymap it is simply known as =C-v=. A takeaway is that sometimes you speak of using =map-keymap= over every mode-specific map, and sometimes you speak of recursing into subkeymaps (prefix keys) within that mode-specific map, which are, of course, not full mode-specific maps in themselves.
+- The colloquial terms "mode map" and "prefix key" refer to the same data type: the function =map-keymap= may iterate over a mode map such as =org-mode-map=, but it may also iterate over everything under a prefix key. For example, in =org-mode-map=, =C-c= is bound not to any command but to an unnamed keymap (actually it is named mode-specific-command-map, so substitute a different example here), a verbose sexp of the form =(keymap CHARTABLE . ALIST)=. This keymap contains many org commands such as =C-v= -- which you'd know by its full description =C-c C-v=, but inside that keymap it is simply known as =C-v=. A takeaway is that sometimes you speak of using =map-keymap= over every mode-specific map, and sometimes you speak of recursing into subkeymaps (prefix keys) within that mode-specific map, which are, of course, not what you'd call mode-specific maps in themselves.
 
 My needs:
 

@@ -136,17 +136,17 @@ already been done."
 ;;               global-map))
 
 (defun esm-super-from-ctl (map)
-    (map-keymap (lambda (ev def)
-                  (if (keymapp def)
-                      (esm-super-from-ctl def)
-                    (let* ((case-fold-search nil)
-                           (key (key-description (list ev)))
-                           (newkey (replace-regexp-in-string
-                                    (rx word-start "C" word-end) "s" key t)))
-                      (and (esm-of-interest def)
-                           (not (equal key newkey))
-                           (define-key map (kbd newkey) def)))))
-                map))
+  (map-keymap (lambda (ev def)
+                (let* ((case-fold-search nil)
+                       (key (key-description (list ev)))
+                       (newkey (replace-regexp-in-string
+                                (rx word-start "C" word-end) "s" key t)))
+                  (and (esm-of-interest def)
+                       (not (equal key newkey))
+                       (define-key map (kbd newkey) def)))
+                (when (keymapp def)
+                  (esm-super-from-ctl def)))
+              map))
 
 
 (provide 'escape-modality-enforce-tidy)

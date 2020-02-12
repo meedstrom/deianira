@@ -69,6 +69,8 @@
    esm-all-keys-on-keyboard-except-shifted-symbols
    esm-all-shifted-symbols))
 
+;; unused
+;; TODO: use it
 (defun esm-get-all-keys-on-keyboard ()
   (append
    esm-all-keys-on-keyboard-except-shifted-symbols
@@ -81,6 +83,7 @@
 
 ;; "We've not found a keyboard with more than 35 function keys total."
 ;; -- /usr/include/X11/keysymdef.h
+;; i.e. F35 is the highest defined in upstream keysymdef.h.
 (defvar esm-xmodmap-rules
   '(;; necessary for xcape to send them
     "keycode any = F35"
@@ -94,8 +97,8 @@
 
 (defvar esm-xcape-rules
   '(
-    ;; "Control_L=F35"
-    ;; "Control_R=F35"
+    "Control_L=F35"
+    "Control_R=F35"
     "Meta_L=F34"
     "Meta_R=F34"
     "Alt_L=F34"
