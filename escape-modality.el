@@ -208,17 +208,15 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
       leaf
     " "))
 
-;; TODO: return '(:exit t)
-;; TODO: use cond like the other function
 (defun esm-exit-almost-never (stem leaf)
-  (when (or (member (concat stem leaf) esm-quitters)
-            (esm-is-unbound stem leaf))
-    t))
+  (cond ((member (concat stem leaf) esm-quitters) '(:exit t))
+        ((esm-is-unbound stem leaf) '(:exit t))
+        (t '(:exit nil))))
 
 (defun esm-exit (stem leaf)
   (cond ((member (concat stem leaf) esm-quitters) '(:exit t))
         ((member (concat stem leaf) esm-noquitters) '(:exit nil))
-        ((esm-is-a-subhydra stem leaf) '(:exit t)) ;; very important
+        ((esm-is-a-subhydra stem leaf) '(:exit t)) ;; important
         ((esm-is-unbound stem leaf) '(:exit t))
         (t '()))) ;; defer to hydra's default behavior
 
@@ -230,7 +228,7 @@ form (KEY COMMAND HINT EXIT) as desired by `defhydra'. "
 
 (defun esm-head-invisible (stem leaf)
   `( ,(esm-key-neo stem leaf) ,(esm-cmd-neo stem leaf) nil
-     :exit ,(esm-exit-almost-never stem leaf)))
+     ,@(esm-exit-almost-never stem leaf)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Macro level: tying it all together.
