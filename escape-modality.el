@@ -173,45 +173,21 @@ LEAF is a prefix command, such as C-x or C-h."
   (seq-difference (mapcar #'car (which-key--get-current-bindings))
                   esm-all-duo-chords))
 
-;; unused
-(defun esm-cmd-conservative-neo (stem leaf)
-  (if (or (keymapp (esm-cmd stem leaf))
-          (not (esm-of-interest (esm-cmd stem leaf))))
-      leaf
-    `(call-interactively (key-binding (kbd ,(concat stem leaf))))))
-
-;; TODO: describe us
-(defun esm-cmd-conservative (stem leaf)
-  (if (esm-is-prefix-or-unbound stem leaf)
-      leaf
-    `(call-interactively (key-binding (kbd ,(concat stem leaf))))))
-
 (defun esm-corresponding-hydra (stem leaf)
   (intern (concat
            (esm-dub-from-key (concat stem leaf))
            "/body")))
 
-;; unused
 (defun esm-cmd-neo (stem leaf)
-  (cond (((not (esm-of-interest (esm-cmd stem leaf)))
-          leaf)
-         ((keymapp (esm-cmd stem leaf))
-          (esm-corresponding-hydra stem leaf))
-         ((and (string= stem "C-c ")
-               (string= leaf "c"))
-          #'esm-cc-cc)
-         (t `(call-interactively (key-binding (kbd ,(concat stem leaf))))))))
-
-;; TODO: implement esm-wrapper instead of esm-cc-cc
-(defun esm-cmd-4 (stem leaf)
-  (if (esm-is-unbound stem leaf) leaf
-    (or (when (string= leaf "u")
-          #'esm-universal-arg)
-        (when (and (string= stem "C-c ")
-                   (string= leaf "c"))
-          #'esm-cc-cc)
-        (esm-is-a-subhydra stem leaf)
-        `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
+  (cond ((not (esm-of-interest (esm-cmd stem leaf)))
+         leaf)
+        ((keymapp (esm-cmd stem leaf))
+         (esm-corresponding-hydra stem leaf))
+        ((string= (concat stem leaf) "C-c c")
+         #'esm-cc-cc)
+        ((string= (concat stem leaf) "C-g")
+         #'keyboard-quit)
+        (t `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
 
 (defun esm-hint (stem leaf)
   (let* ((sym (or (esm-is-a-subhydra stem leaf)
@@ -225,22 +201,12 @@ LEAF is a prefix command, such as C-x or C-h."
         name))))
 
 (defun esm-key-neo (stem leaf)
-  (if (esm-of-interest (esm-cmd stem leaf))
-      leaf
-    " "))
-
-;; TODO: merge these two
-(defun esm-key-4 (stem leaf)
-  "Return either LEAF or a string containing a single space. This
-can be used to make a visibly blank spot in a hydra for hotkeys
-that are unbound."
-  (if (esm-is-unbound stem leaf) " " leaf))
-
-(defun esm-key (stem leaf)
   "If the given hotkey is bound to a command, return LEAF,
 otherwise return a space character. This can be used to
 make a visibly blank spot in a hydra for hotkeys that are unbound."
-  (if (stringp (esm-cmd-conservative stem leaf)) " " leaf))
+  (if (esm-of-interest (esm-cmd stem leaf))
+      leaf
+    " "))
 
 ;; TODO: return '(:exit t)
 ;; TODO: use cond like the other function
@@ -259,11 +225,11 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
 (defun esm-head (stem leaf)
   "Return a \"head\" specification, in other words a list in the
 form (KEY COMMAND HINT EXIT) as desired by `defhydra'. "
-  `( ,(esm-key-4 stem leaf) ,(esm-cmd-4 stem leaf) ,(esm-hint stem leaf)
+  `( ,(esm-key-neo stem leaf) ,(esm-cmd-neo stem leaf) ,(esm-hint stem leaf)
      ,@(esm-exit stem leaf)))
 
 (defun esm-head-invisible (stem leaf)
-  `( ,(esm-key stem leaf) ,(esm-cmd-conservative stem leaf) nil
+  `( ,(esm-key-neo stem leaf) ,(esm-cmd-neo stem leaf) nil
      :exit ,(esm-exit-almost-never stem leaf)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -381,6 +347,8 @@ display in the hydra hint, defaulting to the value of
 ;; If we take away the hacky esm-whole-keyboard, what do we do instead?
 ;; Seems obvious we should use (which-key--get-current-bindings).
 (defun esm-generate-hydras ()
+
+  ;; TODO: Don't use esm-whole-keyboard
   (setq esm-live-hydras nil)
   (dolist (x (esm-whole-keyboard))
     (when (keymapp (global-key-binding (kbd x)))
