@@ -270,7 +270,6 @@ display in the hydra hint, defaulting to the value of
       (string-match (rx " -" eol) keydesc)
       (string-match (rx (not (any "- ")) eol) keydesc)))
 
-;; unused
 (defun esm-drop-last-key-in-seq (keydesc)
   (if (esm-valid-keydesc keydesc)
       (replace-regexp-in-string (rx space (*? (not space)) eol) "" keydesc)))
@@ -291,7 +290,7 @@ display in the hydra hint, defaulting to the value of
            (body         (intern (concat x "/body")))
            (keymap       (intern (concat x "/keymap")))
            (stem-for-children (concat key " "))
-           (parent-key (substring key 0 -2)) ;; Doesnt bug with <RET>, strange!
+           (parent-key (esm-drop-last-key-in-seq key))
            (parent-symname (cdr (assoc parent-key esm-live-hydras)))
            (parent-body (cond ((string= parent-key "C") #'esm-control/body)
                               ((string= parent-key "M") #'esm-meta/body)
@@ -384,7 +383,6 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
         (push (concat chord " " key) biglist))
       (push chord biglist))
     biglist))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Change Emacs state. Should go in user init file.
