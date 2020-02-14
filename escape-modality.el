@@ -178,9 +178,9 @@ LEAF is a prefix command, such as C-x or C-h."
            (esm-dub-from-key (concat stem leaf))
            "/body")))
 
-(defun esm-cmd-neo (stem leaf)
+(defun esm-head-cmd (stem leaf)
   (cond ((not (esm-of-interest (esm-cmd stem leaf)))
-         leaf)
+         leaf) ;; make a blank spot
         ((keymapp (esm-cmd stem leaf))
          (esm-corresponding-hydra stem leaf))
         ((string= (concat stem leaf) "C-c c")
@@ -189,7 +189,7 @@ LEAF is a prefix command, such as C-x or C-h."
          #'keyboard-quit)
         (t `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
 
-(defun esm-hint (stem leaf)
+(defun esm-head-hint (stem leaf)
   (let* ((sym (or (esm-is-a-subhydra stem leaf)
                   (esm-is-known-prefix stem leaf)
                   (key-binding (kbd (concat stem leaf)))))
@@ -200,7 +200,7 @@ LEAF is a prefix command, such as C-x or C-h."
           (substring name 0 esm-colwidth)
         name))))
 
-(defun esm-key-neo (stem leaf)
+(defun esm-head-key (stem leaf)
   "If the given hotkey is bound to a command, return LEAF,
 otherwise return a space character. This can be used to
 make a visibly blank spot in a hydra for hotkeys that are unbound."
@@ -208,7 +208,7 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
       leaf
     " "))
 
-(defun esm-exit (stem leaf &optional exit-almost-never?)
+(defun esm-head-exit (stem leaf &optional exit-almost-never?)
   (cond ((member (concat stem leaf) esm-quitters) '(:exit t))
         ((member (concat stem leaf) esm-noquitters) '(:exit nil))
         ((esm-is-a-subhydra stem leaf) '(:exit t)) ;; important
@@ -219,12 +219,12 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
 (defun esm-head (stem leaf)
   "Return a \"head\" specification, in other words a list in the
 form (KEY COMMAND HINT EXIT) as desired by `defhydra'. "
-  `( ,(esm-key-neo stem leaf) ,(esm-cmd-neo stem leaf) ,(esm-hint stem leaf)
-     ,@(esm-exit stem leaf)))
+  `( ,(esm-head-key stem leaf) ,(esm-head-cmd stem leaf) ,(esm-head-hint stem leaf)
+     ,@(esm-head-exit stem leaf)))
 
 (defun esm-head-invisible (stem leaf)
-  `( ,(esm-key-neo stem leaf) ,(esm-cmd-neo stem leaf) nil
-     ,@(esm-exit stem leaf 'almost-never)))
+  `( ,(esm-head-key stem leaf) ,(esm-head-cmd stem leaf) nil
+     ,@(esm-head-exit stem leaf 'almost-never)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Macro level: tying it all together.
