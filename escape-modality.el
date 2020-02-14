@@ -22,6 +22,7 @@
 (require 'escape-modality-enforce-tidy)
 ;; (require 'keymap-utils)
 (eval-when-compile (require 'subr-x)) ;; string-join
+(autoload #'which-key--get-current-bindings "which-key")
 
 ;;;;;;;;;;;;;;;
 ;;; Micro level
@@ -59,7 +60,7 @@ enabled and functional. "
                            ))
 
 (defun esm-is-a-subhydra (stem leaf)
-  "Returns the hydra body in question."
+  "Return the hydra body in question."
   (if-let ((x (cdr (assoc (concat stem leaf) esm-live-hydras))))
       (intern (concat x "/body"))))
 
@@ -74,6 +75,7 @@ enabled and functional. "
 
 ;; unused
 ;; inspired by esm-cc-cc
+;; but what commands need it?
 (defun esm-wrapper (hotkey)
   (call-interactively (key-binding (kbd hotkey)))
   (cond ((string-match "^C-" hotkey)
@@ -102,23 +104,29 @@ enabled and functional. "
 (defun esm-decolorize-cursor ()
   (set-cursor-color esm--original-cursor-color))
 
-(defun esm-is-named-prefix (stem leaf)
+(defun esm-is-known-prefix (stem leaf)
   (car-safe
-   (member (key-binding (kbd (concat stem leaf))) esm-named-prefixes)))
+   (member (key-binding (kbd (concat stem leaf))) esm-known-prefix-commands)))
 
-;; List of named prefixes (these are NOT keymap objects)
-(defvar esm-named-prefixes '(2C-command
-                             Control-X-prefix
-                             ESC-prefix
-                             ctl-x-4-prefix
-                             ctl-x-5-prefix
-                             facemenu-keymap
-                             help-command
-                             iso-transtl-ctl-x-8-map
-                             kmacro-keymap
-                             mode-specific-command-prefix
-                             projectile-command-map
-                             vc-prefix-map))
+;; TODO: Stop needing this. I think (keymapp) is reliable. Just see
+;; (key-binding (kbd "C-x"))
+;; (keymapp (key-binding (kbd "C-x")))
+;; (key-binding (kbd "C-x a"))
+;; (keymapp (key-binding (kbd "C-x a")))
+;; (keymapp 'Control-X-prefix)
+;; List of named prefixes (these are NOT just keymap variables like ctl-x-map)
+(defvar esm-known-prefix-commands '(2C-command
+                                    Control-X-prefix
+                                    ESC-prefix
+                                    ctl-x-4-prefix
+                                    ctl-x-5-prefix
+                                    facemenu-keymap
+                                    help-command
+                                    ehelp-command
+                                    kmacro-keymap
+                                    mode-specific-command-prefix
+                                    projectile-command-map
+                                    vc-prefix-map))
 
 (defun esm-cmd (stem leaf)
   (key-binding (kbd (concat stem leaf))))
@@ -149,27 +157,50 @@ LEAF is a prefix command, such as C-x or C-h."
 ;;; Micro-macro level
 
 ;; "List of keys like C-a, C-e, M-f, M-g but not C-M-f or M-%."
+;; note: it's not quite all of them since it uses esm-hydra-keys
 (defvar esm-all-duo-chords
   (let (chords)
     (mapc (lambda (char)
-            ;; (push (concat "C-" (string char)) chords)
+            (push (concat "C-" (string char)) chords)
             (push (concat "M-" (string char)) chords)
-            (push (concat "s-" (string char)) chords)
-            ;;(push (concat "C-M-" (string char)) chords)
-            )
+            (push (concat "s-" (string char)) chords))
           esm-hydra-keys)
     chords))
 
 ;; unused
+;; not quite right
 (defun esm-all-multi-chords ()
   (seq-difference (mapcar #'car (which-key--get-current-bindings))
                   esm-all-duo-chords))
+
+;; unused
+(defun esm-cmd-conservative-neo (stem leaf)
+  (if (or (keymapp (esm-cmd stem leaf))
+          (not (esm-of-interest (esm-cmd stem leaf))))
+      leaf
+    `(call-interactively (key-binding (kbd ,(concat stem leaf))))))
 
 ;; TODO: describe us
 (defun esm-cmd-conservative (stem leaf)
   (if (esm-is-prefix-or-unbound stem leaf)
       leaf
     `(call-interactively (key-binding (kbd ,(concat stem leaf))))))
+
+(defun esm-corresponding-hydra (stem leaf)
+  (intern (concat
+           (esm-dub-from-key (concat stem leaf))
+           "/body")))
+
+;; unused
+(defun esm-cmd-neo (stem leaf)
+  (cond (((not (esm-of-interest (esm-cmd stem leaf)))
+          leaf)
+         ((keymapp (esm-cmd stem leaf))
+          (esm-corresponding-hydra stem leaf))
+         ((and (string= stem "C-c ")
+               (string= leaf "c"))
+          #'esm-cc-cc)
+         (t `(call-interactively (key-binding (kbd ,(concat stem leaf))))))))
 
 ;; TODO: implement esm-wrapper instead of esm-cc-cc
 (defun esm-cmd-4 (stem leaf)
@@ -184,7 +215,7 @@ LEAF is a prefix command, such as C-x or C-h."
 
 (defun esm-hint (stem leaf)
   (let* ((sym (or (esm-is-a-subhydra stem leaf)
-                  (esm-is-named-prefix stem leaf)
+                  (esm-is-known-prefix stem leaf)
                   (key-binding (kbd (concat stem leaf)))))
          (name (if (symbolp sym) (symbol-name sym) " ")))
     (if (string= name "nil")
@@ -192,6 +223,11 @@ LEAF is a prefix command, such as C-x or C-h."
       (if (> (length name) (esm-colwidth))
           (substring name 0 esm-colwidth)
         name))))
+
+(defun esm-key-neo (stem leaf)
+  (if (esm-of-interest (esm-cmd stem leaf))
+      leaf
+    " "))
 
 ;; TODO: merge these two
 (defun esm-key-4 (stem leaf)
@@ -265,23 +301,19 @@ display in the hydra hint, defaulting to the value of
                  (,pop-key-2 . (,pop-key-2 nil nil :exit t))
                  (,parent . ("<backspace>" ,parent nil :exit t)))) extras)))
 
-(defun esm-define-local-hydra (key keymap)
-  (when (symbolp keymap) ;; only those with names like org-mode-map
-    (let* ((x (concat "esm-" (symbol-name ,keymap) "-"
-                      (string-join (split-string key "[- ]"))))
-           (title              (intern x))
-           (title-nonum        (intern (concat x "-nonum")))
-           (title-nonum-keymap (intern (concat x "-nonum/keymap")))
-           (hint               (intern (concat x "/hint")))
-           (heads              (intern (concat x "/heads")))
-           (body               (intern (concat x "/body"))))
-      (print title)
-      (print key)
-      (push `(,key . ,body) esm-live-hydras))))
-
 (defvar esm-live-hydras '(("C-c" . "esm-Cc")
                           ("C-x" . "esm-Cx")
                           ("C-h" . "esm-Ch")))
+
+(defun esm-valid-keydesc (keydesc)
+  (or (string-match (rx "--" eol) keydesc)
+      (string-match (rx " -" eol) keydesc)
+      (string-match (rx (not (any "- ")) eol) keydesc)))
+
+;; unused
+(defun esm-drop-last-key-in-seq (keydesc)
+  (if (esm-valid-keydesc keydesc)
+      (replace-regexp-in-string (rx space (*? (not space)) eol) "" keydesc)))
 
 ;; Will bug w maps bound to -, like C--.
 (defun esm-dub-from-key (key)
@@ -298,26 +330,28 @@ display in the hydra hint, defaulting to the value of
            (heads        (intern (concat x "/heads")))
            (body         (intern (concat x "/body")))
            (keymap       (intern (concat x "/keymap")))
-           (stem (concat key " "))
+           (stem-for-children (concat key " "))
            (parent-key (substring key 0 -2)) ;; Doesnt bug with <RET>, strange!
            (parent-symname (cdr (assoc parent-key esm-live-hydras)))
            (parent-body (cond ((string= parent-key "C") #'esm-control/body)
                               ((string= parent-key "M") #'esm-meta/body)
-                              ((string= parent-key "s-") #'esm-super/body)
+                              ((string= parent-key "s") #'esm-super/body)
                               ((assoc parent-key esm-live-hydras)
                                (intern (concat parent-symname "/body"))))))
       (eval `(progn
-               (esm-defmode ,title       ,stem ,key nil ,parent-body t)
-               (esm-defmode ,nonum-title ,stem ,(concat "\n\n" key) nil ,body t "qwertyuiopasdfghjkl;zxcvbnm,./")
+               (esm-defmode ,title       ,stem-for-children ,key nil ,parent-body t)
+               (esm-defmode ,nonum-title ,stem-for-children ,(concat "\n\n" key) nil ,body t ,(replace-regexp-in-string (rx num) "" esm-hydra-keys))
+               (define-key ,keymap "u" #'esm-universal-arg)
                (define-key ,nonum-keymap "u" #'hydra--universal-argument)
                (dotimes (i 10)
-                 (define-key ,keymap (int-to-string i) nil))))
+                 (let ((key (kbd (int-to-string i))))
+                   (when (eq (lookup-key ,keymap key) 'hydra--digit-argument)
+                     (define-key ,keymap key nil))))
+               ))
       ;; (set hint `(eval (hydra--format nil '(nil nil :columns 10)
       ;;                                 ,key (esm-update-hints ,heads))))
       )))
 
-
-(autoload #'which-key--get-current-bindings "which-key")
 
 ;; (describe-buffer-bindings (current-buffer))
 
@@ -412,11 +446,7 @@ SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
   (esm-super-from-ctl global-map)
 
   ;; Stage 4
-
-  ;; (esm-scan)
   (esm-generate-hydras)
-
-  (deianira-mode)
 
   ;; (add-hook 'buffer-list-update-hook #'esm-generate-hydras)
 

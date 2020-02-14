@@ -25,7 +25,7 @@
   - A special rule in the hint-updating code that detects EXWM and then populates the hydra with simulation keys.
     - A simulation key is roughly as follows:
     - (dolist (key (list (kbd "C-S-<right>") (kbd "<delete>"))) (exwm-input--fake-key key))
-- [ ] ((Migrate to map-keymap (so esm-whole-keyboard truly is the whole, non-US bindings are included, etc)))
+- [ ] Move away from esm-whole-keyboard, scan all active bindings instead, so that non-US bindings are automatically included
 - [X] An escape-modality-mode to buffer-locally bind the hydras, that is, esm-Cx/body and ilk.
 - [-] Go to school
   - [X] https://github.com/tarsius/keycast
@@ -43,13 +43,15 @@
   - [ ] God-mode (just to know what to say to God-mode users) 1 wk
   - [ ] Xah-fly-keys 1 wk
 - [X] (unrelated to this mode) bind something to translate to <menu>
+- [ ]
+
 * [2020-02-11] Notes
 
 Redesign needed:
 
 - Focus on the hydra-update mechanism, not on creating initial hydras that reflect global-map; forget global-map.
 - Do not use (global-key-binding). Use (key-binding). Obviously, update the hydras (redefine them) often.
-- Make three root hydras: control, meta, super. You may use (which-key--get-current-bindings) to define them (possibly making interim keymap variables), and then then map-keymap for each subkeymap to scan them.
+- Make three root hydras: control, meta, super. You may use (which-key--get-current-bindings) to define them, possibly making interim keymap variables, and then then map-keymap for each subkeymap to scan them.
 
 What do I need out of the hydra-update mechanism? How is it made?
 
@@ -68,8 +70,67 @@ How about just running (esm-generate-hydras) on either :body-pre, :post or head 
 
 And all the magic is in there.
 
+-------
+We need to fix flattening, and more importantly, how to make super always inherit from ctl...
+
+Oh, just keep re-binding the entire super map. Cool.
+
+That or we use general-def, which defers binding for every mode map until they're loaded. Then we only need to do it once.
+
+My current esm-super-from-ctl (pasted for reference) works well, I just need to
+1. call it on every map and not just global-map.
+2. use general-def to defer binding
+
+#+begin_src elisp
+(defun esm-super-from-ctl (map)
+  (map-keymap (lambda (ev def)
+                (let* ((case-fold-search nil)
+                       (key (key-description (list ev)))
+                       (newkey (replace-regexp-in-string
+                                (rx word-start "C" word-end) "s" key t)))
+                  (and (esm-of-interest def)
+                       (not (equal key newkey))
+                       (define-key map (kbd newkey) def)))
+                (when (keymapp def)
+                  (esm-super-from-ctl def)))
+              map))
+#+end_src
+
+Sadly, I don't know how many mode maps there are and will be. I don't want to keep a list. If there was a way to autopopulate a list and add to it as packages get loaded, fine, but otherwise key translation seems like a more natural choice.
+
+I can't just duplicate a control-map of my own creation because I need to go into mode maps too. Well, strictly, I can. It's hacky but kind of beautiful. Scan everything (in describe-buffer-bindings) every time the buffer changes.
+
+If I use *key translation*, how will it interact with EXWM? Not at all, it seems. But it breaks if we want to use Super keys as simulation keys. Try this out to see:
+
+#+begin_src elisp
+(general-def key-translation-map "s-a" "C-a")
+(exwm-input-set-simulation-key (kbd "s-a") [home])
+#+end_src
 
 
+general-key
+general-simulate-key
+general-translate-key
+
+
+#+begin_src elisp
+(general-def "s-e" nil)
+(general-def "s-e" (general-key "C-e"))
+(exwm-input-set-simulation-key (kbd "s-e") [end])
+#+end_src
+
+WOOP!!! IT WORKS!
+
+
+(general-def "s-x" nil)
+(general-def "s-x" (general-key "C-x"))
+
+The above "works", so long as I also bind s-x s-... in the same way, and it remains possible to do s-x C-f. BUT that's just another argument for flattening the keymap so that there is no C-f, only f!
+
+Well, we'll still want C-f to work the same way as f. I guess we can just accept the existence of s-x C-f, since it's not a bug with the tidying up, just an artifact of the choice to translate super to control.
+
+
+-----
 
 
 * [2020-02-03] Note to self
@@ -1017,14 +1078,44 @@ This will solve the problem of missing M-p in counsel-M-x and all similar proble
 
 * Explanations 1
 
+
 You can still input ~C-x C-f~ and many of the usual keys! The main change is that ~C-x f~ does /the same thing, instead of doing something else/. In vanilla Emacs, that would mean that both do =find-file=, and there is no =set-fill-column= (what used to be ~C-x f~).
 
-Maybe you think that's dumb, but it's the way I like it. I have felt that it slowed me down, to have to keep such things in mind -- now, not having to worry about which modifiers are pressed, I can input commands faster, with less mental context-switching, and it's easier to remember their hotkeys.
+Maybe you think that's dumb, but it's relaxing to me. I feel that it slowed me down, to have to keep such things in mind -- now, not having to worry about which modifiers are pressed, I can input commands faster, with less mental context-switching, and it's easier to remember their hotkeys.
 
-More importantly, the whole paradigm of escape-modality requires this change. It would absolutely clutter up our hydras if they had to contain extra sets of keys for each modifier (I never liked multi-page =which-key= displays). It would also not be possible to temporarily-exit transient maps, a magnificent trick.
+More importantly, the whole paradigm of escape-modality requires this change.
+
+1. It would absolutely clutter up our hydras if they had to contain extra sets of keys for each modifier (I never liked multi-page =which-key= displays either).
+2. The change makes it possible to /temporarily-exit transient maps/ (let that sink in), a magnificent trick I don't want to live without.
 
 
-Discoverability --- Emacs is lacking discoverability. This package is a candidate for solving that. You shouldn't have to refer to the manual, elisp source files, readmes or ~C-h m~ to find out about hotkeys, you should be able to do it interactively, in the midst of work, without breaking flow. If you never knew ~C-x C-t~ existed or that you needed such a command, you should still be able to discover it after you have pressed ~C-x~.
+------
+
+
+Discoverability
+
+Emacs is lacking discoverability. This package is a candidate for solving that. You shouldn't have to refer to the manual, elisp source files, readmes or ~C-h m~ to find out about hotkeys, you should be able to do it interactively, in the midst of work, without breaking flow. If you never knew ~C-x C-t~ existed or that you needed such a command, you should still be able to discover it after you have pressed ~C-x~.
+
+
+--------
+
+Since C-g is normally bound to keyboard-quit, pressing g in the Control hydra will do what you'd expect (the same thing as C-g), but I advise against getting in the habit of using it. Because when you're in the Meta hydra or any other hydra, /g will do something else/. Your recourses are:
+
+1. Bind g to keyboard-quit in every hydra. Comfortable, but a waste of keys.
+2. Press C-g.
+3. Press Control and g sequentially.
+
+My issue with solution #2: it's a chord, and our paradigm was to be free of them unless necessary. The natural solution for us is #3, but ingrained muscle memory might cause you to chord =C-g= anyway, so if I may recommend an alternative, put the following in your init file. This felt very natural to me, after only a short period of feeling sacrilegious. Try it!
+
+: (define-key function-key-map (kbd "<escape>") (kbd "C-g"))
+
+
+-------
+
+Low Friction
+
+Unlike other attempts to change the human-Emacs interface (evil, god-mode, ergoemacs, xah-fly-keys), escape-modality is quick to learn. If you're familiar with vanilla Emacs keybindings, you'll feel right at home. The difficulty level is most comparable to God-mode, only with even less friction.
+
 
 * In a nutshell
 

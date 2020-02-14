@@ -30,6 +30,12 @@
         (setq-local truncate-lines t)
         buf))))
 
+;; Allows cmd to be a keymap, this is intended
+(defun esm-of-interest (cmd)
+  (and (not (eq cmd nil))
+       (not (eq cmd 'self-insert-command))
+       (not (eq cmd 'ignore))))
+
 (defun esm-get-leaf (key)
   (if (string-match "^<" key)
       key
