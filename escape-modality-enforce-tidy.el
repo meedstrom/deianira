@@ -45,6 +45,11 @@
 ;; (key-description (append (kbd "C-x") (list 67108918)))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun esm-super-translate-to-ctl-meta ()
+  (dolist (key (esm-get-all-keys-on-keyboard))
+    (define-key key-translation-map
+      (kbd (concat "s-" key)) (kbd (concat "C-" key)))))
+
 (defun esm-flatten-keymap (keymap)
   ;; (esm-backup-keymap keymap)
   (map-keymap
@@ -76,11 +81,6 @@ overwriting the latter for those leaves where both are bound."
   (define-key here (kbd (concat stem new-leaf))
     (lookup-key here (kbd (concat stem reference-leaf)))))
 
-;; Allows cmd to be a keymap, this is intended
-(defun esm-of-interest (cmd)
-  (and (not (eq cmd nil))
-       (not (eq cmd 'self-insert-command))
-       (not (eq cmd 'ignore))))
 
 ;; TODO: make this work
 (defmacro esm-backup-keymap-1 (keymap)
