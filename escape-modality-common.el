@@ -107,7 +107,7 @@
 
 (defvar esm-all-shifted-symbols
   (split-string
-   "~!@#$%^&*()_+{}|:\"<>?"
+   "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
    "" t))
 
 (defvar esm-all-keys-on-keyboard
