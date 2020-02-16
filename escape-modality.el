@@ -170,26 +170,13 @@ enabled and functional. "
 (defun esm-is-unnamed-prefix (stem leaf)
   (not (symbolp (esm-cmd stem leaf))))
 
-(defun esm-is-prefix-or-unbound (stem leaf)
-  "Return t if the hotkey described by concatenating STEM and
-LEAF is a prefix command, such as C-x or C-h."
-  (string-match
-   "prefix\\|nil\\|help-command\\|2C-command"
-   (symbol-name (let ((cmd (key-binding (kbd (concat stem leaf)))))
-                  (when (symbolp cmd) cmd)))))
-
-(defun esm-is-prefix-or-unbound-4 (stem leaf)
-  (when (or (esm-is-a-subhydra stem leaf)
-            (esm-is-unbound stem leaf))
-    t))
-
 (defun esm-valid-keydesc (keydesc)
+  "Check that KEYDESC is something you'd pass to `kbd', not a dangling stem."
   (or (string-match (rx "--" eol) keydesc)
       (string-match (rx " -" eol) keydesc)
       (string-match (rx (not (any "- ")) eol) keydesc)))
 
-;; Shouldn't bug now w maps bound to -, like C--.
-;; TODO: What about nested maps all on -, like if someone binds C-- - - for some reason?
+;; TODO: What about this case: (esm-dub-from-key (esm-normalize "C-- - -"))
 (defun esm-dub-from-key (keydesc)
   "Example: If KEY is the string \"C-x a\", return \"esm-Cxa\"."
   (let ((squashed (string-join (split-string keydesc (rx (any " -"))))))
@@ -200,8 +187,7 @@ LEAF is a prefix command, such as C-x or C-h."
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; Micro-macro level
 
-(defun esm-drop-last-key-in-seq (keydesc)
-  "Subtly different from `esm-get-leaf'."
+(defun esm-drop-last-chord-in-seq (keydesc)
   (if (esm-valid-keydesc keydesc)
       (replace-regexp-in-string (rx space (*? (not space)) eol) "" keydesc)))
 
@@ -353,6 +339,8 @@ display in the hydra hint, defaulting to the value of
   (setq esm-live-hydras nil)
   (dolist (x (esm-whole-keyboard))
     (push (esm-defmode-maybe x) esm-live-hydras))
+
+  (setq esm-live-hydras (seq-remove 'null esm-live-hydras))
 
   (esm-defmode esm-control       "C-"  "CONTROL" "<f35>")
   (esm-defmode esm-meta          "M-"  "META"  "<f34>")
