@@ -67,6 +67,8 @@
                      (string= leaf (esm-get-leaf normalized)))
           (error (concat "Keydesc handling failed for test case: " raw)))))))
 
+;; TODO: Split this up into functions that can be reused by esm-get-leaf,
+;; esm-drop-last-chord-in-seq, and esm-dub-from-key
 (defun esm-normalize (keydesc)
   (cl-letf* ((segments (split-string keydesc (rx space)))
              (trim-segment (lambda (x)
