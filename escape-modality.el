@@ -51,7 +51,8 @@ enabled and functional. "
           (max optimal 8))))
 
 (defvar esm-quitters '(;;"C-q"
-                       "C-s" "C-g" "s-s" "s-g" "C-u" "M-x" "M-u" "s-u" "C-2" "C-c c"))
+                       "C-s" "C-g" "s-s" "s-g" "C-u" "M-x" "M-u" "s-u" "C-2"
+                       "C-c c"))
 
 (defvar esm-noquitters '("C-2 t" "C-2 n" "C-2 p" "C-x ;" "C-x x" "C-x q"
                            "C-x h" "C-x u" "C-x i" "C-x p" "C-x l" "C-x 1"
@@ -60,19 +61,30 @@ enabled and functional. "
                            ))
 
 ;; Inspired by which-key--get-current-bindings. Thanks!
-(defun esm-current-bound-keys ()
-  (let ((ignore-keys (eval-when-compile (regexp-opt '("mouse-" "wheel-" "remap" "drag-" "scroll-bar"
-                                                      "select-window" "switch-frame" "-state"
-                                                      "which-key-"))))
-        (ignore-bindings (eval-when-compile (regexp-opt '("self-insert-command" "ignore"
-                                                          "ignore-event" "company-ignore"))))
-        (ignore-sections (eval-when-compile (regexp-opt '("Key translations" "Function key map translations"
-                                                          "Input decoding map translations")))))
+(defun esm-current-bound-keys (&optional keep flush)
+  "Optional argument KEEP is a regexp describing keys to keep (meaning discard
+keys that don't match). If nil, keep all.
+
+Optional argument FLUSH is a regexp describing keys to discard after the above
+filter has been applied."
+  (let ((keys '())
+        (ignore-keys (eval-when-compile
+                       (regexp-opt '("mouse-" "remap" "scroll-bar" "select-"
+                                     "switch-" "help" "-state" "which-key-"
+                                     "-corner" "-divider" "-edge" "header-"
+                                     "mode-line" "tab-" "vertical-line"
+                                     ))))
+        (ignore-bindings (eval-when-compile
+                           (regexp-opt '("self-insert-command" "ignore"
+                                         "ignore-event" "company-ignore"))))
+        (ignore-sections (eval-when-compile
+                           (regexp-opt '("Key translations"
+                                         "Function key map translations"
+                                         "Input decoding map translations")))))
     (with-temp-buffer
       (setq-local indent-tabs-mode t)
       (describe-buffer-bindings (current-buffer))
       (goto-char (point-min))
-      (flush-lines ignore-keys)
       (flush-lines ignore-bindings)
       (flush-lines (rx (regexp ignore-sections)
                        (* (not ""))))
@@ -81,15 +93,26 @@ enabled and functional. "
       (flush-lines (rx bol (* nonl) ":" eol))
       (flush-lines (rx ""))
       (flush-lines (rx " .. "))
-      (while (re-search-forward (rx "	" (* nonl)) nil t)
+      (while (re-search-forward (rx "	" (* nonl))
+                                nil t)
         (replace-match ""))
       (goto-char (point-min))
-      (setq keys '())
+      (while (re-search-forward (rx "<" (group (or "C-" "M-" "s-" "H-" "A-")))
+                                nil t)
+        (replace-match "\\1<")
+        (goto-char (point-min)))
+      (flush-lines ignore-keys)
+      (when keep
+        (keep-lines keep))
+      (when flush
+        (flush-lines flush))
       (while (re-search-forward (rx (+ nonl)) nil t)
-        (push (match-string 0) keys))))
-  keys)
+        (push (match-string 0) keys)))
+    (seq-sort-by #'length #'< keys)))
 
-;; TODO: rename more descriptively. Mnaybe
+;; (setq foo (esm-current-bound-keys))
+
+;; TODO: rename more descriptively
 (defun esm-is-a-subhydra (stem leaf)
   "Return the hydra body in question."
   (if-let ((x (cdr (assoc (concat stem leaf) esm-live-hydras))))
@@ -187,6 +210,7 @@ enabled and functional. "
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; Micro-macro level
 
+;; unused
 (defun esm-drop-last-chord-in-seq (keydesc)
   (if (esm-valid-keydesc keydesc)
       (replace-regexp-in-string (rx space (*? (not space)) eol) "" keydesc)))
@@ -216,6 +240,8 @@ enabled and functional. "
          #'esm-cc-cc)
         ((string= (concat stem leaf) "C-g")
          #'keyboard-quit)
+        ((string= leaf "u")
+         #'esm-universal-arg)
         (t `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
 
 (defun esm-head-hint (stem leaf)
@@ -290,13 +316,11 @@ display in the hydra hint, defaulting to the value of
                  (,pop-key-2 . (,pop-key-2 nil nil :exit t))
                  (,parent . ("<backspace>" ,parent nil :exit t)))) extras)))
 
-(defvar esm-live-hydras '(("C-c" . "esm-Cc")
-                          ("C-x" . "esm-Cx")
-                          ("C-h" . "esm-Ch")))
+(defvar esm-live-hydras nil)
 
-(defun esm-defmode-maybe (key &optional symname)
+(defun esm-defmode-maybe (key)
   (when (keymapp (key-binding (kbd key)))
-    (let* ((x (or symname (esm-dub-from-key (esm-normalize key))))
+    (let* ((x            (esm-dub-from-key (esm-normalize key)))
            (title        (intern x))
            (nonum-title  (intern (concat x "-nonum")))
            (nonum-keymap (intern (concat x "-nonum/keymap")))
@@ -311,11 +335,11 @@ display in the hydra hint, defaulting to the value of
                               ((string= parent-key "M") #'esm-meta/body)
                               ((string= parent-key "s") #'esm-super/body)
                               ;; problem: may not exist yet
-                              ((assoc parent-key esm-live-hydras)
+                               ((assoc parent-key esm-live-hydras)
                                (intern (concat parent-symname "/body"))))))
       (eval `(progn
                (esm-defmode ,title       ,stem-for-children ,key nil ,parent-body t)
-               (esm-defmode ,nonum-title ,stem-for-children ,(concat "\n\n" key) nil ,body t ,(replace-regexp-in-string (rx num) "" esm-hydra-keys))
+               (esm-defmode ,nonum-title ,stem-for-children ,(concat "\n\n" key) nil ,body t ,esm-hydra-keys-nonum)
                (define-key ,keymap "u" #'esm-universal-arg)
                (define-key ,nonum-keymap "u" #'hydra--universal-argument)
                (dotimes (i 10)
@@ -328,30 +352,22 @@ display in the hydra hint, defaulting to the value of
       ;;                                 ,key (esm-update-hints ,heads))))
       )))
 
-;; Redesign thoughts:
-;; If we take away the hacky esm-whole-keyboard, what do we do instead?
-;; Seems obvious we should use (which-key--get-current-bindings).
 (defun esm-generate-hydras ()
 
-  ;; TODO: Don't use esm-whole-keyboard
-  ;; TODO: Let the hydra definer figure out the name itself. So just push the
-  ;; definer's return value onto esm-live-hydras.
   (setq esm-live-hydras nil)
-  (dolist (x (esm-whole-keyboard))
-    (push (esm-defmode-maybe x) esm-live-hydras))
-
-  (setq esm-live-hydras (seq-remove 'null esm-live-hydras))
+  (setq esm-hydra-keys-nonum (esm-hydra-keys-nonum))
+  (dolist (key (esm-current-bound-keys (rx bol (or "s-" "M-"))
+                                       (rx (or "C-" "ESC"))))
+    (push (esm-defmode-maybe key) esm-live-hydras))
+  (setq esm-live-hydras (seq-reverse (seq-remove 'null esm-live-hydras)))
 
   (esm-defmode esm-control       "C-"  "CONTROL" "<f35>")
   (esm-defmode esm-meta          "M-"  "META"  "<f34>")
-  (esm-defmode esm-super         "s-"  "SUPER" "<f33>" nil nil nil "s-<f15>")
+  (esm-defmode esm-super         "s-"  "SUPER" "<f33>" nil nil nil "s-<f33>")
 
-  (esm-defmode esm-control-nonum "C-"  "
-CONTROL" "C-<f13>" esm-control/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
-  (esm-defmode esm-meta-nonum    "M-"  "
-META"  "M-<f14>" esm-meta/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
-  (esm-defmode esm-super-nonum   "s-"  "
-SUPER" "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
+  (esm-defmode esm-control-nonum "C-"  "\nCONTROL" "C-<f13>" esm-control/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
+  (esm-defmode esm-meta-nonum    "M-"  "\nMETA"    "M-<f14>" esm-meta/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
+  (esm-defmode esm-super-nonum   "s-"  "\nSUPER"   "s-<f15>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
 
   ;; Clean up digit argument bindings
   (dolist (map (list esm-control/keymap

@@ -126,8 +126,14 @@
 
 (defvar esm-hydra-keys "1234567890qwertyuiopasdfghjkl;zxcvbnm,./")
 
-(defun esm-get-hydra-keys ()
+(defun esm-hydra-keys-in-a-list ()
   (split-string esm-hydra-keys "" t))
+
+(defun esm-hydra-keys-nonum ()
+    (replace-regexp-in-string (rx num) "" esm-hydra-keys))
+
+(defvar esm-hydra-keys-nonum (esm-hydra-keys-nonum))
+
 
 ;; "We've not found a keyboard with more than 35 function keys total."
 ;; -- /usr/include/X11/keysymdef.h

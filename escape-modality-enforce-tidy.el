@@ -68,7 +68,7 @@
 (defun esm-restem-all-leaves (here lower-stem upper-stem)
   "Duplicate bindings on UPPER-STEM so they also exist on LOWER-STEM,
 overwriting the latter for those leaves where both are bound."
-  (dolist (leaf (esm-get-hydra-keys))
+  (dolist (leaf (esm-hydra-keys-in-a-list))
     (esm-restem here leaf lower-stem upper-stem)))
 
 (defun esm-restem (here leaf new-stem reference-stem)
