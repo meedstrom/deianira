@@ -216,15 +216,9 @@ LEAF is a prefix command, such as C-x or C-h."
           esm-hydra-keys)
     chords))
 
-;; unused
-;; not quite right
-(defun esm-all-multi-chords ()
-  (seq-difference (mapcar #'car (which-key--get-current-bindings))
-                  esm-all-duo-chords))
-
 (defun esm-corresponding-hydra (stem leaf)
   (intern (concat
-           (esm-dub-from-key (concat stem leaf))
+           (esm-dub-from-key (esm-normalize (concat stem leaf)))
            "/body")))
 
 (defun esm-head-cmd (stem leaf)
@@ -316,7 +310,7 @@ display in the hydra hint, defaulting to the value of
 
 (defun esm-defmode-maybe (key &optional symname)
   (when (keymapp (key-binding (kbd key)))
-    (let* ((x (or symname (esm-dub-from-key key)))
+    (let* ((x (or symname (esm-dub-from-key (esm-normalize key))))
            (title        (intern x))
            (nonum-title  (intern (concat x "-nonum")))
            (nonum-keymap (intern (concat x "-nonum/keymap")))
