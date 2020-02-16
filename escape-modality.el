@@ -59,6 +59,37 @@ enabled and functional. "
                            "C-c C-c" ;;testing
                            ))
 
+;; Inspired by which-key--get-current-bindings. Thanks!
+(defun esm-current-bound-keys ()
+  (let ((ignore-keys (eval-when-compile (regexp-opt '("mouse-" "wheel-" "remap" "drag-" "scroll-bar"
+                                                      "select-window" "switch-frame" "-state"
+                                                      "which-key-"))))
+        (ignore-bindings (eval-when-compile (regexp-opt '("self-insert-command" "ignore"
+                                                          "ignore-event" "company-ignore"))))
+        (ignore-sections (eval-when-compile (regexp-opt '("Key translations" "Function key map translations"
+                                                          "Input decoding map translations")))))
+    (with-temp-buffer
+      (setq-local indent-tabs-mode t)
+      (describe-buffer-bindings (current-buffer))
+      (goto-char (point-min))
+      (flush-lines ignore-keys)
+      (flush-lines ignore-bindings)
+      (flush-lines (rx (regexp ignore-sections)
+                       (* (not ""))))
+      (flush-lines (rx "---"))
+      (flush-lines (rx bol "key" (* nonl) "binding"))
+      (flush-lines (rx bol (* nonl) ":" eol))
+      (flush-lines (rx ""))
+      (flush-lines (rx " .. "))
+      (while (re-search-forward (rx "	" (* nonl)) nil t)
+        (replace-match ""))
+      (goto-char (point-min))
+      (setq keys '())
+      (while (re-search-forward (rx (+ nonl)) nil t)
+        (push (match-string 0) keys))))
+  keys)
+
+;; TODO: rename more descriptively. Mnaybe
 (defun esm-is-a-subhydra (stem leaf)
   "Return the hydra body in question."
   (if-let ((x (cdr (assoc (concat stem leaf) esm-live-hydras))))
@@ -114,7 +145,6 @@ enabled and functional. "
 ;; (key-binding (kbd "C-x a"))
 ;; (keymapp (key-binding (kbd "C-x a")))
 ;; (keymapp 'Control-X-prefix)
-;; List of named prefixes (these are NOT just keymap variables like ctl-x-map)
 (defvar esm-known-prefix-commands '(2C-command
                                     Control-X-prefix
                                     ESC-prefix
@@ -153,8 +183,27 @@ LEAF is a prefix command, such as C-x or C-h."
             (esm-is-unbound stem leaf))
     t))
 
+(defun esm-valid-keydesc (keydesc)
+  (or (string-match (rx "--" eol) keydesc)
+      (string-match (rx " -" eol) keydesc)
+      (string-match (rx (not (any "- ")) eol) keydesc)))
+
+;; Shouldn't bug now w maps bound to -, like C--.
+;; TODO: What about nested maps all on -, like if someone binds C-- - - for some reason?
+(defun esm-dub-from-key (keydesc)
+  "Example: If KEY is the string \"C-x a\", return \"esm-Cxa\"."
+  (let ((squashed (string-join (split-string keydesc (rx (any " -"))))))
+    (if (string-match (rx "-" eol) keydesc)
+        (concat "esm-" squashed "-")
+      (concat "esm-" squashed))))
+
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; Micro-macro level
+
+(defun esm-drop-last-key-in-seq (keydesc)
+  "Subtly different from `esm-get-leaf'."
+  (if (esm-valid-keydesc keydesc)
+      (replace-regexp-in-string (rx space (*? (not space)) eol) "" keydesc)))
 
 ;; "List of keys like C-a, C-e, M-f, M-g but not C-M-f or M-%."
 ;; note: it's not quite all of them since it uses esm-hydra-keys
@@ -265,21 +314,7 @@ display in the hydra hint, defaulting to the value of
                           ("C-x" . "esm-Cx")
                           ("C-h" . "esm-Ch")))
 
-(defun esm-valid-keydesc (keydesc)
-  (or (string-match (rx "--" eol) keydesc)
-      (string-match (rx " -" eol) keydesc)
-      (string-match (rx (not (any "- ")) eol) keydesc)))
-
-(defun esm-drop-last-key-in-seq (keydesc)
-  (if (esm-valid-keydesc keydesc)
-      (replace-regexp-in-string (rx space (*? (not space)) eol) "" keydesc)))
-
-;; Will bug w maps bound to -, like C--.
-(defun esm-dub-from-key (key)
-  "If KEY is the string \"C-x a\", return \"esm-Cxa\"."
-  (concat "esm-" (string-join (split-string key "[- ]"))))
-
-(defun esm-define-global-hydra-maybe (key &optional symname)
+(defun esm-defmode-maybe (key &optional symname)
   (when (keymapp (key-binding (kbd key)))
     (let* ((x (or symname (esm-dub-from-key key)))
            (title        (intern x))
@@ -290,11 +325,12 @@ display in the hydra hint, defaulting to the value of
            (body         (intern (concat x "/body")))
            (keymap       (intern (concat x "/keymap")))
            (stem-for-children (concat key " "))
-           (parent-key (esm-drop-last-key-in-seq key))
+           (parent-key (substring key 0 -2))
            (parent-symname (cdr (assoc parent-key esm-live-hydras)))
            (parent-body (cond ((string= parent-key "C") #'esm-control/body)
                               ((string= parent-key "M") #'esm-meta/body)
                               ((string= parent-key "s") #'esm-super/body)
+                              ;; problem: may not exist yet
                               ((assoc parent-key esm-live-hydras)
                                (intern (concat parent-symname "/body"))))))
       (eval `(progn
@@ -306,35 +342,11 @@ display in the hydra hint, defaulting to the value of
                  (let ((key (kbd (int-to-string i))))
                    (when (eq (lookup-key ,keymap key) 'hydra--digit-argument)
                      (define-key ,keymap key nil))))
+               (cons ,key ,x)
                ))
       ;; (set hint `(eval (hydra--format nil '(nil nil :columns 10)
       ;;                                 ,key (esm-update-hints ,heads))))
       )))
-
-
-;; (describe-buffer-bindings (current-buffer))
-
-;; ;; ONLY retrieves the first step in key sequences!
-;; (setq foo (which-key--get-current-bindings))
-;; (setq bar (seq-filter (lambda (x)
-;;                         (keymapp (key-binding (kbd x))))
-;;                       (mapcar #'car (which-key--get-current-bindings))))
-;; (setq fds (which-key--get-bindings))
-;; (setq bs
-;;       (mapcar (lambda (x)
-;;                 (which-key--get-keymap-bindings
-;;                  (key-binding (kbd x))))
-;;               bar)
-;;       )
-;; (setq baz
-;;       (mapcan
-;;        (lambda (x)
-;;          (seq-filter (lambda (y)
-;;                        (keymapp (key-binding (car y))))
-;;                      ))
-;;        bar)
-;;       )
-
 
 ;; Redesign thoughts:
 ;; If we take away the hacky esm-whole-keyboard, what do we do instead?
@@ -342,13 +354,11 @@ display in the hydra hint, defaulting to the value of
 (defun esm-generate-hydras ()
 
   ;; TODO: Don't use esm-whole-keyboard
+  ;; TODO: Let the hydra definer figure out the name itself. So just push the
+  ;; definer's return value onto esm-live-hydras.
   (setq esm-live-hydras nil)
   (dolist (x (esm-whole-keyboard))
-    (when (keymapp (global-key-binding (kbd x)))
-      (push `(,x . ,(esm-dub-from-key x))
-            esm-live-hydras)))
-  (dolist (x esm-live-hydras)
-    (esm-define-global-hydra-maybe (car x) (cdr x)))
+    (push (esm-defmode-maybe x) esm-live-hydras))
 
   (esm-defmode esm-control       "C-"  "CONTROL" "<f35>")
   (esm-defmode esm-meta          "M-"  "META"  "<f34>")
