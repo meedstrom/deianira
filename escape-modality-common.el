@@ -32,11 +32,11 @@
 
 ;; Allows cmd to be a keymap, this is intended
 (defun esm-of-interest (cmd)
-  (member cmd '(self-insert-command
-                nil
-                ignore
-                ignore-event
-                company-ignore)))
+  (not (member cmd '(self-insert-command
+                     nil
+                     ignore
+                     ignore-event
+                     company-ignore))))
 
 (defun esm-get-leaf (key)
     (if (string-match "-$" key)
