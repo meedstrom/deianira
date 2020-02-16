@@ -45,6 +45,28 @@
 - [X] (unrelated to this mode) bind something to translate to <menu>
 - [ ]
 
+* [2020-02-16] Notes
+
+Problem:
+- Root hydras don't get defined correctly on init, but do when I re-evaluate the code
+
+Possible causes:
+- Deferred keymap bindings by general.el
+- Something else
+
+Possible solutions:
+1. Define root hydras in the same way as the automatic definer
+2. Implement continuous re-definition
+
+
+Focus on solution #2. This is the main missing feature anyhow.
+
+I foresee problems: it takes about 3 seconds to run (esm-generate-hydras).
+
+1. Profile (esm-generate-hydras) and find the bottlenecks.
+2. Async.el
+
+
 * [2020-02-11] Notes
 
 Redesign needed:
