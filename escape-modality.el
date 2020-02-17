@@ -21,31 +21,50 @@
 (require 'escape-modality-x11)
 (require 'escape-modality-enforce-tidy)
 ;; (require 'keymap-utils)
-(eval-when-compile (require 'subr-x)) ;; string-join
+(eval-when-compile (require 'subr-x)) ;; string-join, if-let
 (autoload #'which-key--get-current-bindings "which-key")
 
 ;;;;;;;;;;;;;;;
 ;;; Micro level
 
 (define-minor-mode deianira-mode
-  "Bind hydras everywhere there used to be a prefix key.
-
-Also bind hydras on Control, Meta etc if `esm-xcape-rules' area
-enabled and functional. "
+  "Bind hydras everywhere there used to be a prefix key. "
   nil
-  " Δ"
+  " Δ")
+
+(define-globalized-minor-mode deianira-global-mode
+  deianira-mode
+  deianira-mode)
+
+(define-minor-mode escape-modality-mode
+  "Bind Deianira root hydras on Control, Meta etc if `esm-xcape-rules'
+are enabled and functional. Also flatten the keymap; see info. "
+  nil
+  " ESM"
   `((,(kbd "<f35>") . esm-control/body)
     (,(kbd "<f34>") . esm-meta/body)
     (,(kbd "<f33>") . esm-super/body)))
 
-(define-globalized-minor-mode deianira-global-mode deianira-mode deianira-mode)
+(define-globalized-minor-mode escape-modality-global-mode
+  escape-modality-mode
+  escape-modality-mode)
+
+(defun escape-modality (&optional arg)
+  "Bind Deianira root hydras on Control, Meta etc if `esm-xcape-rules'
+are enabled and functional. Also flatten the keymap; see info. "
+  (interactive "P")
+  (prefix-command-preserve-state)
+  (call-interactively #'escape-modality-global-mode)
+  (call-interactively #'deianira-global-mode)
+  ;; (call-interactively #'massmap-tidy-mode)
+  )
 
 (defun esm--colwidth ()
-  (or esm-colwidth-always
+  (or esm-colwidth-override
       (let ((optimal (- (round (frame-parameter nil 'width) 10) 4)))
         (max optimal 8))))
 
-(defvar esm-colwidth-always nil
+(defvar esm-colwidth-override nil
   "An integer for the width of hydra hints. If nil, figure it out from the frame width.")
 
 (defvar esm--colwidth
@@ -63,8 +82,8 @@ enabled and functional. "
 
 ;; Inspired by which-key--get-current-bindings. Thanks!
 (defun esm-current-bindings (&optional keep flush)
-  "Optional argument KEEP is a regexp describing keys to keep (meaning discard
-keys that don't match). If nil, keep all.
+  "Optional argument KEEP is a regexp describing keys to keep. Can be left at
+nil to keep everything.
 
 Optional argument FLUSH is a regexp describing keys to discard after the above
 filter has been applied."
@@ -95,7 +114,7 @@ filter has been applied."
       (flush-lines (rx bol (* nonl) ":" eol))
       (flush-lines (rx ""))
       (flush-lines (rx " .. "))
-      (while (re-search-forward (rx "\n	")
+      (while (re-search-forward (rx "\n\t")
                                 nil t)
         (replace-match ""))
       (goto-char (point-min))
@@ -291,12 +310,13 @@ form (KEY COMMAND HINT EXIT) as desired by `defhydra'. "
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Macro level: tying it all together.
 
-(defmacro esm-defmode
+(defmacro esm-define-many-headed-hydra
     (name stem &optional doctitle pop-key parent exit keys pop-key-2)
-  "Make a hydra with many heads.
+  "Make a hydra with many heads. This is exhaustive; it checks almost every
+leaf on STEM.
 
 Optional argument EXIT controls whether the hydra's heads exit by
-default (overridden on a case-by-case basis by `esm-quitters').
+default (overridden case-by-case by `esm-quitters' or `esm-noquitters').
 Optional argument KEYS is a string specifying which keys to
 display in the hydra hint, defaulting to the value of
 `esm-hydra-keys'."
@@ -347,6 +367,7 @@ display in the hydra hint, defaulting to the value of
 (defun esm-associated-keymap (name)
   (intern (concat name "/keymap")))
 
+;; not nearly all of them
 (defun esm-all-associated-variables (name)
   (list (esm-associated-keymap name)
         (esm-associated-body name)
@@ -356,7 +377,7 @@ display in the hydra hint, defaulting to the value of
         (esm-associated-nonum-title name)
         (esm-associated-nonum-keymap name)))
 
-(defun esm-defmode-maybe (key)
+(defun esm-define-prefix-hydra (key)
   (when (keymapp (key-binding (kbd key)))
     (let* ((x            (esm-dub-from-key (esm-normalize key)))
            (title        (intern x))
@@ -366,18 +387,18 @@ display in the hydra hint, defaulting to the value of
            (heads        (intern (concat x "/heads")))
            (body         (intern (concat x "/body")))
            (keymap       (intern (concat x "/keymap")))
-           (stem-for-children (concat key " "))
-           (parent-key (substring key 0 -2))
+           (stem         (concat key " "))
+           (parent-key (substring key 0 -2)) ;; doesn't fail with <RET>, strange!
            (parent-symname (cdr (assoc parent-key esm-live-hydras)))
            (parent-body (cond ((string= parent-key "C") #'esm-control/body)
                               ((string= parent-key "M") #'esm-meta/body)
                               ((string= parent-key "s") #'esm-super/body)
                               ;; problem: may not exist yet
-                               ((assoc parent-key esm-live-hydras)
+                              ((assoc parent-key esm-live-hydras)
                                (intern (concat parent-symname "/body"))))))
       (eval `(progn
-               (esm-defmode ,title       ,stem-for-children ,key nil ,parent-body t)
-               (esm-defmode ,nonum-title ,stem-for-children ,(concat "\n\n" key) nil ,body t ,esm-hydra-keys-nonum)
+               (esm-define-many-headed-hydra ,title       ,stem ,key nil ,parent-body t)
+               (esm-define-many-headed-hydra ,nonum-title ,stem ,(concat "\n\n" key) nil ,body t ,esm-hydra-keys-nonum)
                ;; (define-key ,keymap "u" #'esm-universal-arg)
                (define-key ,nonum-keymap "u" #'hydra--universal-argument)
                (dotimes (i 10)
@@ -387,26 +408,12 @@ display in the hydra hint, defaulting to the value of
                (cons ,key ,x)
                )))))
 
-;; (async-start (lambda () esm-sx/hint)  (lambda (x) (print x)))
-;; (thread-join (make-thread (lambda () (setq teb esm-sx/hint))))
-;; (thread-signal (make-thread (lambda () esm-sx/hint)))
-
-;; (make-thread #'esm-generate-hydras)
-
-;; (defvar esm-mutex (make-mutex))
-;; (make-condition-variable esm-mutex)
-;; (add-hook 'pre-command-hook (lambda () (mutex-lock esm-mutex)))
-;; (add-hook 'post-command-hook (lambda ()
-;;                                (mutex-unlock esm-mutex)
-;;                                (condition-notify esm-mutex-condition)))
-
-(defvar esm-last-bindings nil)
-
+;; unused
 (defun esm-undefine-hydra (hydra-key)
   (seq-map #'makunbound
            (esm-all-associated-variables (esm-dub-from-key hydra-key))))
 
-
+(defvar esm-last-bindings nil)
 
 (defun esm-generate-hydras ()
   (let* ((curr (esm-current-bindings (rx bol (or "s-" "M-"))
@@ -427,20 +434,20 @@ display in the hydra hint, defaulting to the value of
     (setq esm-hydra-keys-nonum (esm-hydra-keys-nonum))
     (setq esm--colwidth (esm--colwidth))
 
-    ;; Put some async here. Deferred.el?
+    ;; TODO: Put some async here. Deferred.el?
     (dolist (key (seq-map #'car new))
-      (push (esm-defmode-maybe key) esm-live-hydras))
-    (setq esm-live-hydras (seq-remove 'null esm-live-hydras))
+      (when (keymapp (key-binding (kbd key)))
+        (push (esm-define-prefix-hydra key) esm-live-hydras)))
     (setq esm-last-bindings curr) ;; for next call
     )
 
-  ;; (esm-defmode esm-control "C-"  "CONTROL" "<f35>" nil nil nil "C-<f35>")
-  (esm-defmode esm-meta    "M-"  "META"    "<f34>" nil nil nil "M-<f34>")
-  (esm-defmode esm-super   "s-"  "SUPER"   "<f33>" nil nil nil "s-<f33>")
+  ;; (esm-define-many-headed-hydra esm-control "C-"  "CONTROL" "<f35>" nil nil nil "C-<f35>")
+  (esm-define-many-headed-hydra esm-meta    "M-"  "META"    "<f34>" nil nil nil "M-<f34>")
+  (esm-define-many-headed-hydra esm-super   "s-"  "SUPER"   "<f33>" nil nil nil "s-<f33>")
 
-  ;; (esm-defmode esm-control-nonum "C-"  "\nCONTROL" "<f35>" esm-control/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
-  (esm-defmode esm-meta-nonum    "M-"  "\nMETA"    "<f34>" esm-meta/body  nil "qwertyuiopasdfghjkl;zxcvbnm,./")
-  (esm-defmode esm-super-nonum   "s-"  "\nSUPER"   "<f33>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
+  ;; (esm-define-many-headed-hydra esm-control-nonum "C-"  "\nCONTROL" "<f35>" esm-control/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
+  (esm-define-many-headed-hydra esm-meta-nonum    "M-"  "\nMETA"    "<f34>" esm-meta/body  nil "qwertyuiopasdfghjkl;zxcvbnm,./")
+  (esm-define-many-headed-hydra esm-super-nonum   "s-"  "\nSUPER"   "<f33>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
 
   ;; Clean up digit argument bindings
   (dolist (map (list ;; esm-control/keymap

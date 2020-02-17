@@ -46,7 +46,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun esm-super-translate-to-ctl-meta ()
-  (dolist (key (esm-get-all-keys-on-keyboard))
+  (dolist (key (esm-all-keys-on-keyboard))
     (define-key key-translation-map
       (kbd (concat "s-" key)) (kbd (concat "C-" key)))))
 
