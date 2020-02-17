@@ -1,4 +1,4 @@
-;; escape-modality-enforce-tidy.el -- Cleaning up all keymaps
+;; escape-modality-enforce-tidy.el  -*- lexical-binding: t; -*-
 ;; Copyright (C) 2019 Martin Erik Edström
 
 ;; This program is free software: you can redistribute it and/or modify
