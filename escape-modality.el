@@ -40,15 +40,16 @@ enabled and functional. "
 
 (define-globalized-minor-mode deianira-global-mode deianira-mode deianira-mode)
 
-;; TODO: adapt to changing frame sizes
-(defvar esm-colwidth
-  (let ((optimal (- (round (frame-parameter nil 'width) 10) 4)))
-    (max optimal 8)))
+(defun esm--colwidth ()
+  (or esm-colwidth-always
+      (let ((optimal (- (round (frame-parameter nil 'width) 10) 4)))
+        (max optimal 8))))
 
-(defun esm-colwidth ()
-  (setq esm-colwidth
-        (let ((optimal (- (round (frame-parameter nil 'width) 10) 4)))
-          (max optimal 8))))
+(defvar esm-colwidth-always nil
+  "An integer for the width of hydra hints. If nil, figure it out from the frame width.")
+
+(defvar esm--colwidth
+  (esm--colwidth))
 
 (defvar esm-quitters '(;;"C-q"
                        "C-s" "C-g" "s-s" "s-g" "C-u" "M-x" "M-u" "s-u" "C-2"
@@ -61,57 +62,12 @@ enabled and functional. "
                            ))
 
 ;; Inspired by which-key--get-current-bindings. Thanks!
-(defun esm-current-bound-keys (&optional keep flush)
+(defun esm-current-bindings (&optional keep flush)
   "Optional argument KEEP is a regexp describing keys to keep (meaning discard
 keys that don't match). If nil, keep all.
 
 Optional argument FLUSH is a regexp describing keys to discard after the above
 filter has been applied."
-  (let ((keys '())
-        (buffer (current-buffer));; because with-temp-buffer changes it
-        (ignore-keys (eval-when-compile
-                       (regexp-opt '("mouse-" "remap" "scroll-bar" "select-"
-                                     "switch-" "help" "-state" "which-key-"
-                                     "-corner" "-divider" "-edge" "header-"
-                                     "mode-line" "tab-" "vertical-line"
-                                     ))))
-        (ignore-bindings (eval-when-compile
-                           (regexp-opt '("self-insert-command" "ignore"
-                                         "ignore-event" "company-ignore"))))
-        (ignore-sections (eval-when-compile
-                           (regexp-opt '("Key translations"
-                                         "Function key map translations"
-                                         "Input decoding map translations")))))
-    (with-temp-buffer
-      (setq-local indent-tabs-mode t)
-      (describe-buffer-bindings buffer)
-      (goto-char (point-min))
-      (flush-lines ignore-bindings)
-      (flush-lines (rx (regexp ignore-sections)
-                       (* (not ""))))
-      (flush-lines (rx "---"))
-      (flush-lines (rx bol "key" (* nonl) "binding"))
-      (flush-lines (rx bol (* nonl) ":" eol))
-      (flush-lines (rx ""))
-      (flush-lines (rx " .. "))
-      (while (re-search-forward (rx "	" (* nonl))
-                                nil t)
-        (replace-match ""))
-      (goto-char (point-min))
-      (while (re-search-forward (rx "<" (group (or "C-" "M-" "s-" "H-" "A-")))
-                                nil t)
-        (replace-match "\\1<")
-        (goto-char (point-min)))
-      (flush-lines ignore-keys)
-      (when keep
-        (keep-lines keep))
-      (when flush
-        (flush-lines flush))
-      (while (re-search-forward (rx (+ nonl)) nil t)
-        (push (match-string 0) keys)))
-    (seq-sort-by #'string-width #'< keys)))
-
-(defun esm-current-bindings (&optional keep flush)
   (let ((result '())
         (buffer (current-buffer)) ;; because with-temp-buffer changes it
         (ignore-keys (eval-when-compile
@@ -301,8 +257,8 @@ filter has been applied."
          (name (if (symbolp sym) (symbol-name sym) " ")))
     (if (string= name "nil")
         " "
-      (if (> (length name) (esm-colwidth))
-          (substring name 0 esm-colwidth)
+      (if (> (length name) (esm--colwidth))
+          (substring name 0 esm--colwidth)
         name))))
 
 (defun esm-head-key (stem leaf)
@@ -370,6 +326,36 @@ display in the hydra hint, defaulting to the value of
 
 (defvar esm-live-hydras nil)
 
+(defun esm-associated-title (name)
+  (intern name))
+
+(defun esm-associated-nonum-title (name)
+  (intern (concat name "-nonum")))
+
+(defun esm-associated-nonum-keymap (name)
+  (intern (concat name "-nonum/keymap")))
+
+(defun esm-associated-hint (name)
+  (intern (concat name "/hint")))
+
+(defun esm-associated-heads (name)
+  (intern (concat name "/heads")))
+
+(defun esm-associated-body (name)
+  (intern (concat name "/body")))
+
+(defun esm-associated-keymap (name)
+  (intern (concat name "/keymap")))
+
+(defun esm-all-associated-variables (name)
+  (list (esm-associated-keymap name)
+        (esm-associated-body name)
+        (esm-associated-heads name)
+        (esm-associated-hint name)
+        (esm-associated-title name)
+        (esm-associated-nonum-title name)
+        (esm-associated-nonum-keymap name)))
+
 (defun esm-defmode-maybe (key)
   (when (keymapp (key-binding (kbd key)))
     (let* ((x            (esm-dub-from-key (esm-normalize key)))
@@ -399,11 +385,7 @@ display in the hydra hint, defaulting to the value of
                    (when (eq (lookup-key ,keymap key) 'hydra--digit-argument)
                      (define-key ,keymap key nil))))
                (cons ,key ,x)
-               ))
-      ;; (set hint `(eval (hydra--format nil '(nil nil :columns 10)
-      ;;                                 ,key (esm-update-hints ,heads))))
-      )))
-
+               )))))
 
 ;; (async-start (lambda () esm-sx/hint)  (lambda (x) (print x)))
 ;; (thread-join (make-thread (lambda () (setq teb esm-sx/hint))))
@@ -420,32 +402,37 @@ display in the hydra hint, defaulting to the value of
 
 (defvar esm-last-bindings nil)
 
+(defun esm-undefine-hydra (hydra-key)
+  (seq-map #'makunbound
+           (esm-all-associated-variables (esm-dub-from-key hydra-key))))
+
+
+
 (defun esm-generate-hydras ()
   (let* ((curr (esm-current-bindings (rx bol (or "s-" "M-"))
                                      (rx (or "C-" "ESC"))))
          ;; Detect any change, be it bound keys or their commands
-         (defunct (seq-difference esm-last-bindings curr))
          (new     (seq-difference curr esm-last-bindings))
+         (defunct (seq-difference esm-last-bindings curr))
          (defunct-hydras (seq-intersection
                           (seq-map #'car defunct)
                           (seq-map #'car esm-live-hydras))))
 
-    (setq esm-last-bindings curr) ;; save for next time
-
-    ;; TODO: spin out from esm-defmode-maybe the ways to get all variable names
-    ;; (seq-map (do (makunbound (esm-corresponding-hydra .x))) defunct-hydras)
-
-    ;; Drop defunct hydras
+    ;; Unlist defunct hydras
     (setq esm-live-hydras
           (seq-remove (lambda (x) (member (car x) defunct-hydras))
                       esm-live-hydras))
 
-    ;; Reinit variables just in case
+    ;; Reinit variables in case of change
     (setq esm-hydra-keys-nonum (esm-hydra-keys-nonum))
+    (setq esm--colwidth (esm--colwidth))
 
+    ;; Put some async here. Deferred.el?
     (dolist (key (seq-map #'car new))
       (push (esm-defmode-maybe key) esm-live-hydras))
-    (setq esm-live-hydras (seq-remove 'null esm-live-hydras)))
+    (setq esm-live-hydras (seq-remove 'null esm-live-hydras))
+    (setq esm-last-bindings curr) ;; for next call
+    )
 
   ;; (esm-defmode esm-control "C-"  "CONTROL" "<f35>" nil nil nil "C-<f35>")
   (esm-defmode esm-meta    "M-"  "META"    "<f34>" nil nil nil "M-<f34>")
