@@ -1,5 +1,5 @@
 ;; escape-modality.el  -*- lexical-binding: t; -*-
-;; Copyright (C) 2019 Martin Edström
+;; Copyright (C) 2019-2020 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -16,10 +16,13 @@
 
 ;; warnings: odd behavior if a head that calls another hydra is not set to exit
 
+;;; Code:
+;;* Requires
 (require 'hydra)
+(require 'async-await)
 (require 'escape-modality-common)
-(require 'escape-modality-x11)
-(require 'escape-modality-enforce-tidy)
+
+;; (require 'escape-modality-enforce-tidy)
 ;; (require 'keymap-utils)
 (eval-when-compile (require 'subr-x)) ;; string-join, if-let
 (autoload #'which-key--get-current-bindings "which-key")
@@ -45,13 +48,13 @@ are enabled and functional. Also flatten the keymap; see info. "
     (,(kbd "<f34>") . esm-meta/body)
     (,(kbd "<f33>") . esm-super/body)))
 
+;;;###autoload
 (define-globalized-minor-mode escape-modality-global-mode
   escape-modality-mode
   escape-modality-mode)
 
 (defun escape-modality (&optional arg)
-  "Bind Deianira root hydras on Control, Meta etc if `esm-xcape-rules'
-are enabled and functional. Also flatten the keymap; see info. "
+  "Turn on the whole paradigm. "
   (interactive "P")
   (prefix-command-preserve-state)
   (call-interactively #'escape-modality-global-mode)
@@ -276,7 +279,7 @@ filter has been applied."
          (name (if (symbolp sym) (symbol-name sym) " ")))
     (if (string= name "nil")
         " "
-      (if (> (length name) (esm--colwidth))
+      (if (> (length name) esm--colwidth)
           (substring name 0 esm--colwidth)
         name))))
 
@@ -438,57 +441,37 @@ display in the hydra hint, defaulting to the value of
     (dolist (key (seq-map #'car new))
       (when (keymapp (key-binding (kbd key)))
         (push (esm-define-prefix-hydra key) esm-live-hydras)))
-    (setq esm-last-bindings curr) ;; for next call
+    (setq esm-last-bindings curr) ;; for next time
     )
 
-  ;; (esm-define-many-headed-hydra esm-control "C-"  "CONTROL" "<f35>" nil nil nil "C-<f35>")
-  (esm-define-many-headed-hydra esm-meta    "M-"  "META"    "<f34>" nil nil nil "M-<f34>")
-  (esm-define-many-headed-hydra esm-super   "s-"  "SUPER"   "<f33>" nil nil nil "s-<f33>")
+  (eval `(progn
+           ;; (esm-define-many-headed-hydra esm-control "C-"  "CONTROL" "<f35>" nil nil nil "C-<f35>")
+           (esm-define-many-headed-hydra esm-meta    "M-"  "META"    "<f34>" nil nil nil "M-<f34>")
+           (esm-define-many-headed-hydra esm-super   "s-"  "SUPER"   "<f33>" nil nil nil "s-<f33>")
 
-  ;; (esm-define-many-headed-hydra esm-control-nonum "C-"  "\nCONTROL" "<f35>" esm-control/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
-  (esm-define-many-headed-hydra esm-meta-nonum    "M-"  "\nMETA"    "<f34>" esm-meta/body  nil "qwertyuiopasdfghjkl;zxcvbnm,./")
-  (esm-define-many-headed-hydra esm-super-nonum   "s-"  "\nSUPER"   "<f33>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
+           ;; (esm-define-many-headed-hydra esm-control-nonum "C-"  "\nCONTROL" "<f35>" esm-control/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
+           (esm-define-many-headed-hydra esm-meta-nonum    "M-"  "\nMETA"    "<f34>" esm-meta/body  nil "qwertyuiopasdfghjkl;zxcvbnm,./")
+           (esm-define-many-headed-hydra esm-super-nonum   "s-"  "\nSUPER"   "<f33>" esm-super/body nil "qwertyuiopasdfghjkl;zxcvbnm,./")
 
-  ;; Clean up digit argument bindings
-  (dolist (map (list ;; esm-control/keymap
-                     esm-meta/keymap
-                     esm-super/keymap))
-    (dotimes (i 10)
-      (when (eq (lookup-key map (kbd (int-to-string i))) 'hydra--digit-argument)
-        (define-key map (kbd (int-to-string i)) nil))))
+           ;; Clean up digit argument bindings
+           (dolist (map (list ;; esm-control/keymap
+                         esm-meta/keymap
+                         esm-super/keymap))
+             (dotimes (i 10)
+               (when (eq (lookup-key map (kbd (int-to-string i))) 'hydra--digit-argument)
+                 (define-key map (kbd (int-to-string i)) nil))))
 
-  ;; (define-key esm-control-nonum/keymap "u" #'hydra--universal-argument)
-  (define-key esm-meta-nonum/keymap    "u" #'hydra--universal-argument)
-  (define-key esm-super-nonum/keymap   "u" #'hydra--universal-argument)
+           ;; (define-key esm-control-nonum/keymap "u" #'hydra--universal-argument)
+           (define-key esm-meta-nonum/keymap    "u" #'hydra--universal-argument)
+           (define-key esm-super-nonum/keymap   "u" #'hydra--universal-argument)))
+
   t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Change Emacs state. Should go in user init file.
 
-(defun esm-config ()
-  ;; Stage 1
 
-  (setq esm-debug "*Escape-modality debug*")
-  (global-set-key (kbd "C-x e") #'eval-last-sexp)
-  (global-set-key (kbd "C-x f") #'find-file)
-  (global-set-key (kbd "C-x c") #'save-buffers-kill-emacs)
-  (global-set-key (kbd "C-x x") #'exchange-point-and-mark)
-  (global-set-key (kbd "C-x o") #'delete-blank-lines)
-
-  ;; (esm-flatten-ctl-x)
-
-  ;; Stage 2
-  ;; (esm-kill-shift)
-
-  ;; Stage 3
-  (esm-super-from-ctl global-map)
-
-  ;; Stage 4
-  (esm-generate-hydras)
-
-  ;; (add-hook 'buffer-list-update-hook #'esm-generate-hydras)
-
-
-  )
 
 (provide 'escape-modality)
+
+;;; escape-modality.el ends here

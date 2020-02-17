@@ -1,5 +1,5 @@
 ;; escape-modality-enforce-tidy.el  -*- lexical-binding: t; -*-
-;; Copyright (C) 2019 Martin Erik Edström
+;; Copyright (C) 2019-2020 Martin Erik Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by

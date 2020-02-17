@@ -1,5 +1,5 @@
 ;; escape-modality-common.el  -*- lexical-binding: t; -*-
-;; Copyright (C) 2019 Martin Erik Edström
+;; Copyright (C) 2019-2020 Martin Erik Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -42,32 +42,6 @@
     (if (string-match "-$" key)
       "-"
     (car (last (split-string (esm-normalize key) "[ -]+")))))
-
-(defun esm-test-keydesc-handling ()
-  (let ((errors 0)
-        (problematic-key-descriptions
-         '(;; raw example  normalized       squashed           leaf
-           ("C-x 8 RET"    "C-x 8 <RET>"    "esm-Cx8<RET>"     "<RET>")
-           ("<f2> 8 RET"   "<f2> 8 <RET>"   "esm-<f2>8<RET>"   "<RET>")
-           ("<f2> f r"     "<f2> f r"       "esm-<f2>fr"       "r")
-           ("<f2> <f2>"    "<f2> <f2>"      "esm-<f2><f2>"     "<f2>")
-           ("ESC <C-down>" "<ESC> C-<down>" "esm-<ESC>C<down>" "<down>")
-           ("C-x RET C-\\" "C-x <RET> C-\\" "esm-Cx<RET>C\\"   "\\")
-           ;; TODO: Because (kbd "TAB")  (kbd "<TAB>") are different
-           ;; ("<TAB>"        "<TAB>"          "esm-<TAB>"        "<TAB>")
-           ("TAB"          "TAB"            "esm-TAB"          "TAB")
-           ("A-T A-B"      "A-T A-B"        "esm-ATAB"         "B")
-           ("A-T A B"      "A-T A B"        "esm-ATAB"         "B")
-           ("A-TAB"        "A-TAB"          "esm-ATAB"         "TAB")
-           ("C-<M-return>" "C-M-<return>"   "esm-CM<return>"   "<return>")
-           ("<C-M-return>" "C-M-<return>"   "esm-CM<return>"   "<return>")
-           )))
-    (dolist (x problematic-key-descriptions t)
-      (seq-let (raw normalized squashed leaf) x
-        (unless (and (string= normalized (esm-normalize raw))
-                     (string= squashed (esm-dub-from-key normalized))
-                     (string= leaf (esm-get-leaf normalized)))
-          (error (concat "Keydesc handling failed for test case: " raw)))))))
 
 ;; (esm-test-keydesc-handling)
 
