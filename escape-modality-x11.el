@@ -1,4 +1,4 @@
-;; escape-modality-x11.el
+;; escape-modality-x11.el  -*- lexical-binding: t; -*-
 ;; Copyright (C) 2019 Martin Erik Edström
 
 ;; This program is free software: you can redistribute it and/or modify
