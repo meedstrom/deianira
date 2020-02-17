@@ -46,26 +46,30 @@
 (defun esm-test-keydesc-handling ()
   (let ((errors 0)
         (problematic-key-descriptions
-         '(;; unaltered    normalized       squashed           leaf
+         '(;; raw example  normalized       squashed           leaf
            ("C-x 8 RET"    "C-x 8 <RET>"    "esm-Cx8<RET>"     "<RET>")
            ("<f2> 8 RET"   "<f2> 8 <RET>"   "esm-<f2>8<RET>"   "<RET>")
            ("<f2> f r"     "<f2> f r"       "esm-<f2>fr"       "r")
            ("<f2> <f2>"    "<f2> <f2>"      "esm-<f2><f2>"     "<f2>")
            ("ESC <C-down>" "<ESC> C-<down>" "esm-<ESC>C<down>" "<down>")
            ("C-x RET C-\\" "C-x <RET> C-\\" "esm-Cx<RET>C\\"   "\\")
-           ;; (kbd "TAB")  (kbd "<TAB>") are different
+           ;; TODO: Because (kbd "TAB")  (kbd "<TAB>") are different
            ;; ("<TAB>"        "<TAB>"          "esm-<TAB>"        "<TAB>")
            ("TAB"          "TAB"            "esm-TAB"          "TAB")
            ("A-T A-B"      "A-T A-B"        "esm-ATAB"         "B")
+           ("A-T A B"      "A-T A B"        "esm-ATAB"         "B")
+           ("A-TAB"        "A-TAB"          "esm-ATAB"         "TAB")
            ("C-<M-return>" "C-M-<return>"   "esm-CM<return>"   "<return>")
            ("<C-M-return>" "C-M-<return>"   "esm-CM<return>"   "<return>")
            )))
-    (dolist (x problematic-key-descriptions)
+    (dolist (x problematic-key-descriptions t)
       (seq-let (raw normalized squashed leaf) x
         (unless (and (string= normalized (esm-normalize raw))
                      (string= squashed (esm-dub-from-key normalized))
                      (string= leaf (esm-get-leaf normalized)))
           (error (concat "Keydesc handling failed for test case: " raw)))))))
+
+;; (esm-test-keydesc-handling)
 
 ;; TODO: Split this up into functions that can be reused by esm-get-leaf,
 ;; esm-drop-last-chord-in-seq, and esm-dub-from-key
@@ -119,7 +123,7 @@
 
 ;; unused
 ;; TODO: use it
-(defun esm-get-all-keys-on-keyboard ()
+(defun esm-all-keys-on-keyboard ()
   (append
    esm-all-keys-on-keyboard-except-shifted-symbols
    esm-all-shifted-symbols))
