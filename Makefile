@@ -2,8 +2,7 @@
 .POSIX:
 .SUFFIXES: .el .elc
 EMACS	= emacs
-EL   	= escape-modality.elc escape-modality-common.elc
-escape-modality-enforce-tidy.elc escape-modality-x11.elc escape-modality-test.elc
+EL   	= escape-modality.el escape-modality-common.el escape-modality-enforce-tidy.el escape-modality-x11.el escape-modality-test.el
 ELC  	= $(EL:.el=.elc)
 
 compile: $(ELC)
@@ -14,13 +13,13 @@ check: escape-modality-test.elc
 clean:
 	rm -f $(ELC)
 
-# For bug reproduction in a relatively clean environment
 run: $(ELC)
     $(EMACS) -Q -L . -l foo-c.elc -f foo-mode
 
 escape-modality.elc: escape-modality-common.elc escape-modality-enforce-tidy.elc
 escape-modality-enforce-tidy.elc: escape-modality-common.elc
 escape-modality-x11.elc: escape-modality-common.elc
+escape-modality-test.elc: $(ELC)
 
 .el.elc:
 	$(EMACS) -Q --batch -L . -f batch-byte-compile $<

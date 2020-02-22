@@ -43,29 +43,49 @@
   - [ ] God-mode (just to know what to say to God-mode users) 1 wk
   - [ ] Xah-fly-keys 1 wk
 - [X] (unrelated to this mode) bind something to translate to <menu>
-- [ ]
+- [ ] Info documentation
 
 * [2020-02-16] Notes
 
-Problem:
-- Root hydras don't get defined correctly on init, but do when I re-evaluate the code
+Problem (FIXED):
+- Root hydras don't get defined correctly when called from (esm-generate-hydras), but do when I evaluate the code manually
 
 Possible causes:
-- Deferred keymap bindings by general.el
-- Something else
+- Execution environment
 
-Possible solutions:
-1. Define root hydras in the same way as the automatic definer
-2. Implement continuous re-definition
+Solutions:
+- Try (eval `(progn))
 
+Fixed!!
 
-Focus on solution #2. This is the main missing feature anyhow.
+----
 
-I foresee problems: it takes about 3 seconds to run (esm-generate-hydras).
+So I have issues with generating the root hydras and it begs for refactoring, which makes it relevant to consider the scope of Deianira. By itself, it should be equivalent to which-key (and incidentally hercules too), which do NOT include any concept of root hydras. Also before being equivalent, Deianira is missing a setting that lets it show all keys and not just the 30 "alpha keys", and a deianira-exit-by-default variable, default t!
 
-1. Profile (esm-generate-hydras) and find the bottlenecks.
-2. Async.el
+The root hydras are a feature in the wider "Escape Modality" concept, and rely on both xcape and deianira/hercules. That means I should pass the info about them from an escape-modality.el that uses deianira as a library.
 
+To use a generic hydra-definer to create the "esm-control" root hydra, we should expect to have to pass it the xcape key we're using, <f35> in my case, and then override the name. The alternative is to bake root-hydra-awareness into the definer. To recap, alternatives:
+
+1. Bind all "<f35> KEY" as duplicate of "C-KEY" and then pass <f35> to the hydra definer, which will just work since it is a valid key unlike C- which is not a key.
+2. Bake root-hydra awareness into the definer
+
+Solution #1
+- Transferable. You could more easily swap out deianira for hercules if you wanted.
+- May be more robust, with simpler code flow.
+- However, <f35> must constantly mirror the control bindings. This duplicates the Deianira effort of continuous re-definition, as that already scans the keybindings regularly. It would be good if I could add a hook to make it bind <f35> stuff in the process.
+
+Solution #2
+- I guess you could have a (define-root-hydra) as well as (define-prefix-hydra), perhaps both calling a third function (define-many-headed-hydra-maybe) for common elements. The (define-root-hydra) would do what's necessary to pretend that <f35> is C-.
+
+------
+
+Making Info documentation:
+
+- Write a .texi file
+- Use C-c C-m C-b to compile an info buffer
+- See info manual on texinfo
+
+Or just use org export to texinfo, which includes a neat action "export as info and open it".
 
 * [2020-02-11] Notes
 
@@ -153,7 +173,6 @@ Well, we'll still want C-f to work the same way as f. I guess we can just accept
 
 
 -----
-
 
 * [2020-02-03] Note to self
 Spin out escape-modality-enforce-tidy as a separate package. Name? Mass-remap-utils?
