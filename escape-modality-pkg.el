@@ -1,13 +1,13 @@
 ;;; escape-modality-pkg.el -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2019-2020 Martin Edström
-
 ;; Author: Martin Edström <no@email.yet>
-;; Maintainer: Oleh Krehel <no@email.yet>
+;; Maintainer: Martin Edström <no@email.yet>
 ;; URL:
-;; Version: 0.1z
+;; Version: 0.1
 ;; Keywords: bindings
 ;; Package-Requires: ((hydra "0.15.0"))
+
+;; Copyright (C) 2019-2020 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -21,6 +21,8 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+;;; Code:
 
 (define-package escape-modality
   0.1

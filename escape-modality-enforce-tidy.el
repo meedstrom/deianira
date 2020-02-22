@@ -40,9 +40,10 @@
 ;; (keyboard-translate)
 
 ;; map-keymap passes events to a function, and those events look like
-;; (list 67108918)
+;; 67108918 or f2
 ;; and it turns out you can append events instead of concatting strings:
 ;; (key-description (append (kbd "C-x") (list 67108918)))
+;; => "C-x C-6"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun esm-super-translate-to-ctl-meta ()
@@ -110,6 +111,7 @@ already been done."
                 (not (eq nil backup)))
        (setq ,keymap backup))))
 
+;; TODO: see.
 (defun esm-kill-shift ()
   "Unbind."
   (dolist (x esm-all-keys-on-keyboard-except-shifted-symbols)
@@ -135,6 +137,7 @@ already been done."
 ;;                        (define-key global-map (kbd newkey) def))))
 ;;               global-map))
 
+;; TODO: Do this continuously and not only on global-map
 (defun esm-super-from-ctl (map)
   (map-keymap (lambda (ev def)
                 (let* ((case-fold-search nil)

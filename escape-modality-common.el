@@ -75,6 +75,7 @@
              (corrected-keydesc (string-join corrected-segments " ")))
     corrected-keydesc))
 
+;; TODO: include DEL, <return>, F13 thru F35, <iso-lefttab>, xf86 keys etc?
 (defvar esm-all-keys-on-keyboard-except-shifted-symbols
   (append
    (split-string
@@ -83,12 +84,18 @@
    (split-string
     "<left> <right> <up> <down> <SPC> <RET> <backspace> <delete>
      TAB <f1> <f2> <f3> <f4> <f5> <f6> <f7> <f8> <f9> <f10> <f11>
-     <f12> <print> <insert> <next> <prior> <home> <end>")))
+     <f12> <print> <insert> <next> <prior> <home> <end>"))
+  "All keys, except where a held-down Shift is implied. Prefer this variable
+over `esm-all-keys-on-keyboard' for most purposes if you don't like Shift.")
 
 (defvar esm-all-shifted-symbols
-  (split-string
-   "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
-   "" t))
+  (if (>= emacs-major-version 27)
+      (split-string
+       "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
+       "" t)
+    (split-string
+     "~!@#$%^&*()_+{}|:\"<>?"
+     "" t)))
 
 (defvar esm-all-keys-on-keyboard
   (append
@@ -129,12 +136,14 @@
 
 (defvar esm-xcape-rules
   '(
+    ;; "Alt_L=F34"
+    ;; "Alt_R=F34"
     "Control_L=F35"
     "Control_R=F35"
+    ;; "Hyper_L=F34"
+    ;; "Hyper_R=F34"
     "Meta_L=F34"
     "Meta_R=F34"
-    "Alt_L=F34"
-    "Alt_R=F34"
     "Super_L=F33"
     "Super_R=F33"))
 
