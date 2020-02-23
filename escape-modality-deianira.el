@@ -1,4 +1,4 @@
-;;; escape-modality.el -- hydra everywhere -*- lexical-binding: t; -*-
+;;; escape-modality-deianira.el -- hydra everywhere -*- lexical-binding: t; -*-
 ;; Copyright (C) 2019-2020 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -19,9 +19,10 @@
 ;;; Code:
 ;;* Requires
 (require 'hydra)
-(require 'async-await)
 (require 'deferred)
-(require 'concurrent)
+(require 'dash)
+(require 'cl-lib)
+(require 'trie)
 (require 'escape-modality-common)
 (eval-when-compile (require 'subr-x));; string-join, if-let
 
@@ -36,28 +37,6 @@
 (define-globalized-minor-mode deianira-global-mode
   deianira-mode
   deianira-mode)
-
-(define-minor-mode escape-modality-mode
-  "Instruct Deianira-mode to create root hydras. "
-  nil
-  " ESM"
-  `(;;(,(kbd "<f35>") . esm-control/body)
-    (,(kbd "<f34>") . esm-<f34>/body)
-    (,(kbd "<f33>") . esm-<f35>/body)))
-
-;;;###autoload
-(define-globalized-minor-mode escape-modality-global-mode
-  escape-modality-mode
-  escape-modality-mode)
-
-(defun escape-modality ()
-  "Turn on the whole paradigm described in `(info \"(elisp)\")'. "
-  (interactive "P")
-  (prefix-command-preserve-state)
-  ;; (call-interactively #'massmap-tidy-mode)
-  (call-interactively #'escape-modality-global-mode)
-  (call-interactively #'deianira-global-mode)
-  )
 
 (defun esm--colwidth ()
   (or esm-colwidth-override
@@ -231,10 +210,6 @@ filter has been applied."
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; Micro-macro level
 
-;; unused
-(defun esm-drop-last-chord-in-seq (keydesc)
-  (if (esm-valid-keydesc keydesc)
-      (replace-regexp-in-string (rx space (*? (not space)) eol) "" keydesc)))
 
 ;; "List of keys like C-a, C-e, M-f, M-g but not C-M-f or M-%."
 ;; note: it's not quite all of them since it uses esm-hydra-keys
@@ -318,7 +293,7 @@ display in the hydra hint, defaulting to the value of
 `esm-hydra-keys'."
   (declare (indent defun))
   `(defhydra ,name (nil nil :columns 10 :exit ,exit
-                        ;; :body-pre (esm-generate-hydras-async)
+                        :body-pre (esm-generate-hydras-async)
                         ;; :body-pre (esm-colorize-cursor)
                         ;; (setq exwm-input-line-mode-passthrough t)
                         ;; :post (esm-decolorize-cursor)
@@ -341,37 +316,6 @@ display in the hydra hint, defaulting to the value of
                  (,parent . ("<backspace>" ,parent nil :exit t)))) extras)))
 
 (defvar esm-live-hydras nil)
-
-(defun esm-associated-title (name)
-  (intern name))
-
-(defun esm-associated-nonum-title (name)
-  (intern (concat name "-nonum")))
-
-(defun esm-associated-nonum-keymap (name)
-  (intern (concat name "-nonum/keymap")))
-
-(defun esm-associated-hint (name)
-  (intern (concat name "/hint")))
-
-(defun esm-associated-heads (name)
-  (intern (concat name "/heads")))
-
-(defun esm-associated-body (name)
-  (intern (concat name "/body")))
-
-(defun esm-associated-keymap (name)
-  (intern (concat name "/keymap")))
-
-;; not nearly all of them
-(defun esm-all-associated-variables (name)
-  (list (esm-associated-keymap name)
-        (esm-associated-body name)
-        (esm-associated-heads name)
-        (esm-associated-hint name)
-        (esm-associated-title name)
-        (esm-associated-nonum-title name)
-        (esm-associated-nonum-keymap name)))
 
 (defun esm-define-prefix-hydra (key)
   (let* ((x            (esm-dub-from-key (esm-normalize key)))
@@ -403,60 +347,6 @@ display in the hydra hint, defaulting to the value of
              (cons ,key ,x)
              ))))
 
-;; wip; doesn't unbind all the lambda heads
-;; unused
-(defun esm-undefine-hydra (hydra-key)
-  (seq-map #'makunbound
-           (esm-all-associated-variables (esm-dub-from-key hydra-key))))
-
-(defun esm--key-seq-steps (keydesc)
-  (and (esm-valid-keydesc keydesc)
-       (length (split-string keydesc " " t))))
-
-;; performant alternative to (= 1 (esm--key-seq-steps x))
-(defun esm--key-seq-steps=1 (keydesc)
-  (not (string-match " " keydesc)))
-
-(defvar esm-assume-no-multi-chords nil
-  "Assumption: There exists no keys or key sequences in any keymap that has a
-multi-chord as the first key. In other words, bindings like C-M-f and don't exist.
-
-A non-nil setting makes some code run faster, but may cause errors if the
-assumption is false.")
-
-(defun esm-mirror-root-maps ()
-  (dolist (x esm-last-bindings-for-external-use)
-    (when (esm--key-seq-steps=1 (car x))
-      (if-let ((key (car x))
-               (root (cond ((string-match (rx line-start "C-") key)
-                                (cons "C-" esm-root-control-map))
-                               ((string-match (rx line-start "M-") key)
-                                (cons "M-" esm-root-meta-map))
-                               ((string-match (rx line-start "s-") key)
-                                (cons "s-" esm-root-super-map))
-                               (t nil)))
-               (key-to-bind (if esm-assume-no-multi-chords
-                                (substring key 2)
-                              (replace-regexp-in-string (car root) "" key))))
-          (define-key (cdr root)
-            (kbd key-to-bind)
-            (if (equal (cdr x) "Prefix Command")
-                (key-binding (kbd (car x)))
-              (intern (cdr x))))))))
-
-
-;; (esm-generate-hydras-async)
-;; (keymapp 'esm-root-super-command)
-;; (esm-mirror-root-maps)
-
-(add-hook 'esm-after-scan-bindings-hook #'esm-mirror-root-maps)
-;; they come in a specific order, see (key-description (kbd "C-S-M-s-H-A-5"))
-(define-prefix-command 'esm-root-alt-map)
-(define-prefix-command 'esm-root-control-map)
-(define-prefix-command 'esm-root-hyper-map)
-(define-prefix-command 'esm-root-meta-map)
-(define-prefix-command 'esm-root-super-map)
-
 (defvar esm-after-scan-bindings-hook)
 
 (defvar esm-last-bindings)
@@ -475,17 +365,7 @@ assumption is false.")
 
 (defun esm--key-seq-contains-different-modifiers ())
 
-;; (defvar esm--smp (cc:semaphore-create 1))
 
-(require 'cl-lib)
-(require 'dash)
-
-;; Design: S-exps that are potentially performance-intensive should go in
-;; separate deferred-nextc steps. Instead of global variables or a big `let'
-;; varlist, pass relevant variables from one step to the next. Should multiple
-;; variables be needed, pass a list of lists. This is a lot like a dplyr pipeline.
-;; Public variables (for hook functions): esm-last-bindings (or current?), maybe new-or-rebound-keys
-;; Needed at the end of the let form:  defunct-hydras (to clean live-hydras), and new-or-rebound-keys (to regen hydras)
 (defun esm-generate-hydras-async ()
   (deferred:$
     (deferred:next
@@ -509,6 +389,7 @@ assumption is false.")
       (lambda (defunct-bindings)
         (-intersection (-map #'car esm-live-hydras)
                        (-map #'car defunct-bindings))
+        ;; Perf optmz, seq-intersection is slower
         ;; (cl-loop for x in defunct-bindings
         ;;          when (assoc (car x) esm-live-hydras)
         ;;          collect (car x))
@@ -521,7 +402,7 @@ assumption is false.")
               (seq-remove (lambda (x) (member (car x) defunct-hydras))
                           esm-live-hydras))))
 
-    ;; Recalculate variables in case of change
+    ;; Recalculate variables in case of changed settings
     (deferred:nextc it
       (lambda ()
         (setq esm-hydra-keys-nonum (esm-hydra-keys-nonum))
@@ -538,15 +419,14 @@ assumption is false.")
         (run-hooks 'esm-after-scan-bindings-hook)))
 
     (deferred:error it
-      (lambda (err)
-        (warn err)))
+      #'warn)
+
     ))
 
 ;; (setq esm-last-bindings nil)
 ;; (esm-generate-hydras-async)
 ;; (esm-generate-hydras)
 
+(provide 'escape-modality-deianira)
 
-(provide 'escape-modality)
-
-;;; escape-modality.el ends here
+;;; escape-modality-deianira.el ends here
