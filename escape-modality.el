@@ -82,6 +82,19 @@
 
 (defvar esm-exit-by-default t)
 
+(defvar esm-known-prefix-commands '(2C-command
+                                    Control-X-prefix
+                                    ESC-prefix
+                                    ctl-x-4-prefix
+                                    ctl-x-5-prefix
+                                    facemenu-keymap
+                                    help-command
+                                    ehelp-command
+                                    kmacro-keymap
+                                    mode-specific-command-prefix
+                                    projectile-command-map
+                                    vc-prefix-map))
+
 ;; Inspired by which-key--get-current-bindings. Thanks!
 (defun esm-current-bindings (&optional keep flush)
   "Optional argument KEEP is a regexp describing keys to keep. Can be left at
@@ -305,7 +318,7 @@ display in the hydra hint, defaulting to the value of
 `esm-hydra-keys'."
   (declare (indent defun))
   `(defhydra ,name (nil nil :columns 10 :exit ,exit
-                        :body-pre (esm-generate-hydras-async)
+                        ;; :body-pre (esm-generate-hydras-async)
                         ;; :body-pre (esm-colorize-cursor)
                         ;; (setq exwm-input-line-mode-passthrough t)
                         ;; :post (esm-decolorize-cursor)
@@ -404,7 +417,7 @@ display in the hydra hint, defaulting to the value of
 (defun esm--key-seq-steps=1 (keydesc)
   (not (string-match " " keydesc)))
 
-(defvar esm-assume-no-multi-chords t
+(defvar esm-assume-no-multi-chords nil
   "Assumption: There exists no keys or key sequences in any keymap that has a
 multi-chord as the first key. In other words, bindings like C-M-f and don't exist.
 
@@ -432,7 +445,7 @@ assumption is false.")
               (intern (cdr x))))))))
 
 
-;; (esm-generate-hydras)
+;; (esm-generate-hydras-async)
 ;; (keymapp 'esm-root-super-command)
 ;; (esm-mirror-root-maps)
 
@@ -446,9 +459,11 @@ assumption is false.")
 
 (defvar esm-after-scan-bindings-hook)
 
-(defvar esm-last-bindings nil)
+(defvar esm-last-bindings)
 
-(defvar esm-last-bindings-for-external-use nil)
+(defvar esm-last-bindings-for-external-use)
+
+(defvar esm-new-or-rebound-keys)
 
 (defun esm--key-contains-ctl (cell)
   (string-match (rx "C-") (car cell)))
@@ -460,127 +475,76 @@ assumption is false.")
 
 (defun esm--key-seq-contains-different-modifiers ())
 
-(defun esm-generate-hydras-async ()
-  ;; (deferred:$
-  ;;   (deferred:next
-  ;;     #'esm-generate-hydras
-  ;;     ))
+;; (defvar esm--smp (cc:semaphore-create 1))
 
+(require 'cl-lib)
+(require 'dash)
+
+;; Design: S-exps that are potentially performance-intensive should go in
+;; separate deferred-nextc steps. Instead of global variables or a big `let'
+;; varlist, pass relevant variables from one step to the next. Should multiple
+;; variables be needed, pass a list of lists. This is a lot like a dplyr pipeline.
+;; Public variables (for hook functions): esm-last-bindings (or current?), maybe new-or-rebound-keys
+;; Needed at the end of the let form:  defunct-hydras (to clean live-hydras), and new-or-rebound-keys (to regen hydras)
+(defun esm-generate-hydras-async ()
   (deferred:$
     (deferred:next
-      (lambda (x)
+      (lambda ()
+        (esm-current-bindings (rx bol (regexp (regexp-opt '("C-" "s-" "M-"))))
+                              (rx "ESC"))))
 
-
-
-            ;; Unlist defunct hydras
-    (setq esm-live-hydras
-          (seq-remove (lambda (x) (member (car x) defunct-hydras))
-                      esm-live-hydras))
-
-        ))
     (deferred:nextc it
-      (lambda (new-or-rebound-keys)
+      (lambda (curr)
+        (setq esm-current-bindings-for-external-use curr)
+        (seq-remove #'esm--key-contains-ctl curr)))
 
-        ;; Recalculate variables in case of change
-        (setq esm-hydra-keys-nonum (esm-hydra-keys-nonum))
-        (setq esm--colwidth (esm--colwidth))
-
-        (dolist (key new-or-rebound-keys)
-          (when (keymapp (key-binding (kbd key)))
-            (push (esm-define-prefix-hydra key) esm-live-hydras)))
-
-        (setq esm-last-bindings-for-external-use curr)
-        (setq esm-last-bindings filtered-curr) ;; for next time
-
-        ))
     (deferred:nextc it
-      (lambda (x)
-        (run-hooks 'esm-after-scan-bindings-hook)
+      (lambda (filtered-curr)
+        (setq esm-new-or-rebound-keys
+              (-map #'car (-difference filtered-curr esm-last-bindings)))
+        (prog1 (-difference esm-last-bindings filtered-curr)
+          (setq esm-last-bindings filtered-curr))))
+
+    (deferred:nextc it
+      (lambda (defunct-bindings)
+        (-intersection (-map #'car esm-live-hydras)
+                       (-map #'car defunct-bindings))
+        ;; (cl-loop for x in defunct-bindings
+        ;;          when (assoc (car x) esm-live-hydras)
+        ;;          collect (car x))
         ))
-
-    (cc:semaphore-release esm--smp))
-  )
-
-(defvar esm--smp (cc:semaphore-create 1))
-
-(defun esm-scan ()
-
-  )
-
-;; TODO: Put some async here.
-(defun esm-generate-hydras ()
-  ;; (deferred:$)
-
-  ;; (cc:thread 60
-  ;;   )
-
-  (let* ((curr (esm-current-bindings (rx bol (regexp (regexp-opt '("C-" "s-" "M-"))))
-                                     (rx "ESC")))
-         (filtered-curr (seq-remove #'esm--key-contains-ctl curr))
-         (new              (seq-difference filtered-curr esm-last-bindings))
-         (defunct-bindings (seq-difference esm-last-bindings filtered-curr))
-         (defunct-hydras (seq-intersection
-                          (seq-map #'car defunct-bindings)
-                          (seq-map #'car esm-live-hydras)))
-         (new-or-rebound-keys (seq-map #'car new)))
 
     ;; Unlist defunct hydras
-    (setq esm-live-hydras
-          (seq-remove (lambda (x) (member (car x) defunct-hydras))
-                      esm-live-hydras))
+    (deferred:nextc it
+      (lambda (defunct-hydras)
+        (setq esm-live-hydras
+              (seq-remove (lambda (x) (member (car x) defunct-hydras))
+                          esm-live-hydras))))
 
     ;; Recalculate variables in case of change
-    (setq esm-hydra-keys-nonum (esm-hydra-keys-nonum))
-    (setq esm--colwidth (esm--colwidth))
+    (deferred:nextc it
+      (lambda ()
+        (setq esm-hydra-keys-nonum (esm-hydra-keys-nonum))
+        (setq esm--colwidth (esm--colwidth))))
 
+    (deferred:nextc it
+      (lambda ()
+        (dolist (key esm-new-or-rebound-keys)
+          (when (keymapp (key-binding (kbd key)))
+            (push (esm-define-prefix-hydra key) esm-live-hydras)))))
 
-    ;; TODO: Put some async here.
+    (deferred:nextc it
+      (lambda ()
+        (run-hooks 'esm-after-scan-bindings-hook)))
 
-    ;; (deferred:nextc (cc:semaphore-acquire esm--smp)
-    ;;   (lambda (x)
-    ;;     (dolist (key new-or-rebound-keys)
-    ;;       (when (keymapp (key-binding (kbd key)))
-    ;;         (push (esm-define-prefix-hydra key) esm-live-hydras)))
-    ;;     ))
-    (dolist (key new-or-rebound-keys)
-      (when (keymapp (key-binding (kbd key)))
-        (push (esm-define-prefix-hydra key) esm-live-hydras)))
+    (deferred:error it
+      (lambda (err)
+        (warn err)))
+    ))
 
-    (setq esm-last-bindings-for-external-use curr)
-    (setq esm-last-bindings filtered-curr) ;; for next time
-    (run-hooks 'esm-after-scan-bindings-hook)
-
-    ;; (when (seq-find (lambda (key) (string-match (rx line-start "M-") key))
-    ;;                 new-or-rebound-keys)
-    ;;   ;;TODO: Learn why results are all wrong if I don't wrap in (eval (progn ...))
-    ;;   (eval `(progn
-    ;;            (esm-define-many-headed-hydra esm-meta
-    ;;              "M-"  "META"   "<f34>" nil nil nil "M-<f34>")
-    ;;            (esm-define-many-headed-hydra esm-meta-nonum
-    ;;              "M-"  "\nMETA" "<f34>" esm-meta/body  nil ,esm-hydra-keys-nonum)
-    ;;            (define-key esm-meta-nonum/keymap    "u" #'hydra--universal-argument)
-    ;;            (dotimes (i 10)
-    ;;              (when (eq (lookup-key esm-meta/keymap (kbd (int-to-string i))) 'hydra--digit-argument)
-    ;;                (define-key esm-meta/keymap (kbd (int-to-string i)) nil))))))
-
-    ;; (when (seq-find (lambda (key) (string-match (rx line-start "s-") key))
-    ;;                 new-or-rebound-keys)
-    ;;   (eval `(progn
-    ;;            (esm-define-many-headed-hydra esm-super
-    ;;              "s-"  "SUPER"   "<f33>" nil nil nil "s-<f33>")
-    ;;            (esm-define-many-headed-hydra esm-super-nonum
-    ;;              "s-"  "\nSUPER" "<f33>" esm-super/body nil ,esm-hydra-keys-nonum)
-    ;;            (define-key esm-super-nonum/keymap   "u" #'hydra--universal-argument)
-    ;;            (dotimes (i 10)
-    ;;              (when (eq (lookup-key esm-super/keymap (kbd (int-to-string i))) 'hydra--digit-argument)
-    ;;                (define-key esm-super/keymap (kbd (int-to-string i)) nil))))))
-    )
-  t)
-
+;; (setq esm-last-bindings nil)
+;; (esm-generate-hydras-async)
 ;; (esm-generate-hydras)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Change Emacs state. Should go in user init file.
-
 
 
 (provide 'escape-modality)
