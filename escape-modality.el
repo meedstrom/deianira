@@ -424,9 +424,8 @@ display in the hydra hint, defaulting to the value of
   "Assumption: There exists no keys or key sequences in any keymap that has a
 multi-chord as the first key. In other words, bindings like C-M-f and don't exist.
 
-A non-nil setting makes some code run faster, but causes errors if the
+A non-nil setting makes some code run faster, but may cause errors if the
 assumption is false.")
-
 
 (defun esm-mirror-root-maps ()
   (seq-do (lambda (x)
@@ -444,7 +443,7 @@ assumption is false.")
                                         esm-root-meta-map)
                                        ((string-match (rx line-start "s-") (car x))
                                         esm-root-super-map)
-                                       t nil)))
+                                       (t nil))))
                 (define-key root-map
                   (kbd key-to-bind)
                   (if (string= (cdr x) "Prefix Command")
@@ -486,13 +485,36 @@ assumption is false.")
   ;;     #'esm-generate-hydras
   ;;     ))
 
-  ;; (cc:thread 60
-  ;;   )
-
   (deferred:$
-    (deferred:nextc (cc:semaphore-acquire esm--smp)
+    (deferred:next
       (lambda (x)
-        (esm-generate-hydras)
+
+
+
+            ;; Unlist defunct hydras
+    (setq esm-live-hydras
+          (seq-remove (lambda (x) (member (car x) defunct-hydras))
+                      esm-live-hydras))
+
+        ))
+    (deferred:nextc it
+      (lambda (new-or-rebound-keys)
+
+        ;; Recalculate variables in case of change
+        (setq esm-hydra-keys-nonum (esm-hydra-keys-nonum))
+        (setq esm--colwidth (esm--colwidth))
+
+        (dolist (key new-or-rebound-keys)
+          (when (keymapp (key-binding (kbd key)))
+            (push (esm-define-prefix-hydra key) esm-live-hydras)))
+
+        (setq esm-last-bindings-for-external-use curr)
+        (setq esm-last-bindings filtered-curr) ;; for next time
+
+        ))
+    (deferred:nextc it
+      (lambda (x)
+        (run-hooks 'esm-after-scan-bindings-hook)
         ))
 
     (cc:semaphore-release esm--smp))
@@ -500,10 +522,18 @@ assumption is false.")
 
 (defvar esm--smp (cc:semaphore-create 1))
 
+(defun esm-scan ()
+
+  )
+
 ;; TODO: Put some async here.
 (defun esm-generate-hydras ()
-  (let* ((curr (esm-current-bindings (rx bol (regexp (regexp-opt '("C-" "s-" "M-"
-                                                                   ))))
+  ;; (deferred:$)
+
+  ;; (cc:thread 60
+  ;;   )
+
+  (let* ((curr (esm-current-bindings (rx bol (regexp (regexp-opt '("C-" "s-" "M-"))))
                                      (rx "ESC")))
          (filtered-curr (seq-remove #'esm--key-contains-ctl curr))
          (new              (seq-difference filtered-curr esm-last-bindings))
@@ -525,6 +555,12 @@ assumption is false.")
 
     ;; TODO: Put some async here.
 
+    ;; (deferred:nextc (cc:semaphore-acquire esm--smp)
+    ;;   (lambda (x)
+    ;;     (dolist (key new-or-rebound-keys)
+    ;;       (when (keymapp (key-binding (kbd key)))
+    ;;         (push (esm-define-prefix-hydra key) esm-live-hydras)))
+    ;;     ))
     (dolist (key new-or-rebound-keys)
       (when (keymapp (key-binding (kbd key)))
         (push (esm-define-prefix-hydra key) esm-live-hydras)))
