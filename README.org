@@ -2,9 +2,10 @@
 #+AUTHOR: Martin Edström
 
 * Issues
+- [X] Async
+- [ ] Split the main code file
 - [ ] Change only diffs in root maps
 - [ ] Continuously sync Super with Control
-- [ ] Async
 - [ ] Rename f34 hydra to "meta"
 - [ ] Make f34 hydra refer to e.g. Mg/body instead of <f34>g/body
 
@@ -54,6 +55,10 @@
 * [2020-02-23] Notes
 
 So generate-hydras needs new architecture. I'm thinking we first only "scan", setting a bunch of variables, then run hooks.
+
+---
+
+
 
 * [2020-02-16] Notes
 
