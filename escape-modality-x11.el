@@ -27,12 +27,12 @@
          (cmd (concat "xmodmap -e '" rules "'")))
     (when (executable-find "xmodmap")
       (start-process-shell-command cmd
-                                   (or (esm-debug-buffer) "*Messages*")
+                                   (or output-buffer (esm-debug-buffer) "*Messages*")
                                    cmd))))
 
 (defvar esm-xcape-process)
 
-(defun esm-xcape-reload (&optional output-buffer)
+(defun esm-xcape-reload ()
   (interactive)
   (let* ((shell-command-dont-erase-buffer t)
          (rules (string-join esm-xcape-rules ";")))

@@ -1,7 +1,14 @@
 #+TITLE: Deianira
 #+AUTHOR: Martin Edström
 
-* Severe issues (fix before release)
+* Issues
+- [ ] Change only diffs in root maps
+- [ ] Continuously sync Super with Control
+- [ ] Async
+- [ ] Rename f34 hydra to "meta"
+- [ ] Make f34 hydra refer to e.g. Mg/body instead of <f34>g/body
+
+* Issues
 - [-] Test different DEs. 
   - [ ] Ubuntu
     - Alt does not emit f14
@@ -19,13 +26,11 @@
 - [X] Let commands print out what they do to a debug buffer.
 - [ ] Create unit tests
 - [ ] Remap inside all minor-mode-maps
-  - 
-* Issues
 - [ ] EXWM awareness
   - A special rule in the hint-updating code that detects EXWM and then populates the hydra with simulation keys.
     - A simulation key is roughly as follows:
     - (dolist (key (list (kbd "C-S-<right>") (kbd "<delete>"))) (exwm-input--fake-key key))
-- [ ] Move away from esm-whole-keyboard, scan all active bindings instead, so that non-US bindings are automatically included
+- [X] Move away from esm-whole-keyboard, scan all active bindings instead, so that non-US bindings are automatically included
 - [X] An escape-modality-mode to buffer-locally bind the hydras, that is, esm-Cx/body and ilk.
 - [-] Go to school
   - [X] https://github.com/tarsius/keycast
@@ -35,6 +40,7 @@
       - Basically, the one thing it's missing is keeping f34 and f35 synced with top ctl and meta maps. That is the valuable thing, not subkeymaps.
     - Possible it cannot match the featureset I need. Hydra exposes more to hack on. Can you temp-exit a hydra with hercules? Can you colorise the cursor? Rename my module Deianira -- hydra-based which-key banisher, and slayer of Hercules.
   - [ ] Bind some key-chords
+  - [ ] Avy as much as possible for 1 wk
   - [ ] Mesh with ergoemacs 1 wk
     - A git branch for this
   - [ ] Vim 1 wk
@@ -44,6 +50,10 @@
   - [ ] Xah-fly-keys 1 wk
 - [X] (unrelated to this mode) bind something to translate to <menu>
 - [ ] Info documentation
+
+* [2020-02-23] Notes
+
+So generate-hydras needs new architecture. I'm thinking we first only "scan", setting a bunch of variables, then run hooks.
 
 * [2020-02-16] Notes
 
