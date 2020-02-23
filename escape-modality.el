@@ -130,7 +130,10 @@ filter has been applied."
                                 nil t)
         (push (cons (match-string 1) (match-string 2))
               result)))
-    (seq-sort-by (lambda (x) (string-width (car x))) #'< result)))
+    ;; Shallower prefixes should be hydraized first
+    ;; (seq-sort-by (lambda (x) (string-width (car x))) #'< result)
+    result
+    ))
 
 ;; (setq foo (esm-current-bindings))
 
@@ -181,25 +184,6 @@ filter has been applied."
 (defun esm-is-known-prefix (stem leaf)
   (car-safe
    (member (key-binding (kbd (concat stem leaf))) esm-known-prefix-commands)))
-
-;; TODO: Stop needing this. I think (keymapp) is reliable. Just see
-;; (key-binding (kbd "C-x"))
-;; (keymapp (key-binding (kbd "C-x")))
-;; (key-binding (kbd "C-x a"))
-;; (keymapp (key-binding (kbd "C-x a")))
-;; (keymapp 'Control-X-prefix)
-(defvar esm-known-prefix-commands '(2C-command
-                                    Control-X-prefix
-                                    ESC-prefix
-                                    ctl-x-4-prefix
-                                    ctl-x-5-prefix
-                                    facemenu-keymap
-                                    help-command
-                                    ehelp-command
-                                    kmacro-keymap
-                                    mode-specific-command-prefix
-                                    projectile-command-map
-                                    vc-prefix-map))
 
 (defun esm-cmd (stem leaf)
   (key-binding (kbd (concat stem leaf))))
@@ -377,37 +361,37 @@ display in the hydra hint, defaulting to the value of
         (esm-associated-nonum-keymap name)))
 
 (defun esm-define-prefix-hydra (key)
-  (when (keymapp (key-binding (kbd key)))
-    (let* ((x            (esm-dub-from-key (esm-normalize key)))
-           (title        (intern x))
-           (nonum-title  (intern (concat x "-nonum")))
-           (nonum-keymap (intern (concat x "-nonum/keymap")))
-           ;; (hint         (intern (concat x "/hint")))
-           ;; (heads        (intern (concat x "/heads")))
-           (body         (intern (concat x "/body")))
-           (keymap       (intern (concat x "/keymap")))
-           (stem         (concat key " "))
-           (parent-key (substring key 0 -2)) ;; doesn't fail with <RET>, strange!
-           (parent-symname (cdr (assoc parent-key esm-live-hydras)))
-           (parent-body (cond ;; ((string= parent-key "C") #'esm-control/body)
-                              ((string= parent-key "M") #'esm-meta/body)
-                              ((string= parent-key "s") #'esm-super/body)
-                              ;; problem: may not exist yet
-                              ((assoc parent-key esm-live-hydras)
-                               (intern (concat parent-symname "/body"))))))
-      (eval `(progn
-               (esm-define-many-headed-hydra ,title       ,stem ,key nil ,parent-body t)
-               (esm-define-many-headed-hydra ,nonum-title ,stem ,(concat "\n\n" key) nil ,body t ,esm-hydra-keys-nonum)
-               ;; (define-key ,keymap "u" #'esm-universal-arg)
-               (define-key ,nonum-keymap "u" #'hydra--universal-argument)
-               (dotimes (i 10)
-                 (let ((key (kbd (int-to-string i))))
-                   (when (eq (lookup-key ,keymap key) 'hydra--digit-argument)
-                     (define-key ,keymap key nil))))
-               (cons ,key ,x)
-               )))))
+  (let* ((x            (esm-dub-from-key (esm-normalize key)))
+         (title        (intern x))
+         (nonum-title  (intern (concat x "-nonum")))
+         (nonum-keymap (intern (concat x "-nonum/keymap")))
+         ;; (hint         (intern (concat x "/hint")))
+         ;; (heads        (intern (concat x "/heads")))
+         (body         (intern (concat x "/body")))
+         (keymap       (intern (concat x "/keymap")))
+         (stem         (concat key " "))
+         (parent-key (substring key 0 -2)) ;; doesn't fail with <RET>, strange!
+         (parent-symname (cdr (assoc parent-key esm-live-hydras)))
+         (parent-body (cond ;; ((string= parent-key "C") #'esm-control/body)
+                       ((string= parent-key "M") #'esm-meta/body)
+                       ((string= parent-key "s") #'esm-super/body)
+                       ;; problem: may not exist yet
+                       ((assoc parent-key esm-live-hydras)
+                        (intern (concat parent-symname "/body"))))))
+    (eval `(progn
+             (esm-define-many-headed-hydra ,title       ,stem ,key nil ,parent-body t)
+             (esm-define-many-headed-hydra ,nonum-title ,stem ,(concat "\n\n" key) nil ,body t ,esm-hydra-keys-nonum)
+             ;; (define-key ,keymap "u" #'esm-universal-arg)
+             (define-key ,nonum-keymap "u" #'hydra--universal-argument)
+             (dotimes (i 10)
+               (let ((key (kbd (int-to-string i))))
+                 (when (eq (lookup-key ,keymap key) 'hydra--digit-argument)
+                   (define-key ,keymap key nil))))
+             (cons ,key ,x)
+             ))))
 
 ;; wip; doesn't unbind all the lambda heads
+;; unused
 (defun esm-undefine-hydra (hydra-key)
   (seq-map #'makunbound
            (esm-all-associated-variables (esm-dub-from-key hydra-key))))
