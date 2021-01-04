@@ -311,7 +311,6 @@ after the above filter has been applied (even if KEEP was nil)."
     ;; (should (not (null (seq-find (lambda (x) (esm--subhydra-or-nil (car ()))) foo))))
     ))
 
-
 
 ;;; General
 
@@ -1034,38 +1033,6 @@ customizations are in any case superfluous in our paradigm."
          (cl-loop for key in keys-to-hydraize
                   collect
                   (let ((stem (concat key " ")))
-                    (-cons* key
-                            (esm-dub-from-key key)
-                            (append (esm--specify-visible-heads stem)
-                                    (esm--specify-invisible-heads stem)
-                                    (esm--specify-extra-heads stem)))))
-         (cl-loop for key in keys-to-hydraize
-                  collect
-                  (let ((stem (concat key " ")))
-                    (-cons* key
-                            (concat (esm-dub-from-key key) "-nonum")
-                            (append (esm--specify-visible-heads
-                                     stem esm--hydra-keys-list-no-numbers)
-                                    (esm--specify-invisible-heads stem)
-                                    (esm--specify-extra-heads stem)))))))))
-
-    ;; (deferred:set-next it
-    ;;   (deferred:loop keys-to-hydraize ))
-
-    (deferred:nextc it
-      (lambda ()
-        (run-hooks 'esm-after-scan-bindings-hook)))
-
-    (deferred:error it
-      #'warn)))
-
-;; TODO: Figure out a test that doesn't need me to compare with a list thousands of sexps long
-(let ((keys-to-hydraize '("C-x a i" "M-o")))
-  (setq esm--requested-hydras
-        (append
-         (cl-loop for key in keys-to-hydraize
-                  collect
-                  (let ((stem (concat key " ")))
                     (cons (esm-dub-from-key key)
                           (append (esm--specify-visible-heads stem)
                                   (esm--specify-invisible-heads stem)
@@ -1077,22 +1044,53 @@ customizations are in any case superfluous in our paradigm."
                           (append (esm--specify-visible-heads
                                    stem esm--hydra-keys-list-no-numbers)
                                   (esm--specify-invisible-heads stem)
-                                  (esm--specify-extra-heads stem))))))))
+                                  (esm--specify-extra-heads stem)))))))))
 
-;; test
-(let ((x (car esm--requested-hydras)))
-  (esm--define-dire-hydra (car x) (cdr x)))
+    ;; (deferred:set-next it
+    ;;   (deferred:loop keys-to-hydraize ))
 
-;; test
-(cl-loop for x in esm--requested-hydras
-         collect (esm--define-dire-hydra (car x) (cdr x)))
+    (deferred:nextc it
+      (lambda ()
+        (run-hooks 'esm-after-scan-bindings-hook)))
+
+    (deferred:error it
+      #'warn)))
+
+;; Manual tests
+;; TODO: Figure out a test that doesn't need me to compare with a list thousands of sexps long
+;; (let ((keys-to-hydraize '("C-x a i" "M-o")))
+;;   (setq esm--requested-hydras
+;;         (append
+;;          (cl-loop for key in keys-to-hydraize
+;;                   collect
+;;                   (let ((stem (concat key " ")))
+;;                     (cons (esm-dub-from-key key)
+;;                           (append (esm--specify-visible-heads stem)
+;;                                   (esm--specify-invisible-heads stem)
+;;                                   (esm--specify-extra-heads stem)))))
+;;          (cl-loop for key in keys-to-hydraize
+;;                   collect
+;;                   (let ((stem (concat key " ")))
+;;                     (cons (concat (esm-dub-from-key key) "-nonum")
+;;                           (append (esm--specify-visible-heads
+;;                                    stem esm--hydra-keys-list-no-numbers)
+;;                                   (esm--specify-invisible-heads stem)
+;;                                   (esm--specify-extra-heads stem))))))))
+
+;; ;; test
+;; (let ((x (car esm--requested-hydras)))
+;;   (esm--define-dire-hydra (car x) (cdr x)))
+
+;; ;; test
+;; (cl-loop for x in esm--requested-hydras
+;;          collect (esm--define-dire-hydra (car x) (cdr x)))
 
 
 ;;;; Main
 
 ;;;###autoload
 (define-minor-mode escape-modality-mode
-  "Instruct Deianira-mode to create root hydras. "
+  "Bind root hydras. "
   nil
   " ESM"
   `((,(kbd "<f35>") . esm-control/body)
@@ -1148,6 +1146,7 @@ setting makes some code run a little faster.")
 (define-prefix-command 'esm-root-meta-map)
 (define-prefix-command 'esm-root-super-map)
 
+;; TODO: put this in the mode command
 (eval '(esm-define-stem-hydra "M-"))
 (eval '(esm-define-stem-hydra "s-"))
 (eval '(esm-define-stem-hydra "C-"))
