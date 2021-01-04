@@ -18,6 +18,10 @@
 
 ;; (require 'ert)
 
+;; (key-description (kbd ...)) can get you far, but it refuses to normalize
+;; some aspects when <> are involved, and I need <> to wrap leaf only. Compare:
+;; (key-description (kbd "s-S-M-C-H-A-4"))
+;; (key-description (kbd "s-S-M-C-H-A-<return>"))
 (defun esm-test-keydesc-handling ()
   (let ((errors 0)
         (problematic-key-descriptions
@@ -36,6 +40,7 @@
            ("A-TAB"        "A-TAB"          "esm-ATAB"         "TAB")
            ("C-<M-return>" "C-M-<return>"   "esm-CM<return>"   "<return>")
            ("<C-M-return>" "C-M-<return>"   "esm-CM<return>"   "<return>")
+           ;; ("s-S-M-H-C-A-<return>" "A-C-H-M-S-s-<return>" "esm-ACHMSs<return>" "<return>")
            )))
     (dolist (x problematic-key-descriptions t)
       (seq-let (raw normalized squashed leaf) x
@@ -43,3 +48,4 @@
                      (string= squashed (esm-dub-from-key normalized))
                      (string= leaf (esm-get-leaf normalized)))
           (error (concat "Keydesc handling failed for test case: " raw)))))))
+(esm-test-keydesc-handling)

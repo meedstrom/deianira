@@ -30,7 +30,8 @@
         (setq-local truncate-lines t)
         buf))))
 
-;; Allows cmd to be a keymap, this is intended
+;; Return t if it is worthwhile to carry over the key's current command to some
+;; other key. Keep in mind it still allows cmd to be a keymap.
 (defun esm-of-interest (cmd)
   (not (member cmd '(self-insert-command
                      nil
@@ -119,32 +120,5 @@ over `esm-all-keys-on-keyboard' for most purposes if you don't like Shift.")
 
 (defvar esm-hydra-keys-nonum (esm-hydra-keys-nonum))
 
-
-;; "We've not found a keyboard with more than 35 function keys total."
-;; -- /usr/include/X11/keysymdef.h
-;; i.e. F35 is the highest defined in upstream keysymdef.h.
-(defvar esm-xmodmap-rules
-  '(;; necessary for xcape to send them
-    "keycode any = F35"
-    "keycode any = F34"
-    "keycode any = F33"
-    "keycode any = F32"
-    "keycode any = F31"
-    "keycode any = F30"
-    "keycode any = F29"
-    "keycode any = F28"))
-
-(defvar esm-xcape-rules
-  '(
-    ;; "Alt_L=F34"
-    ;; "Alt_R=F34"
-    "Control_L=F35"
-    "Control_R=F35"
-    ;; "Hyper_L=F34"
-    ;; "Hyper_R=F34"
-    "Meta_L=F34"
-    "Meta_R=F34"
-    "Super_L=F33"
-    "Super_R=F33"))
 
 (provide 'escape-modality-common)

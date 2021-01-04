@@ -1,4 +1,4 @@
-;;; escape-modality-deianira.el -- hydra everywhere -*- lexical-binding: t; -*-
+;;; escape-modality-deianira.el -- Hydra everywhere -*- lexical-binding: t; -*-
 ;; Copyright (C) 2019-2020 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -14,6 +14,8 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
 ;; warnings: odd behavior if a head that calls another hydra is not set to exit
 
 ;;; Code:
@@ -21,10 +23,9 @@
 (require 'hydra)
 (require 'deferred)
 (require 'dash)
-(require 'cl-lib)
-(require 'trie)
+;; (require 'cl-lib)
 (require 'escape-modality-common)
-(eval-when-compile (require 'subr-x));; string-join, if-let
+(eval-when-compile (require 'subr-x))
 
 ;;;;;;;;;;;;;;;
 ;;; Micro level
@@ -122,7 +123,7 @@ filter has been applied."
                                 nil t)
         (push (cons (match-string 1) (match-string 2))
               result)))
-    ;; Shallower prefixes should be hydraized first
+    ;; Hydraize shallower prefixes before longer (implying nested) ones
     ;; (seq-sort-by (lambda (x) (string-width (car x))) #'< result)
     result
     ))
@@ -260,9 +261,9 @@ make a visibly blank spot in a hydra for hotkeys that are unbound."
     " "))
 
 (defun esm-head-exit (stem leaf &optional exit-almost-never?)
-  (cond ((member (concat stem leaf) esm-quitters) '(:exit t))
+  (cond ((esm-is-a-subhydra stem leaf) '(:exit t)) ;; important
+        ((member (concat stem leaf) esm-quitters) '(:exit t))
         ((member (concat stem leaf) esm-noquitters) '(:exit nil))
-        ((esm-is-a-subhydra stem leaf) '(:exit t)) ;; important
         ((esm-is-unbound stem leaf) '(:exit t))
         (exit-almost-never? '(:exit nil))
         (t '()))) ;; defer to hydra's default behavior
@@ -289,7 +290,7 @@ leaf on STEM.
 Optional argument EXIT controls whether the hydra's heads exit by
 default (overridden case-by-case by `esm-quitters' or `esm-noquitters').
 Optional argument KEYS is a string specifying which keys to
-display in the hydra hint, defaulting to the value of
+display in the hydra hint (see `hydra'), defaulting to the value of
 `esm-hydra-keys'."
   (declare (indent defun))
   `(defhydra ,name (nil nil :columns 10 :exit ,exit
@@ -322,8 +323,6 @@ display in the hydra hint, defaulting to the value of
          (title        (intern x))
          (nonum-title  (intern (concat x "-nonum")))
          (nonum-keymap (intern (concat x "-nonum/keymap")))
-         ;; (hint         (intern (concat x "/hint")))
-         ;; (heads        (intern (concat x "/heads")))
          (body         (intern (concat x "/body")))
          (keymap       (intern (concat x "/keymap")))
          (stem         (concat key " "))
@@ -347,36 +346,74 @@ display in the hydra hint, defaulting to the value of
              (cons ,key ,x)
              ))))
 
+(defun esm-define-stem-hydra (key)
+  "For now just used to create root hydras, but could in theory
+be used to create a prefix hydra for non-traditional meanings of
+\"prefix key\" -- for example, a hydra for all keys starting with
+`C-x C-'."
+  (let* ((x            (esm-dub-from-key key))
+         (title        (intern x))
+         (nonum-title  (intern (concat x "-nonum")))
+         (nonum-keymap (intern (concat x "-nonum/keymap")))
+         (body         (intern (concat x "/body")))
+         (keymap       (intern (concat x "/keymap")))
+         (stem         key))
+    (eval `(progn
+             (esm-define-many-headed-hydra ,title       ,stem ,key)
+             (esm-define-many-headed-hydra ,nonum-title ,stem ,(concat "\n\n" key) nil ,body nil ,esm-hydra-keys-nonum)
+             ;; (define-key ,keymap "u" #'esm-universal-arg)
+             (define-key ,nonum-keymap "u" #'hydra--universal-argument)
+             (dotimes (i 10)
+               (let ((key (kbd (int-to-string i))))
+                 (when (eq (lookup-key ,keymap key) 'hydra--digit-argument)
+                   (define-key ,keymap key nil))))
+             (cons ,key ,x)
+             ))))
+
 (defvar esm-after-scan-bindings-hook)
 
-(defvar esm-last-bindings)
+(defvar esm-last-bindings nil)
 
-(defvar esm-last-bindings-for-external-use)
+(defvar esm-last-bindings-for-external-use nil)
 
 (defvar esm-new-or-rebound-keys)
 
-(defun esm--key-contains-ctl (cell)
-  (string-match (rx "C-") (car cell)))
+(defun esm--key-contains-ctl (keydesc)
+  (string-match "C-" keydesc))
 
-(defun esm--key-starts-with-ctl (cell)
-  (string-match (rx line-start "C-") (car cell)))
+(defvar esm--modifier-regexp (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-")))
 
-(defun esm--key-seq-contains-multi-chords ())
+;; we can assume keydesc was already normalized in terms of <>.
+(defun esm--key-contains-multi-chords (keydesc)
+  (string-match (rx (= 2 (regexp esm--modifier-regexp)))
+                keydesc))
 
-(defun esm--key-seq-contains-different-modifiers ())
+;; could probs be programmed better
+(defun esm--key-seq-mixes-modifiers (keydesc)
+  (if-let ((k keydesc)
+           (mods '("A-" "C-" "H-" "M-" "S-" "s-"))
+           (first-match-pos (string-match esm--modifier-regexp k))
+           (caught-mod (substring k first-match-pos (+ 2 first-match-pos)))
+           (now-verboten (-difference mods (list caught-mod))))
+      (string-match (regexp-opt now-verboten) k)))
 
+(defun esm--combined-filter (cell)
+  (let ((keydesc (car cell)))
+    (not (or (esm--key-contains-ctl keydesc)
+             (esm--key-contains-multi-chords keydesc)
+             (esm--key-seq-mixes-modifiers keydesc)))))
 
 (defun esm-generate-hydras-async ()
   (deferred:$
     (deferred:next
       (lambda ()
-        (esm-current-bindings (rx bol (regexp (regexp-opt '("C-" "s-" "M-"))))
-                              (rx "ESC"))))
+        (esm-current-bindings (rx bol (regexp esm--modifier-regexp))
+                              (rx (or "ESC" "C-")))))
 
     (deferred:nextc it
       (lambda (curr)
         (setq esm-current-bindings-for-external-use curr)
-        (seq-remove #'esm--key-contains-ctl curr)))
+        (seq-remove #'esm--combined-filter curr)))
 
     (deferred:nextc it
       (lambda (filtered-curr)
