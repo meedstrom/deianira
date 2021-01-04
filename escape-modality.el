@@ -38,7 +38,7 @@
 (require 'deferred)
 (require 'dash)
 (require 's)
-(require 'alert)
+(require 'hydra)
 
 
 ;;;; X11
@@ -232,6 +232,8 @@ already been done."
 ;;; Keyboard scanning
 
 ;; Inspired by which-key--get-current-bindings. Thanks!
+;; Think this code is weird? It's this way because the C function
+;; `describe-buffer-bindings' is the only way to get this information.
 (defun esm--current-bindings (&optional keep flush)
   "Get the list of all currently active bindings.
 This ignores those masked by other keymaps, returning only the
@@ -242,8 +244,8 @@ be left at nil to keep everything.
 
 Optional argument FLUSH is a regexp describing keys to discard
 after the above filter has been applied (even if KEEP was nil)."
-  (let ((result '())
-        (buffer (current-buffer))
+  (let ((result nil)
+        (that-buffer (current-buffer))
         (ignore-keys (eval-when-compile
                        (regexp-opt '("mouse-" "remap" "scroll-bar" "select-"
                                      "switch-" "help" "-state" "which-key-"
@@ -259,7 +261,7 @@ after the above filter has been applied (even if KEEP was nil)."
                                          "Input decoding map translations")))))
     (with-temp-buffer
       (setq-local indent-tabs-mode t)
-      (describe-buffer-bindings buffer)
+      (describe-buffer-bindings that-buffer)
       (goto-char (point-min))
       (flush-lines ignore-bindings)
       (flush-lines (rx (regexp ignore-sections)
@@ -269,10 +271,10 @@ after the above filter has been applied (even if KEEP was nil)."
       (flush-lines (rx bol (* nonl) ":" eol))
       (flush-lines (rx ""))
       (flush-lines (rx " .. "))
-      (while (re-search-forward (rx "\n\t") nil t)
+      (while (search-forward "\n\t" nil t)
         (replace-match ""))
       (goto-char (point-min))
-      (while (re-search-forward (rx "<" (group (or "A-" "C-" "H-" "M-" "S-" "s-")))
+      (while (re-search-forward (rx "<" (group (regexp esm--modifier-regexp)))
                                 nil t)
         (replace-match "\\1<")
         (goto-char (point-min)))
@@ -287,14 +289,6 @@ after the above filter has been applied (even if KEEP was nil)."
     ;; (seq-sort-by (lambda (x) (string-width (car x))) #'< result)
     result
     ))
-
-(defvar esm--after-scan-bindings-hook)
-
-(defvar esm--last-filtered-bindings nil)
-
-(defvar esm--last-bindings nil)
-
-(defvar esm--new-or-rebound-keys)
 
 (ert-deftest test-esm--current-bindings ()
   (let ((foo (esm--current-bindings)))
@@ -698,7 +692,7 @@ make a visible blank spot in a hydra for hotkeys that are unbound."
 
 (defun esm-head (stem leaf)
   "Return a \"head\" specification, in other words a list in the
-form (KEY COMMAND HINT EXIT) as needed in `defhydra'. "
+form (KEY COMMAND HINT EXIT) as needed in `defhydra'."
   `( ,(esm-head-key stem leaf) ,(esm-head-cmd stem leaf) ,(esm-head-hint stem leaf)
      ,@(esm-head-exit stem leaf)))
 
@@ -709,7 +703,6 @@ form (KEY COMMAND HINT EXIT) as needed in `defhydra'. "
 (defun esm-head-invisible-self-inserting (_stem leaf)
   `( ,leaf self-insert-command nil :exit t))
 
-;; TODO: Update docstrings in later macros about the type of KEYS
 (defun esm--specify-visible-heads (stem &optional keys)
   (cl-loop for leaf in (or keys esm--hydra-keys-list)
            collect (esm-head stem leaf)))
@@ -859,9 +852,15 @@ be used to create a prefix hydra for non-traditional meanings of
 
 ;;; Async worker
 
+;; Persistent variables have been helpful for debugging.
+(defvar esm--after-scan-bindings-hook nil)
+(defvar esm--last-filtered-bindings nil)
+(defvar esm--last-bindings nil)
+(defvar esm--new-or-rebound-keys nil)
 (defvar esm--live-hydras nil)
-
 (defvar esm--requested-hydras nil)
+(defvar esm--defunct-bindings nil)
+(defvar esm--defunct-hydras nil)
 
 (defun esm--combined-filter (cell)
   (declare (pure t) (side-effect-free t))
@@ -883,11 +882,10 @@ be used to create a prefix hydra for non-traditional meanings of
        (-remove #'esm--combined-filter)
        (setq esm--current-filtered-bindings)))
 
-;; the bug is:
-;; we need to actually check esm--live-hydras
-;; or at least populate a seed
+;; NOTE: We may still have a bug in not checking esm--live-hydras at all after
+;;      the initial seeding. I'm not sure.
 (defun esm--set-last-bindings-stage-2 (CURRENT-FILTERED-BINDINGS)
-  (when esm-debug (alert "Updating new-or-rebound-keys" :severity 'trivial))
+  (when esm-debug (message "Updating new-or-rebound-keys"))
   (setq esm--defunct-bindings (-difference esm--last-filtered-bindings
                                            CURRENT-FILTERED-BINDINGS))
   (setq esm--new-or-rebound-keys
@@ -900,25 +898,16 @@ be used to create a prefix hydra for non-traditional meanings of
 ;;  (esm--set-last-bindings-stage-2
 ;;   (esm--set-last-bindings-stage-1 esm--last-bindings))
 
-;; (esm--specify-hydras (--filter (keymapp (key-binding (kbd it))) ;; note: not the same `it'
-;;                                (-map #'car esm--last-bindings)))
+(defun esm--set-last-bindings-stage-3 ()
+  "Check for defunct hydras (slated for oblivion or redefinition)."
+  (when esm-debug (message "Check for defunct hydras (slated for oblivion or redefinition)."))
+  (setq esm--defunct-hydras (-intersection (-map #'car esm--live-hydras)
+                                           (-map #'car esm--defunct-bindings))))
 
-;; (esm--set-last-bindings-stage-3 (esm--set-last-bindings-stage-2 (esm--set-last-bindings-stage-1 (setq esm--last-bindings
-;;               (esm--current-bindings (rx bol (regexp esm--modifier-regexp))
-;;                                      ;; (rx (or "ESC" "C-"))
-;;                                      (rx (or "ESC")))))))
-
-(defun esm--set-last-bindings-stage-3 (defunct-bindings)
-  (when esm-debug
-    (alert "Check for defunct hydras (slated for oblivion or redefinition)."
-           :severity 'trivial))
-  (-intersection (-map #'car esm--live-hydras)
-                 (-map #'car defunct-bindings)))
-
-(defun esm--set-last-bindings-stage-4 (defunct-hydras)
-  (alert "Unlist defunct hydras" :severity 'trivial)
+(defun esm--set-last-bindings-stage-4 ()
+  (when esm-debug (message "Unlist defunct hydras"))
   (setq esm--live-hydras
-        (seq-remove (lambda (x) (member (car x) defunct-hydras))
+        (seq-remove (lambda (x) (member (car x) esm--defunct-hydras))
                     esm--live-hydras)))
 
 ;; when I want the package to be more modular, this should sit on a hook
@@ -941,8 +930,35 @@ to for performance."
            (--map (s-replace "\\" "\\\\" it))
            (--map (cons (cons it nil) t))
            (setq which-key-replacement-alist))
-    (alert "escape-modality: A variable is unexpectedly empty."
-           :severity 'moderate)))
+    (message "escape-modality: A variable is unexpectedly empty.")))
+
+(defun esm--specify-hydra-pair (key &optional as-is)
+  (let ((stem (if as-is key (concat key " "))))
+    (list
+     (cons (esm-dub-from-key key)
+           (append (esm--specify-visible-heads stem)
+                   (esm--specify-invisible-heads stem)
+                   (esm--specify-extra-heads stem)))
+     (cons (concat (esm-dub-from-key key) "-nonum")
+           (append (esm--specify-visible-heads
+                    stem esm--hydra-keys-list-nonum)
+                   (esm--specify-invisible-heads stem)
+                   (esm--specify-extra-heads stem))))))
+
+(defun esm--specify-hydras* (keys-to-hydraize)
+  "Specify the set of hydras now needing to be (re-)defined.
+Return an alist where the car is the name of the hydra as a
+string and the remainder are head specifications.  Also set
+`esm--requested-hydras' for your inspection.
+
+Argument KEYS-TO-HYDRAIZE is a list of key descriptions such as
+those in `esm--new-or-rebound-keys'."
+  (setq esm--requested-hydras ;; (-mapcat #'list
+        (append (esm--specify-hydra-pair "C-" t)
+                (esm--specify-hydra-pair "M-" t)
+                (esm--specify-hydra-pair "s-" t)
+                (cl-loop for key in keys-to-hydraize
+                         append (esm--specify-hydra-pair key)))))
 
 ;; NOTE: See tests in the manual tests file
 (defun esm--specify-hydras (keys-to-hydraize)
@@ -971,7 +987,7 @@ those in `esm--new-or-rebound-keys'."
                                   (esm--specify-invisible-heads stem)
                                   (esm--specify-extra-heads stem))))))))
 
-;; The magic spell that runs on every hydra invocation and buffer change
+;; The magic spell that runs the entire damn codebase
 (defun esm-generate-hydras-async ()
   "Regenerate hydras to match the local map."
   (deferred:$
@@ -990,7 +1006,7 @@ those in `esm--new-or-rebound-keys'."
     (deferred:nextc it
       #'esm--fix-which-key)
 
-    ;; Re-cache settings in case of changed circumstances or user options
+    ;; Re-cache settings in case of changed frame parameters or user options
     (deferred:nextc it
       (lambda ()
         (setq esm--hydra-keys-nonum (esm--hydra-keys-nonum))
@@ -1008,10 +1024,10 @@ those in `esm--new-or-rebound-keys'."
       #'esm--specify-hydras)
 
     (deferred:nextc it
-      (lambda (hydra-specs)
-        (cl-loop for x in hydra-specs
-                 do (push (esm--define-dire-hydra (car x) (cdr x))
-                          esm--live-hydras))))
+      (lambda (hydra-blueprints)
+        (cl-loop for x in hydra-blueprints
+                 do (cl-pushnew (esm--define-dire-hydra (car x) (cdr x))
+                                esm--live-hydras))))
 
     (deferred:nextc it
       (lambda ()
@@ -1023,11 +1039,18 @@ those in `esm--new-or-rebound-keys'."
 
 ;;;; Main
 
-;; Some bug with C2 and digit arguments rn.
+;; Testing.
+;; Bug with digit arguments is b/c we are not redefining the root hydra.
+
 ;; Seed initial hydras.
-;; (cl-loop for x in (esm--specify-hydras (--filter (keymapp (key-binding (kbd it))) (esm--get-relevant-bindings)))
-;;          do (push (esm--define-dire-hydra (car x) (cdr x))
-;;                   esm--live-hydras))
+;; TODO: Faster init
+(unless t
+  (cl-loop for x in (esm--specify-hydras  (--filter (keymapp (key-binding (kbd it)))
+                                                          (-map #'car (esm--get-relevant-bindings))))
+           do (push (esm--define-dire-hydra (car x) (cdr x))
+                    esm--live-hydras)))
+
+
 
 ;;;###autoload
 (define-minor-mode escape-modality-mode
@@ -1076,9 +1099,9 @@ setting makes some code run a little faster.")
 (define-prefix-command 'esm-root-super-map)
 
 ;; TODO: put this in the mode command
-(eval '(esm-define-stem-hydra "M-"))
-(eval '(esm-define-stem-hydra "s-"))
-(eval '(esm-define-stem-hydra "C-"))
+(eval '(esm-define-stem-hydra "M-") t)
+(eval '(esm-define-stem-hydra "s-") t)
+(eval '(esm-define-stem-hydra "C-") t)
 
 (provide 'escape-modality)
 ;;; escape-modality.el ends here
