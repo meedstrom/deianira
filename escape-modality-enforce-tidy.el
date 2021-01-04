@@ -137,19 +137,23 @@ already been done."
 ;;                        (define-key global-map (kbd newkey) def))))
 ;;               global-map))
 
-;; TODO: Do this continuously and not only on global-map
+;; TODO: Do this continuously over time
+;; TODO: Do this not only on global-map
 (defun esm-super-from-ctl (map)
   (map-keymap (lambda (ev def)
                 (let* ((case-fold-search nil)
                        (key (key-description (list ev)))
                        (newkey (replace-regexp-in-string
                                 (rx word-start "C" word-end) "s" key t)))
-                  (and (esm-of-interest def)
-                       (not (equal key newkey))
-                       (define-key map (kbd newkey) def)))
+                  (when (and (esm-of-interest def)
+                             (not (equal key newkey))) ;; Don't proceed for those keys that didn't contain C- in the first place, e.g. M-f.
+                    (define-key map (kbd newkey) def)))
                 (when (keymapp def)
-                  (esm-super-from-ctl def)))
-              map))
+                  (esm-super-from-ctl def))) ;; recurse
+              map)
+  ;; is this the thing that makes C-g need two presses sometimes?
+  (define-key key-translation-map (kbd "s-g") (kbd "C-g"))
+  )
 
 
 (provide 'escape-modality-enforce-tidy)
