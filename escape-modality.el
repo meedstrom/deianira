@@ -1,4 +1,4 @@
-;;; escape-modality.el --- Modifier-free pseudo-modal human-Emacs interface -*- lexical-binding: t; -*-
+;;; escape-modality.el --- Modifier-free pseudo-modal input -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2018-2021 Martin Edström
 
@@ -33,6 +33,7 @@
 (require 'subr-x)
 (require 'cl-lib)
 (require 'ert)
+(require 'help)
 
 ;; external dependencies
 (require 'deferred)
@@ -100,7 +101,7 @@
            (process-live-p esm-xcape-process)
            (kill-process esm-xcape-process))
       (setq esm-xcape-process
-            (start-process "xcape" "*xcape*" "xcape" "-d" "-e" rules))
+            (start-process "xcape" "*xcape*" "nice" "-20" "xcape" "-d" "-e" rules))
       (setq esm-xcape-log-cleaner (run-with-timer 300 300 #'esm-clean-xcape-log)))))
 
 (defun esm-xkbset-enable-sticky-keys ()
@@ -112,36 +113,25 @@
 
 ;;; Enforce tidy
 
+;; (help--binding-locus (kbd "C-x a") nil)
+
 (defun esm-super-translate-to-ctl-meta ()
   (dolist (key esm-all-keys-on-keyboard)
     (define-key key-translation-map
       (kbd (concat "s-" key)) (kbd (concat "C-" key)))))
 
-(defun esm-flatten-keymap (keymap)
-  ;; (esm-backup-keymap keymap)
-  (map-keymap
-   (lambda (ev def)
-     (when (keymapp def)
-       (esm-flatten-keymap def)) ;; recurse
-     (when (and (commandp def)
-                (esm--of-interest-p def))
-       (let* ((keydesc (key-description (list ev)))
-              (leaf (esm-get-leaf keydesc)))
-         (when (not (equal keydesc leaf))
-           (define-key keymap ev (lookup-key keymap (kbd leaf)))))))
-   keymap))
-
 ;; Generalized flatten-ctl-x
 (defun esm-restem-all-leaves (here lower-stem upper-stem)
   "Duplicate bindings on UPPER-STEM to also exist on LOWER-STEM.
-Where they conflict, LOWER-STEM is overridden, hence the
-name (inspired by overlayfs). HERE refers to the keymap such as
-global-map.  Typical use: (esm-restem-all-leaves global-map \"C-x
-\" \"C-x C-\")"
+Where they conflict, LOWER-STEM is overridden. The naming is
+inspired by overlayfs, which do a similar thing with filesystem
+mounts. HERE refers to the keymap such as global-map.  Typical
+use: (esm-restem-all-leaves global-map \"C-x \" \"C-x C-\")"
   (dolist (leaf (esm--hydra-keys-in-a-list))
     (esm-restem here leaf lower-stem upper-stem)))
 
 (defun esm-restem (here leaf new-stem reference-stem)
+  "Keeping LEAF, change stem."
   (let ((ref-cmd (lookup-key here (kbd (concat reference-stem leaf)))))
     (when (esm--of-interest-p ref-cmd)
       (define-key here (kbd (concat new-stem leaf))
@@ -231,9 +221,10 @@ already been done."
 
 ;;; Keyboard scanning
 
+;; Think this function is hairy and unnecessary? It's this way because the C
+;; function `describe-buffer-bindings' is the only way to get this information.
+;;
 ;; Inspired by which-key--get-current-bindings. Thanks!
-;; Think this code is weird? It's this way because the C function
-;; `describe-buffer-bindings' is the only way to get this information.
 (defun esm--current-bindings (&optional keep flush)
   "Get the list of all currently active bindings.
 This ignores those masked by other keymaps, returning only the
@@ -243,15 +234,17 @@ Optional argument KEEP is a regexp describing keys to keep. Can
 be left at nil to keep everything.
 
 Optional argument FLUSH is a regexp describing keys to discard
-after the above filter has been applied (even if KEEP was nil)."
+after the above filter has been applied (even if KEEP was nil).
+You should pass a regexp that will catch \"ESC\" because a lot of
+functions in the library aren't really ESC-aware."
   (let ((result nil)
-        (that-buffer (current-buffer))
+        (that-buffer (current-buffer)) ;; since we go to a temp buffer
         (ignore-keys (eval-when-compile
                        (regexp-opt '("mouse-" "remap" "scroll-bar" "select-"
                                      "switch-" "help" "-state" "which-key-"
                                      "-corner" "-divider" "-edge" "header-"
-                                     "mode-line" "tab-" "vertical-line" "frame"
-                                     ))))
+                                     "mode-line" "tab-" "vertical-line"
+                                     "frame"))))
         (ignore-bindings (eval-when-compile
                            (regexp-opt '("self-insert-command" "ignore"
                                          "ignore-event" "company-ignore"))))
@@ -283,12 +276,8 @@ after the above filter has been applied (even if KEEP was nil)."
       (when flush (flush-lines flush))
       (while (re-search-forward (rx (group (+? nonl)) (+ "	") (group (+ nonl)))
                                 nil t)
-        (push (cons (match-string 1) (match-string 2))
-              result)))
-    ;; Hydraize shallower prefixes before longer (implying nested) ones
-    ;; (seq-sort-by (lambda (x) (string-width (car x))) #'< result)
-    result
-    ))
+        (push (cons (match-string 1) (match-string 2)) result)))
+    result))
 
 (ert-deftest test-esm--current-bindings ()
   (let ((foo (esm--current-bindings)))
@@ -298,6 +287,9 @@ after the above filter has been applied (even if KEEP was nil)."
 
 
 ;;; Background facts
+
+(defconst esm--modifier-regexp
+  (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-")))
 
 (defconst esm-all-keys-on-keyboard-except-shifted-symbols
   (append
@@ -366,7 +358,7 @@ from the frame width.")
 (defvar esm--colwidth (esm--colwidth)
   "Width of hydra hint.
 You should prefer to call the function `esm--colwidth' in case of
-frame or font changes, rather than consult this variable.")
+frame or font changes.")
 
 (defvar esm-quitters '(;;"C-q"
                        "C-s" "C-g" "s-s" "s-g" "C-u" "M-x" "M-u" "s-u" "C-2"
@@ -378,17 +370,15 @@ frame or font changes, rather than consult this variable.")
                            "C-c C-c" ;;testing
                            ))
 
-(defvar esm-exit-by-default t)
+(defvar esm-exit-by-default nil)
 
 
 ;;; Keydesc handling
+;; If it's not a pure function, it probably doesn't belong here.
 
 (defun esm--key-contains-ctl (keydesc)
   (declare (pure t) (side-effect-free t))
   (string-match-p "C-" keydesc))
-
-(defconst esm--modifier-regexp
-  (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-")))
 
 (defun esm--key-contains-multi-chords (keydesc)
   (declare (pure t) (side-effect-free t))
@@ -404,14 +394,15 @@ frame or font changes, rather than consult this variable.")
 ;; could probs be programmed better
 ;; does not catch capitals FWIW
 (defun esm--key-seq-mixes-modifiers (keydesc)
-  (if-let* ((k keydesc)
-            (mods '("A-" "C-" "H-" "M-" "S-" "s-"))
-            (first-match-pos (string-match-p esm--modifier-regexp k))
-            (caught-mod (substring k first-match-pos (+ 2 first-match-pos)))
+  (declare (pure t) (side-effect-free t))
+  ;; we use our own regexp instead of esm--modifier-regexp so it is always
+  ;; synced with how we define "mods" here
+  (if-let* ((mods '("A-" "C-" "H-" "M-" "S-" "s-"))
+            (regexp (eval-when-compile (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-"))))
+            (first-match-pos (string-match-p regexp keydesc))
+            (caught-mod (substring keydesc first-match-pos (+ 2 first-match-pos)))
             (now-verboten (-difference mods (list caught-mod))))
-      (string-match-p (eval `(rx (or ,@now-verboten)) t) k)
-      ;; (string-match-p (regexp-opt now-verboten) k)
-      ))
+      (string-match-p (eval `(rx (or ,@now-verboten)) t) keydesc)))
 
 (defun esm--of-interest-p (cmd)
   "Return t if CMD is worth carrying over to another key.
@@ -424,13 +415,14 @@ It does not fail if CMD is a keymap, check that separately."
                      company-ignore))))
 
 (defun esm--get-leaf (keydesc)
-    (->> keydesc
-         (s-split (rx space))
-         (-last-item)
-         (esm--normalize-trim-segment)
-         (esm--normalize-get-atoms)
-         (esm--normalize-wrap-leaf-maybe)
-         (-last-item)))
+  (declare (pure t) (side-effect-free t))
+  (->> keydesc
+       (s-split (rx space))
+       (-last-item)
+       (esm--normalize-trim-segment)
+       (esm--normalize-get-atoms)
+       (esm--normalize-wrap-leaf-maybe)
+       (-last-item)))
 
 (defun esm--normalize-trim-segment (x)
   (declare (pure t) (side-effect-free t))
@@ -482,22 +474,27 @@ unmodified, else return nil."
 (defun esm-dub-from-key (keydesc)
   "Example: If KEY is the string \"C-x a\", return \"esm-Cxa\"."
   (declare (pure t) (side-effect-free t))
-  (if (member keydesc '("C-" "M-" "s-" "H-" "A-"))
-      (concat "esm-" (cond ((string= keydesc "C-") "control")
-                           ((string= keydesc "M-") "meta")
-                           ((string= keydesc "s-") "super")
-                           ((string= keydesc "H-") "hyper")
-                           ((string= keydesc "A-") "alt")))
-    ;; else
-    (let ((squashed (string-join (split-string keydesc (rx (any " -"))))))
-      (if (string-match (rx "-" eol) keydesc)
-          (concat "esm-" squashed "-")
-        (concat "esm-" squashed)))))
+  ;; (if (member keydesc '("C-" "M-" "s-" "H-" "A-"))
+  ;;     (concat "esm-" (cond ((string= keydesc "C-") "control")
+  ;;                          ((string= keydesc "M-") "meta")
+  ;;                          ((string= keydesc "s-") "super")
+  ;;                          ((string= keydesc "H-") "hyper")
+  ;;                          ((string= keydesc "A-") "alt")))
+  ;; else
+  (let ((squashed (string-join (split-string keydesc (rx (any " -"))))))
+    (if (string-match (rx "-" eol) keydesc)
+        (if (= 2 (length keydesc))
+            (concat "esm-" squashed) ;; C-, M-, s-
+          (concat "esm-" squashed "-")) ;; leaf is -
+      (concat "esm-" squashed))))
 
-;; Performant alternative to the old method (= 1 (esm--key-seq-steps x)).
 (defun esm--key-seq-steps=1 (keydesc)
   (declare (pure t) (side-effect-free t))
   (not (string-match-p " " keydesc)))
+
+(defun esm--key-seq-split (keydesc)
+  (declare (pure t) (side-effect-free t))
+  (split-string keydesc " "))
 
 (defun esm--corresponding-hydra (stem leaf)
   (declare (pure t) (side-effect-free t))
@@ -505,6 +502,7 @@ unmodified, else return nil."
            (esm-dub-from-key (esm--normalize (concat stem leaf)))
            "/body")))
 
+;; TODO: for the root hydra, backspace should just exit
 (defun esm--get-parent (stem &optional _leaf)
   "Get the parent of the hydra specified by STEM.
 E.g. when STEM is \"C-x a \" then return the value of
@@ -521,6 +519,30 @@ E.g. when STEM is \"C-x a \" then return the value of
         ;; FIXME: go up one level, i.e .return esm-Cx/body, not esm-Cxa/body.
         (esm--corresponding-hydra stem ""))
     nil))
+
+(defun esm--are-keymaps (keys)
+  (declare (pure t) (side-effect-free t))
+  (let* ((foo (--filter (keymapp (key-binding (kbd it)))
+                        keys))
+         ;; Special case to include the root maps if they need updating, since
+         ;; the above won't catch them
+         (roots (list (when (--find (s-starts-with-p "C-" it) keys)
+                        "C-")
+                      (when (--find (s-starts-with-p "M-" it) keys)
+                        "M-")
+                      (when (--find (s-starts-with-p "s-" it) keys)
+                        "s-")))
+         (all (-non-nil (append foo roots))))
+    ;; Sort by length to avail the most relevant hydras to the user soonest.
+    (when all
+      (seq-sort-by #'esm--key-seq-steps-length #'< all))))
+
+;; tests
+;; (esm--are-keymaps '("C-x a" "C-M-s-f" "M-c C-o" "M-g"))
+
+(defun esm--key-seq-steps-length (keydesc)
+  (declare (pure t) (side-effect-free t))
+  (length (esm--key-seq-split keydesc)))
 
 (ert-deftest keydesc-handling-1 ()
   (should (esm--key-seq-mixes-modifiers "C-h M-o"))
@@ -554,7 +576,7 @@ E.g. when STEM is \"C-x a \" then return the value of
   (should-not (equal (esm--normalize-wrap-leaf-maybe '("C" "M" "f")) '("C" "M" "<f>")))
   (should (equal (esm--normalize-build-segments '("C" "M" "-")) "C-M--")))
 
-(ert-deftest keydesc-handling ()
+(ert-deftest keydesc-handling-2 ()
   (let ((problematic-key-descriptions
          '(;; raw          normalized       squashed           leaf    1step?
            ("C-x 8 RET"    "C-x 8 <RET>"    "esm-Cx8<RET>"     "<RET>"  nil  )
@@ -648,7 +670,7 @@ you want to be able to type nccnccnccncc."
   (not (esm--is-unbound stem leaf)))
 
 
-;;; Hydra maker
+;;; Hydra specifier
 
 (defun esm-head-cmd (stem leaf)
   (cond ((not (esm--of-interest-p (esm-cmd stem leaf)))
@@ -659,7 +681,7 @@ you want to be able to type nccnccnccncc."
          #'esm-cc-cc)
         ((string= (concat stem leaf) "C-g") ;; TODO: don't check key, check if the binding is keyboard-quit.
          #'keyboard-quit)
-        ((eq 'universal-argument (esm-cmd stem leaf))
+        ((eq #'universal-argument (esm-cmd stem leaf))
          #'esm-universal-arg)
         (t `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
 
@@ -684,6 +706,7 @@ make a visible blank spot in a hydra for hotkeys that are unbound."
 
 (defun esm-head-exit (stem leaf &optional exit-almost-never-p)
   (cond ((esm--subhydra-or-nil stem leaf) '(:exit t)) ;; important
+        ;; ((eq #'universal-argument (esm-cmd stem leaf)) '(:exit nil))
         ((member (concat stem leaf) esm-quitters) '(:exit t))
         ((member (concat stem leaf) esm-noquitters) '(:exit nil))
         ((esm--is-unbound stem leaf) '(:exit t))
@@ -709,7 +732,9 @@ form (KEY COMMAND HINT EXIT) as needed in `defhydra'."
 
 (defun esm--specify-invisible-heads (stem)
   (append (cl-loop for leaf in '("<left>" "<right>" "<up>" "<down>"
-                                 "<SPC>" "=" "\\" "'" "`")
+                                 "<SPC>" "=" "\\" "'" "`"
+                                 "<f1>" "<f2>" "<f3>" "<f4>" "<f5>" "<f6>" "<f7>" "<f8>" "<f9>" "<f10>" "<f11>" "<f12>"
+                                 )
                    collect (esm-head-invisible stem leaf))
           (cl-loop for chord in esm--all-duo-chords
                    collect (esm-head-invisible "" chord))
@@ -724,7 +749,8 @@ form (KEY COMMAND HINT EXIT) as needed in `defhydra'."
     (-non-nil (list `("<backspace>" ,(esm--get-parent stem) nil :exit t)
                     (when pop-key `(,pop-key nil nil :exit t))))))
 
-(defun esm--define-dire-hydra (name heads)
+(defalias 'esm--define-dire-hydra #'esm--call-defhydra)
+(defun esm--call-defhydra (name heads)
   "Create a hydra named NAME with HEADS.
 Tip: This is a thin wrapper around `defhydra', the magic happens
 when it's called by `esm-generate-hydras-async'."
@@ -750,119 +776,38 @@ when it's called by `esm-generate-hydras-async'."
                  " "))
   ;; weird case, behaves different interactively than when called by ert
   ;; (should (equal (esm-head-hint "C-" "x") "Control-X-prefi"))
-  )
-
-(ert-deftest head-specifiers ()
   (should (equal (esm--specify-extra-heads "C-x ")
                  '(("<backspace>" esm-control/body nil :exit t))))
   (should (equal (esm--specify-extra-heads "C-")
                  '(("<backspace>" nil nil :exit t) ("<f35>" nil nil :exit t)))))
 
 
-;;; DEPRECATED The monster stage
-
-(defmacro esm-define-many-headed-hydra
-    (name stem &optional doctitle pop-key parent exit keys pop-key-2)
-  "Make a hydra with many heads.
-This is exhaustive; it checks almost every leaf on STEM, but doesn't recurse into subkeymaps.
-
-Optional argument EXIT controls whether the hydra's heads exit by
-default (overridden case-by-case by `esm-quitters' or `esm-noquitters').
-Optional argument KEYS is a string specifying which keys to
-display in the hydra hint (see `hydra'), defaulting to the value of
-`esm--hydra-keys'."
-  (declare (indent defun))
-  `(defhydra ,name (nil nil :columns 10 :exit ,exit
-                        :body-pre (esm-generate-hydras-async)
-                        ;; :body-pre (esm-colorize-cursor)
-                        ;; (setq exwm-input-line-mode-passthrough t)
-                        ;; :post (esm-decolorize-cursor)
-                        ;; (setq exwm-input-line-mode-passthrough nil)
-                        ;; :foreign-keys run
-                        )
-     ,@(if doctitle (list doctitle) '())
-     ,@(mapcar (lambda (leaf) (esm-head stem (string leaf)))
-               (or keys esm--hydra-keys))
-     ,@(mapcar (lambda (leaf) (esm-head-invisible stem leaf))
-               '("<left>" "<right>" "<up>" "<down>" "<SPC>" "=" "\\" "'" "`"))
-     ,@(mapcar (lambda (chord) (esm-head-invisible "" chord))
-               esm--all-duo-chords)
-     ,@(let (extras)
-         (mapc (lambda (candidate) (if (car candidate) (push (cdr candidate) extras)))
-               ;; List of extra heads to go in the hydra.
-               ;; For example ("C-f" . ("C-f" nil nil :exit t))
-               `((,pop-key . (,pop-key nil nil :exit t))
-                 (,pop-key-2 . (,pop-key-2 nil nil :exit t))
-                 (,parent . ("<backspace>" ,parent nil :exit t)))) extras)))
-
-;; TODO: Delete me.
-(defun esm-define-prefix-hydra (key)
-  (let* ((x            (esm-dub-from-key (esm--normalize key)))
-         (title        (intern x))
-         (nonum-title  (intern (concat x "-nonum")))
-         (nonum-keymap (intern (concat x "-nonum/keymap")))
-         (body         (intern (concat x "/body")))
-         (keymap       (intern (concat x "/keymap")))
-         (stem         (concat key " "))
-         (parent-key (substring key 0 -2)) ;; doesn't fail with <RET>, strange!
-         (parent-symname (cdr (assoc parent-key esm--live-hydras)))
-         (parent-body (cond ;; ((string= parent-key "C") #'esm-control/body)
-                       ((string= parent-key "M") #'esm-meta/body)
-                       ((string= parent-key "s") #'esm-super/body)
-                       ;; problem: may not exist yet
-                       ((assoc parent-key esm--live-hydras)
-                        (intern (concat parent-symname "/body"))))))
-    (eval `(progn
-             (esm-define-many-headed-hydra ,title       ,stem ,key nil ,parent-body t)
-             (esm-define-many-headed-hydra ,nonum-title ,stem ,(concat "\n\n" key) nil ,body t ,esm--hydra-keys-nonum)
-             ;; (define-key ,keymap "u" #'esm-universal-arg)
-             (define-key ,nonum-keymap "u" #'hydra--universal-argument)
-             (dotimes (i 10)
-               (let ((key (kbd (int-to-string i))))
-                 (when (eq (lookup-key ,keymap key) 'hydra--digit-argument)
-                   (define-key ,keymap key nil))))
-             (cons ,key ,x)
-             ))))
-
-;; FIXME: digit arguments unexpectedly bound and esm-C2 hydra not found
-(defun esm-define-stem-hydra (key)
-  "For now just used to create root hydras, but could in theory
-be used to create a prefix hydra for non-traditional meanings of
-\"prefix key\" -- for example, a hydra for all keys starting with
-`C-x C-'."
-  (let* ((x            (esm-dub-from-key key))
-         (title        (intern x))
-         (nonum-title  (intern (concat x "-nonum")))
-         (nonum-keymap (intern (concat x "-nonum/keymap")))
-         (body         (intern (concat x "/body")))
-         (keymap       (intern (concat x "/keymap")))
-         (stem         key))
-    (eval `(progn
-             (esm-define-many-headed-hydra ,title       ,stem ,key)
-             (esm-define-many-headed-hydra ,nonum-title ,stem ,(concat "\n\n" key) nil ,body nil ,esm--hydra-keys-nonum)
-             ;; (define-key ,keymap "u" #'esm-universal-arg)
-             (define-key ,nonum-keymap "u" #'hydra--universal-argument)
-             ;; (dotimes (i 10)
-             ;;   (let ((key (kbd (int-to-string i))))
-             ;;     (when (eq (lookup-key ,keymap key) 'hydra--digit-argument)
-             ;;       (define-key ,keymap key nil))))
-             ;; (cons ,key ,x)
-             ))))
-
-
 ;;; Async worker
 
-;; Persistent variables have been helpful for debugging.
-(defvar esm--after-scan-bindings-hook nil)
+(defvar esm--after-scan-bindings-hook nil
+  "Things to do after updating `esm--current-bindings'.
+Use this to unbind new keys that may have appeared due to a
+buffer change or major mode change. You should remove those
+records from esm--current-bindings when you do that as we will not
+rescan.")
+
+(defvar esm--after-rebuild-hydra-hook nil
+  "Hook run after updating hydras to match the local map.")
+
+;; Persistent variables helpful for debugging
 (defvar esm--last-filtered-bindings nil)
-(defvar esm--last-bindings nil)
+(defvar esm--current-bindings nil)
 (defvar esm--new-or-rebound-keys nil)
 (defvar esm--live-hydras nil)
-(defvar esm--requested-hydras nil)
+(defvar esm--hydra-blueprints nil)
 (defvar esm--defunct-bindings nil)
 (defvar esm--defunct-hydras nil)
 
 (defun esm--combined-filter (cell)
+  "Filter for rejecting keys as irrelevant to work on.
+This function exists because there is a need to go into a list
+and look at the `car's, and so we may as well run each filter
+while we're at it."
   (declare (pure t) (side-effect-free t))
   (let ((keydesc (car cell)))
     (or ;;(esm--key-contains-ctl keydesc)
@@ -878,37 +823,138 @@ be used to create a prefix hydra for non-traditional meanings of
                          (esm--normalize (car x))
                        (car x))
                      (cdr x))))
-       (setq esm--last-bindings)
+       (setq esm--current-bindings)
        (-remove #'esm--combined-filter)
        (setq esm--current-filtered-bindings)))
 
-;; NOTE: We may still have a bug in not checking esm--live-hydras at all after
-;;      the initial seeding. I'm not sure.
-(defun esm--set-last-bindings-stage-2 (CURRENT-FILTERED-BINDINGS)
-  (when esm-debug (message "Updating new-or-rebound-keys"))
+;; NOTE: Visualize a Venn diagram. The defunct and the new are the last and
+;;      current minus their intersection (cases where the key's definition
+;;      didn't change), which should never be relevant to look at.
+(defun esm--set-variables ()
+  (when esm-debug (message "Updating variables"))
   (setq esm--defunct-bindings (-difference esm--last-filtered-bindings
-                                           CURRENT-FILTERED-BINDINGS))
+                                           esm--current-filtered-bindings))
+  ;; TODO: Since a keymap is just "Prefix Command", a keymap that has changed
+  ;; its contents will look the same as before, so we don't realize we have to
+  ;; redefine it. We should either look at its children to determine if the
+  ;; parent needs remapping, or make a comparison of past and present values of
+  ;; the (key-binding (kbd key)), which is a large sexp describing every
+  ;; binding. That is, we'd replace "Prefix Command" with that sexp in
+  ;; `esm--get-relevant-bindings' and carry on as usual. If we look at its
+  ;; children, we may instead be able to delete all "Prefix Command" from the
+  ;; list early on (in that same function). Which is cleaner?
   (setq esm--new-or-rebound-keys
-        (-map #'car (-difference CURRENT-FILTERED-BINDINGS
+        (-map #'car (-difference esm--current-filtered-bindings
                                  esm--last-filtered-bindings)))
-  (setq esm--last-filtered-bindings CURRENT-FILTERED-BINDINGS))
-
-;; (defvar esm--defunct-bindings)
-;; (esm--set-last-bindings-stage-3
-;;  (esm--set-last-bindings-stage-2
-;;   (esm--set-last-bindings-stage-1 esm--last-bindings))
-
-(defun esm--set-last-bindings-stage-3 ()
-  "Check for defunct hydras (slated for oblivion or redefinition)."
-  (when esm-debug (message "Check for defunct hydras (slated for oblivion or redefinition)."))
-  (setq esm--defunct-hydras (-intersection (-map #'car esm--live-hydras)
-                                           (-map #'car esm--defunct-bindings))))
-
-(defun esm--set-last-bindings-stage-4 ()
-  (when esm-debug (message "Unlist defunct hydras"))
+  ;; Mark hydras for oblivion or redefinition
+  (setq esm--defunct-hydras (-intersection esm--live-hydras
+                                           (-map #'car esm--defunct-bindings)))
+  ;; Unlist said marked hydras so they will be reborn. (Actually, we don't ever
+  ;; check this variable, it's now debugging only).
   (setq esm--live-hydras
-        (seq-remove (lambda (x) (member (car x) esm--defunct-hydras))
+        (seq-remove (lambda (x) (member x esm--defunct-hydras))
                     esm--live-hydras)))
+
+(defun esm--specify-dire-hydra-pair (key &optional as-is)
+  (let ((stem (if as-is key (concat key " "))))
+    (list
+     (cons (esm-dub-from-key key)
+           (append (esm--specify-visible-heads stem)
+                   (esm--specify-invisible-heads stem)
+                   (esm--specify-extra-heads stem)))
+     ;; For each hydra, a nonum hydra for when universal-arg is active, so the digit arguments work.
+     ;; (cons (concat (esm-dub-from-key key) "-nonum")
+     ;;       (append (esm--specify-visible-heads
+     ;;                stem esm--hydra-keys-list-nonum)
+     ;;               (esm--specify-invisible-heads stem)
+     ;;               (esm--specify-extra-heads stem)))
+     )))
+
+(defun esm--specify-dire-hydras ()
+  "Specify the set of hydras now needing to be (re-)defined.
+Return an alist where the car is the name of the hydra as a
+string and the remainder are head specifications."
+  (setq esm--hydra-blueprints
+        (append (esm--specify-dire-hydra-pair "C-" t)
+                (esm--specify-dire-hydra-pair "M-" t)
+                (esm--specify-dire-hydra-pair "s-" t)
+                (cl-loop for key in esm--changed-keymaps
+                         append (esm--specify-dire-hydra-pair key)))))
+
+;; NOTE: See tests in the manual tests file
+;; (defun esm--specify-hydras (keys-to-hydraize)
+;;   "Specify the set of hydras now needing to be (re-)defined.
+;; Return an alist where the car is the name of the hydra as a
+;; string and the remainder are head specifications.  Also set
+;; `esm--hydra-blueprints' for your inspection.
+
+;; Argument KEYS-TO-HYDRAIZE is a list of key descriptions such as
+;; those in `esm--new-or-rebound-keys'."
+;;   (setq esm--hydra-blueprints
+;;         (append
+;;          (cl-loop for key in keys-to-hydraize
+;;                   collect
+;;                   (let ((stem (concat key " ")))
+;;                     (cons (esm-dub-from-key key)
+;;                           (append (esm--specify-visible-heads stem)
+;;                                   (esm--specify-invisible-heads stem)
+;;                                   (esm--specify-extra-heads stem)))))
+;;          (cl-loop for key in keys-to-hydraize
+;;                   collect
+;;                   (let ((stem (concat key " ")))
+;;                     (cons (concat (esm-dub-from-key key) "-nonum")
+;;                           (append (esm--specify-visible-heads
+;;                                    stem esm--hydra-keys-list-nonum)
+;;                                   (esm--specify-invisible-heads stem)
+;;                                   (esm--specify-extra-heads stem))))))))
+
+;; The magic spell that runs the entire damn codebase
+(defun esm-generate-hydras-async ()
+  "Regenerate hydras to match the local map."
+  (deferred:$
+    (deferred:next
+      #'esm--get-relevant-bindings)
+
+    (deferred:nextc it
+      (lambda ()
+        (run-hooks 'esm--after-scan-bindings-hook)))
+
+    (deferred:nextc it
+      #'esm--set-variables)
+
+    (deferred:nextc it
+      (lambda ()
+        (setq esm--changed-keymaps (esm--are-keymaps esm--new-or-rebound-keys))))
+
+    (deferred:nextc it
+      #'esm--specify-dire-hydras)
+
+    ;; Re-cache settings in case of changed frame parameters or user options
+    (deferred:nextc it
+      (lambda ()
+        (setq esm--colwidth (esm--colwidth))
+        (setq esm--hydra-keys-list (esm--hydra-keys-in-a-list))
+        (setq esm--hydra-keys-nonum (esm--hydra-keys-nonum))
+        (setq esm--hydra-keys-list-nonum (esm--hydra-keys-list-nonum))
+        (setq esm--all-duo-chords (esm--all-duo-chords))))
+
+    (deferred:nextc it
+      (lambda ()
+        (cl-loop for x in esm--hydra-blueprints
+                 do (push (esm--call-defhydra (car x) (cdr x))
+                          esm--live-hydras))
+        (setq esm--last-filtered-bindings esm--current-filtered-bindings)))
+
+    (deferred:nextc it
+      (lambda ()
+        (run-hooks 'esm--after-rebuild-hydra-hook)))
+
+    (deferred:nextc it
+      #'esm--fix-which-key)
+
+    (deferred:error it
+      #'warn)))
+
 
 ;; when I want the package to be more modular, this should sit on a hook
 (defun esm--fix-which-key ()
@@ -922,186 +968,43 @@ rules already present, because they may not work without enabling
 `which-key-allow-multiple-replacements'. Customizations of
 which-key are mostly superfluous in our paradigm, so we opt not
 to for performance."
-  (if (bound-and-true-p esm--last-bindings)
-      (->> esm--last-bindings
+  (if (bound-and-true-p esm--current-bindings)
+      (->> esm--current-bindings
            (-map #'car)
            (-remove #'esm--key-seq-steps=1)
            (-filter #'esm--key-has-more-than-one-modifier)
            (--map (s-replace "\\" "\\\\" it))
            (--map (cons (cons it nil) t))
            (setq which-key-replacement-alist))
-    (message "escape-modality: A variable is unexpectedly empty.")))
-
-(defun esm--specify-hydra-pair (key &optional as-is)
-  (let ((stem (if as-is key (concat key " "))))
-    (list
-     (cons (esm-dub-from-key key)
-           (append (esm--specify-visible-heads stem)
-                   (esm--specify-invisible-heads stem)
-                   (esm--specify-extra-heads stem)))
-     (cons (concat (esm-dub-from-key key) "-nonum")
-           (append (esm--specify-visible-heads
-                    stem esm--hydra-keys-list-nonum)
-                   (esm--specify-invisible-heads stem)
-                   (esm--specify-extra-heads stem))))))
-
-(defun esm--specify-hydras* (keys-to-hydraize)
-  "Specify the set of hydras now needing to be (re-)defined.
-Return an alist where the car is the name of the hydra as a
-string and the remainder are head specifications.  Also set
-`esm--requested-hydras' for your inspection.
-
-Argument KEYS-TO-HYDRAIZE is a list of key descriptions such as
-those in `esm--new-or-rebound-keys'."
-  (setq esm--requested-hydras ;; (-mapcat #'list
-        (append (esm--specify-hydra-pair "C-" t)
-                (esm--specify-hydra-pair "M-" t)
-                (esm--specify-hydra-pair "s-" t)
-                (cl-loop for key in keys-to-hydraize
-                         append (esm--specify-hydra-pair key)))))
-
-;; NOTE: See tests in the manual tests file
-(defun esm--specify-hydras (keys-to-hydraize)
-  "Specify the set of hydras now needing to be (re-)defined.
-Return an alist where the car is the name of the hydra as a
-string and the remainder are head specifications.  Also set
-`esm--requested-hydras' for your inspection.
-
-Argument KEYS-TO-HYDRAIZE is a list of key descriptions such as
-those in `esm--new-or-rebound-keys'."
-  (setq esm--requested-hydras
-        (append
-         (cl-loop for key in keys-to-hydraize
-                  collect
-                  (let ((stem (concat key " ")))
-                    (cons (esm-dub-from-key key)
-                          (append (esm--specify-visible-heads stem)
-                                  (esm--specify-invisible-heads stem)
-                                  (esm--specify-extra-heads stem)))))
-         (cl-loop for key in keys-to-hydraize
-                  collect
-                  (let ((stem (concat key " ")))
-                    (cons (concat (esm-dub-from-key key) "-nonum")
-                          (append (esm--specify-visible-heads
-                                   stem esm--hydra-keys-list-nonum)
-                                  (esm--specify-invisible-heads stem)
-                                  (esm--specify-extra-heads stem))))))))
-
-;; The magic spell that runs the entire damn codebase
-(defun esm-generate-hydras-async ()
-  "Regenerate hydras to match the local map."
-  (deferred:$
-    (deferred:next
-      #'esm--get-relevant-bindings)
-
-    (deferred:nextc it
-      #'esm--set-last-bindings-stage-2)
-
-    (deferred:nextc it
-      #'esm--set-last-bindings-stage-3)
-
-    (deferred:nextc it
-      #'esm--set-last-bindings-stage-4)
-
-    (deferred:nextc it
-      #'esm--fix-which-key)
-
-    ;; Re-cache settings in case of changed frame parameters or user options
-    (deferred:nextc it
-      (lambda ()
-        (setq esm--hydra-keys-nonum (esm--hydra-keys-nonum))
-        (setq esm--colwidth (esm--colwidth))
-        (setq esm--hydra-keys-list (esm--hydra-keys-in-a-list))
-        (setq esm--hydra-keys-list-nonum (esm--hydra-keys-list-nonum))
-        (setq esm--all-duo-chords (esm--all-duo-chords))))
-
-    (deferred:nextc it
-      (lambda ()
-        (--filter (keymapp (key-binding (kbd it))) ;; note: not the same `it'
-                  esm--new-or-rebound-keys)))
-
-    (deferred:nextc it
-      #'esm--specify-hydras)
-
-    (deferred:nextc it
-      (lambda (hydra-blueprints)
-        (cl-loop for x in hydra-blueprints
-                 do (cl-pushnew (esm--define-dire-hydra (car x) (cdr x))
-                                esm--live-hydras))))
-
-    (deferred:nextc it
-      (lambda ()
-        (run-hooks 'esm--after-scan-bindings-hook)))
-
-    (deferred:error it
-      #'warn)))
+    (message "escape-modality: Variable esm--current-bindings unexpectedly empty.")))
 
 
 ;;;; Main
 
-;; Testing.
-;; Bug with digit arguments is b/c we are not redefining the root hydra.
-
-;; Seed initial hydras.
-;; TODO: Faster init
-(unless t
-  (cl-loop for x in (esm--specify-hydras  (--filter (keymapp (key-binding (kbd it)))
-                                                          (-map #'car (esm--get-relevant-bindings))))
-           do (push (esm--define-dire-hydra (car x) (cdr x))
-                    esm--live-hydras)))
-
-
-
 ;;;###autoload
 (define-minor-mode escape-modality-mode
-  "Bind root hydras. "
+  "Bind root hydras."
   nil
   " ESM"
-  `((,(kbd "<f35>") . esm-control/body)
-    (,(kbd "<f34>") . esm-meta/body)
-    (,(kbd "<f33>") . esm-super/body))
-  :global t)
+  `((,(kbd "<f35>") . esm-C/body)
+    (,(kbd "<f34>") . esm-M/body)
+    (,(kbd "<f33>") . esm-s/body))
+  :global t
+  ;; TODO: Faster init. Ideally run a deferred loop, and disable
+  ;; esm-generate-hydras-async until after the loop finishes.
+  ;;
+  ;; Seed initial hydras.
+  (unless t
+    (when escape-modality-mode
+      (esm--get-relevant-bindings)
+      (esm--set-variables)
+      (setq esm--changed-keymaps (esm--are-keymaps esm--new-or-rebound-keys))
+      (esm--specify-dire-hydras)
 
-;; not used for much, delete?
-(defvar esm-assume-no-multi-chords nil
-  "Assume there are no key seqs starting with a multi-chord.
-In other words, bindings like C-M-f don't exist. A non-nil
-setting makes some code run a little faster.")
-
-(defun esm-mirror-root-maps ()
-  (dolist (x esm--last-bindings)
-    ;; Each x has the form ("C-x a" . "move-beginning-of-line").
-    (when (esm--key-seq-steps=1 (car x))
-      (if-let* ((key (car x))
-                (cmd-name (cdr x))
-                (root (cond ((string-match-p (rx line-start "C-") key)
-                             (cons "C-" esm-root-control-map))
-                            ((string-match-p (rx line-start "M-") key)
-                             (cons "M-" esm-root-meta-map))
-                            ((string-match-p (rx line-start "s-") key)
-                             (cons "s-" esm-root-super-map))
-                            (t nil)))
-                (key-to-bind (if esm-assume-no-multi-chords
-                                 (substring key 2)
-                               (replace-regexp-in-string (car root) "" key))))
-          (define-key (cdr root)
-            (kbd key-to-bind)
-            (if (equal cmd-name "Prefix Command")
-                (key-binding (kbd key))
-              (intern cmd-name)))))))
-
-;; (add-hook 'esm--after-scan-bindings-hook #'esm-mirror-root-maps)
-;; they come in a specific order, see (key-description (kbd "C-S-M-s-H-A-5"))
-(define-prefix-command 'esm-root-alt-map)
-(define-prefix-command 'esm-root-control-map)
-(define-prefix-command 'esm-root-hyper-map)
-(define-prefix-command 'esm-root-meta-map)
-(define-prefix-command 'esm-root-super-map)
-
-;; TODO: put this in the mode command
-(eval '(esm-define-stem-hydra "M-") t)
-(eval '(esm-define-stem-hydra "s-") t)
-(eval '(esm-define-stem-hydra "C-") t)
+      (cl-loop for x in (esm--specify-dire-hydras (--filter (keymapp (key-binding (kbd it)))
+                                                            (-map #'car (esm--get-relevant-bindings))))
+               do (push (esm--define-dire-hydra (car x) (cdr x))
+                        esm--live-hydras)))))
 
 (provide 'escape-modality)
 ;;; escape-modality.el ends here
