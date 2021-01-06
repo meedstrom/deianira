@@ -649,10 +649,8 @@ form (KEY COMMAND HINT EXIT) as needed in `defhydra'."
 
 (defun esm--specify-invisible-heads (stem)
   (append (cl-loop for leaf in '("<left>" "<right>" "<up>" "<down>"
-                                 "<SPC>" "=" "\\" "'" "`"
-                                 "<f1>" "<f2>" "<f3>" "<f4>" "<f5>"
-                                 "<f6>" "<f7>" "<f8>" "<f9>" "<f10>"
-                                 "<f11>" "<f12>")
+                                 "=" "\\" "'" "`"
+                                 "<f5>")  ;; each new key generates quite a lot of heads...
                    collect (esm-head-invisible stem leaf))
           (cl-loop for chord in esm--all-duo-chords
                    collect (esm-head-invisible "" chord))
@@ -785,16 +783,6 @@ while we're at it."
        (-remove #'esm--combined-filter)
        (setq esm--current-filtered-bindings)))
 
-;; (current-local-map)
-;; (local-set-key (kbd "C-M-q") nil)
-;; (define-key (current-local-map) (kbd "C-M-q") nil)
-;; (esm--get-relevant-bindings)
-;; (->> '("C-M-a f V M <right>"
-;;        "C-M-a f v m <right>"
-;;        "C-M-a f M")
-;;      (-map #'esm--key-seq-split)
-;;      (--filter (--filter (member it esm--all-shifted-symbols) it)))
-
 (defun esm--unbind-illegal-keys (input)
   (let* ((illegal (seq-filter #'esm--combined-filter input))
          (illegal-keys (seq-map #'car illegal))
@@ -832,11 +820,12 @@ while we're at it."
                  (esm--specify-invisible-heads stem)
                  (esm--specify-extra-heads stem)))
    ;; For each hydra, a nonum hydra for when universal-arg is active, so the digit arguments work.
-   (cons (concat (esm-dub-from-key stem) "-nonum")
-         (append (esm--specify-visible-heads
-                  stem esm--hydra-keys-list-nonum)
-                 (esm--specify-invisible-heads stem)
-                 (esm--specify-extra-heads stem)))))
+   ;; (cons (concat (esm-dub-from-key stem) "-nonum")
+   ;;          (append (esm--specify-visible-heads
+   ;;                   stem esm--hydra-keys-list-nonum)
+   ;;                  (esm--specify-invisible-heads stem)
+   ;;                  (esm--specify-extra-heads stem)))
+   ))
 
 ;; NOTE: See tests in the manual tests file
 (defun esm--specify-dire-hydras ()
@@ -933,11 +922,16 @@ to for performance."
   :global t
   ;; TODO: Faster init. Ideally run a deferred loop, and disable
   ;; esm-generate-hydras-async until after the loop finishes.
-  ;;
-  ;; Seed initial hydras.
   (unless t
     (when escape-modality-mode
 
+      (add-hook 'window-buffer-change-functions #'esm-generate-hydras-async)
+
+      ;; TEST CODE
+
+      (esm-generate-hydras-async)
+
+      (esm--get-relevant-bindings)
       (esm--get-relevant-bindings)
       (esm--set-variables)
       (setq esm--new-or-changed-stems
