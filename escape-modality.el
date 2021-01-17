@@ -1,4 +1,4 @@
-;;; escape-modality.el --- Modifier-free pseudo-modal input -*- lexical-binding: t; -*-
+;;; deianira.el --- Modifier-free pseudo-modal input -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018-2021 Martin Edström
 
@@ -21,7 +21,7 @@
 ;; Created: 2018-08-03
 ;; Version: 0.1.0
 ;; Keywords: convenience emulations help
-;; Homepage: https://github.com/meedstrom/escape-modality
+;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "26.1") (hydra "0.15.0") (deferred) (dash) (s))
 
 ;;; Commentary:
@@ -40,6 +40,64 @@
 (require 'dash)
 (require 's)
 (require 'hydra)
+
+
+;;; Background facts
+
+(defconst esm--modifier-regexp
+  (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-")))
+
+(defconst esm-all-keys-on-keyboard-except-shifted-symbols
+  (append
+   (split-string
+    "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./"
+    "" t)
+   (split-string
+    "<left> <right> <up> <down> <SPC> <RET> <backspace> <delete>
+     TAB <f1> <f2> <f3> <f4> <f5> <f6> <f7> <f8> <f9> <f10> <f11>
+     <f12> <print> <insert> <next> <prior> <home> <end>")
+   ;; untested
+   ;; (split-string
+   ;; "DEL <return> <f13> <f14> <f15> <f16> <f17> <f18> <f19> <f20>
+   ;; <iso-lefttab> <XF86MonBrightnessUp>") ;; and so on...
+   )
+  "All keys, except where a held-down Shift is implied.")
+
+(defconst esm--all-shifted-symbols
+  (split-string
+   "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
+   "" t))
+
+(defconst esm-all-keys-on-keyboard
+  (append
+   esm-all-keys-on-keyboard-except-shifted-symbols
+   esm--all-shifted-symbols))
+
+(defun esm--hydra-keys-in-a-list ()
+  (split-string esm--hydra-keys "" t))
+
+(defun esm--hydra-keys-nonum ()
+    (replace-regexp-in-string (rx num) "" esm--hydra-keys))
+
+(defun esm--hydra-keys-list-nonum ()
+  (split-string (replace-regexp-in-string (rx num) "" esm--hydra-keys) "" t))
+
+;; "List of keys like C-a, C-e, M-f, M-g but not C-M-f or M-%."
+;; note: it's not quite all of them since it uses esm--hydra-keys
+(defun esm--all-duo-chords ()
+  (let (chords)
+    (mapc (lambda (char)
+            (push (concat "C-" (string char)) chords)
+            (push (concat "M-" (string char)) chords)
+            (push (concat "s-" (string char)) chords))
+          esm--hydra-keys)
+    chords))
+
+(defvar esm--hydra-keys "1234567890qwertyuiopasdfghjkl;zxcvbnm,./")
+(defvar esm--hydra-keys-list (esm--hydra-keys-in-a-list))
+(defvar esm--hydra-keys-nonum (esm--hydra-keys-nonum))
+(defvar esm--hydra-keys-list-nonum (esm--hydra-keys-list-nonum))
+(defvar esm--all-duo-chords (esm--all-duo-chords))
 
 
 ;;;; X11
@@ -257,63 +315,6 @@ functions in the library aren't really ESC-aware."
         (push (cons (match-string 1) (match-string 2)) result)))
     result))
 
-
-;;; Background facts
-
-(defconst esm--modifier-regexp
-  (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-")))
-
-(defconst esm-all-keys-on-keyboard-except-shifted-symbols
-  (append
-   (split-string
-    "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./"
-    "" t)
-   (split-string
-    "<left> <right> <up> <down> <SPC> <RET> <backspace> <delete>
-     TAB <f1> <f2> <f3> <f4> <f5> <f6> <f7> <f8> <f9> <f10> <f11>
-     <f12> <print> <insert> <next> <prior> <home> <end>")
-   ;; untested
-   ;; (split-string
-   ;; "DEL <return> <f13> <f14> <f15> <f16> <f17> <f18> <f19> <f20>
-   ;; <iso-lefttab> <XF86MonBrightnessUp>") ;; and so on...
-   )
-  "All keys, except where a held-down Shift is implied.")
-
-(defconst esm--all-shifted-symbols
-  (split-string
-   "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
-   "" t))
-
-(defconst esm-all-keys-on-keyboard
-  (append
-   esm-all-keys-on-keyboard-except-shifted-symbols
-   esm--all-shifted-symbols))
-
-(defun esm--hydra-keys-in-a-list ()
-  (split-string esm--hydra-keys "" t))
-
-(defun esm--hydra-keys-nonum ()
-    (replace-regexp-in-string (rx num) "" esm--hydra-keys))
-
-(defun esm--hydra-keys-list-nonum ()
-  (split-string (replace-regexp-in-string (rx num) "" esm--hydra-keys) "" t))
-
-;; "List of keys like C-a, C-e, M-f, M-g but not C-M-f or M-%."
-;; note: it's not quite all of them since it uses esm--hydra-keys
-(defun esm--all-duo-chords ()
-  (let (chords)
-    (mapc (lambda (char)
-            (push (concat "C-" (string char)) chords)
-            (push (concat "M-" (string char)) chords)
-            (push (concat "s-" (string char)) chords))
-          esm--hydra-keys)
-    chords))
-
-(defvar esm--hydra-keys "1234567890qwertyuiopasdfghjkl;zxcvbnm,./")
-(defvar esm--hydra-keys-list (esm--hydra-keys-in-a-list))
-(defvar esm--hydra-keys-nonum (esm--hydra-keys-nonum))
-(defvar esm--hydra-keys-list-nonum (esm--hydra-keys-list-nonum))
-(defvar esm--all-duo-chords (esm--all-duo-chords))
 
 
 ;;; User settings
@@ -678,7 +679,7 @@ Assume that there are no modifiers beyond the root. If there are, IDK."
               stem))
       (if (s-matches-p esm--modifier-regexp keydesc)
           nil ;; just exit
-        (warn "escape-modality: Code should not have landed here")))))
+        (warn "deianira: Code should not have landed here")))))
 
 
 (defun esm--parent-stem (stem)
@@ -897,13 +898,13 @@ to for performance."
            (--map (s-replace "\\" "\\\\" it))
            (--map (cons (cons it nil) t))
            (setq which-key-replacement-alist))
-    (message "escape-modality: Variable esm--current-bindings unexpectedly empty.")))
+    (message "deianira: Variable esm--current-bindings unexpectedly empty.")))
 
 
 ;;;; Main
 
 ;;;###autoload
-(define-minor-mode escape-modality-mode
+(define-minor-mode deianira-mode
   "Bind root hydras."
   nil
   " ESM"
@@ -912,7 +913,7 @@ to for performance."
     (,(kbd "<f33>") . esm-s/body))
   :global t
   (unless t
-    (when escape-modality-mode
+    (when deianira-mode
 
       (add-hook 'window-buffer-change-functions #'esm-generate-hydras-async)
 
@@ -938,5 +939,5 @@ to for performance."
 
       )))
 
-(provide 'escape-modality)
-;;; escape-modality.el ends here
+(provide 'deianira)
+;;; deianira.el ends here
