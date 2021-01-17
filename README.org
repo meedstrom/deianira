@@ -15,7 +15,7 @@ WARNING: This package has a couple of serious bugs, please don't link to it.
 , CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a>
 #+end_html
 
-An automatic [[https://github.com/abo-abo/hydra][hydra]]-based which-key banisher. Deianira ([[https://en.wikipedia.org/wiki/Deianira][wikipedia]]) is the slayer of [[https://gitlab.com/jjzmajic/hercules.el][Hercules]], which is "an auto-magical, which-key-based hydra banisher".
+A [[https://github.com/abo-abo/hydra][hydra]]-based which-key banisher.  [[https://en.wikipedia.org/wiki/Deianira][Deianira]] was the slayer of [[https://gitlab.com/jjzmajic/hercules.el][Hercules]], which is a "which-key-based hydra banisher".
 
 Currently the package is not that generalized and fits my own workflow only, but it took me a ton of sweat to develop so I thought it worth publishing.  Although less general than Hercules, it does more in some areas, which could be spun out as separate packages at some point.
 
@@ -30,7 +30,7 @@ The paradigm is:
 1. All hotkeys get a place in a hydra; hydra-ize the entire Emacs keymap.
 2. Control, Alt, Meta, Super and Hyper all become "leader keys" which pop up a hydra specific to them.
 3. "Flatten" the keymap: we forbid any difference between the keys ~C-x C-e~ and ~C-x e~; we bind both to the same thing, so it won't matter if you keep holding down Control or not.
-   - Necessary since I want every keybinding to be typeable by pressing each key in isolation separately, e.g. the sequence ~<ctl> x e~ maps to ~C-x e~, but a sequence like ~<ctl> x <ctl> e~ is weird, and I'd rather use the Control key to return to the root level.
+   - Necessary since I want every keybinding to be typeable by pressing each key in isolation separately, e.g. the sequence ~<ctl> x e~ maps to ~C-x e~, but a sequence like ~<ctl> x <ctl> e~ is just weird (not to mention a downgrade from ~C-x C-e~), and I'd rather use the Control key to return to the root level.
 4. Forbid mixing modifiers: we don't allow key sequences like ~C-M-f~ or ~M-%~ (the percent sign implies you pressed Shift), or -- shudder --  ~C-c M-o~.  We allow only hotkeys that use a single modifier.
 5. Forbid the Shift key, everywhere.  That includes any capital character, like ~F~, in any subkeymap, so that includes hotkeys like ~C-h F~.
    - My biggest gripe with Vim is its excessive use of capitals, that I find about as uncomfortable as Control combos, a strange oversight in its design.
@@ -40,9 +40,9 @@ The paradigm is:
 The consequences are:
 
 1. We can do transient exits.  In the Control hydra, we can press e.g. ~M-f~ like usual to move forward by word, without exiting the Control hydra.  This applies to all our hydras, even cases like the Control-X-prefix, so instead of ~C-x t C-n C-x t C-n C-x t~...  you can stay in the Control-X-prefix and do ~t C-n t C-n t~... This would not be possible if we allowed more than one modifier in a hotkey.
-2. We can feel as though we are in Vim's Normal mode and yet not have to press =i= or =a= to enter Insert mode, because capital letters (including capital symbols such as parens), spaces and newlines will self-insert and exit the hydra at the same time.  This works because the first character you type is frequently from this set.  I might extend that to include the period, comma and apostrophe.
-3. I find it both more powerful than god-mode, and more intuitive. If you know Emacs hotkeys, you've already learned this.
-4. We pretty much get modal editing without its drawbacks.  Both due to the fast switch to "insert mode", and the ability to transiently-exit any "mode", i.e. to access any mode's commands from any mode.
+2. We can feel as though we are in Vim's Normal mode and yet not have to press =i= or =a= to enter Insert mode, because capital letters (including capital symbols such as parens), spaces and newlines will self-insert and exit the hydra at the same time.  This works so well because the first character you type is frequently from this set, and it's nearly free because we didn't want Shift hotkeys anyway.  I might extend the set to include the period, comma and apostrophe.
+3. I find it more intuitive than [[https://github.com/emacsorphanage/god-mode][god-mode]]. There is no weird leader key like ~<escape>~ or whatever you'd choose for it, or the Spacemacs ~M-m~, instead you press the same modifier keys you always have, the map is the same as vanilla (minus the disallowed bindings), so you already know it, and Space doesn't have any special behavior.
+4. We pretty much get modal editing without its drawbacks.  Both due to the fast switch to "insert mode", and the ability to transiently-exit any mode, i.e. to access any mode's commands from any mode.
    - To clarify, I use "mode" means the root level of the control, meta or super hydras, or the state of having no active hydra ("insert mode").
 5. We can use a compressed hotkey notation, such as =Cxp= instead of =C-x p=, since it's still unambiguous.
 
@@ -71,7 +71,7 @@ Second, to turn modifier keys into leader keys, IOW to make it possible to press
 Chat to me, I'll walk you through.
 
 The problems are
-- We need an external program to get the Control, Meta and Super keys to send the F35, F34 and F33 key events, respectively.  I have been using =xcape=, and you can reproduce it by calling =dei-xmodmap-reload= and =dei-xcape-reload=, but xcape is buggy and unmaintained -- sometimes there is a severe latency issue -- so I should write instructions for setting up [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] instead.
+- We need an external program to get the Control, Meta and Super keys to send the F35, F34 and F33 key events, respectively.  I have been using [[https://github.com/alols/xcape][xcape]], and you can reproduce the setup by calling =dei-xmodmap-reload= and =dei-xcape-reload=, but xcape is buggy and unmaintained so I should write instructions for setting up [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] instead.
 - It's up to the user to choose which keys to keep when "flattening" the keymap -- do you use ~C-x f~ or ~C-x C-f~ more?
 - We should come up with good suggestions for new places to put the commands of ~C-<SPC>~ and ~C-x <SPC>~ and certain others.
 - Though optional, we should teach the user to reclaim hotkey real estate with a set of suggested unbinds or rebinds. ~M-q~ and ~C-q~ are prime examples.
