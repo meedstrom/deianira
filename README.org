@@ -4,9 +4,16 @@
 #+EMAIL: meedstrom@teknik.io
 #+LANGUAGE: en
 
+[[https://img.shields.io/badge/license-GPL3+-blue.png]]
+
 #+begin_quote
 WARNING: This package has a couple of serious bugs, please don't link to it on Reddit or similar for now.
 #+end_quote
+
+#+begin_html
+<a title="Giulio Bonasone
+, CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a>
+#+end_html
 
 #+begin_export html
 <a title="Giulio Bonasone
@@ -84,12 +91,16 @@ The problems are
 
 The source code makes a lot of references to "stem" and "leaf", which are defined most succinctly by =dei--get-leaf= and its complement, but in human language, the leaf is the last part of a key description (the kind of string you'd pass to =kbd=) that can correspond to an event.  The way Emacs thinks of it is different, and a necessity from the realities of keyboards: a key like ~C-<return>~ is a /single/ event, not two.  A control-modified character is simply a different character altogether.  This is way too impractical for me to work with, since it maps poorly to how I think about hotkeys.
 
+<<<<<<< HEAD
+If you dive into the source, be aware of what a "stem" is.  A full key description like =C-x a= is split /without deleting any character/ into the stem "C-x " and the leaf "a". Note the trailing space in the stem.  This is necessary to disambiguate the stem "C-x " from the valid key description =C-x=.  Other examples follow.
+=======
 If you dive into the source, be aware of what a "stem" is.  A full key description like "=C-x a=" is split /without deleting any character/ into the stem "=C-x =" and the leaf ="a"=. Note the trailing space in the stem.  This is necessary to disambiguate the stem ="C-x "= from the valid key description ="C-x"=.  Other examples follow.
+>>>>>>> 70aa23ecdad3d66fc099c8f921dcb81459808729
 
 | Key description | Stem   | Leaf       |
-| =C-x a=           | ="C-x "= | ="a"=        |
-| =C-x=             | ="C-"=   | ="x"=        |
-| =C-<M-return>=    | ="C-M-"= | ="<return>"= |
+| =C-x a=           | "C-x " | "a"      |
+| =C-x=             | "C-"  | "x"          |
+| =C-<M-return>=    | "C-M-" | "<return>" |
 
 If programming against this library, always wrap a key description in =dei--normalize= to safeguard against odd descriptions like =C-<M-return>=: the other functions expect a normalized key description, in this case =C-M-<return>=.
 *** Dire hydra
