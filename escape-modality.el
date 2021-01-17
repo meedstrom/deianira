@@ -102,21 +102,17 @@
            (kill-process esm-xcape-process))
       (setq esm-xcape-process
             (start-process "xcape" "*xcape*" "nice" "-20" "xcape" "-d" "-e" rules))
-      (setq esm-xcape-log-cleaner (run-with-timer 300 300 #'esm-clean-xcape-log)))))
+      (run-with-named-timer 'esm-xcape-log-cleaner 300 300 #'esm-clean-xcape-log))))
 
 (defun esm-xkbset-enable-sticky-keys ()
   (interactive)
   (when (executable-find "xkbset")
-    (start-process "xkbset" (esm--debug-buffer) "xkbset" "sticky" "-twokey")
+    (start-process "xkbset" (esm--debug-buffer) "xkbset" "sticky" "-twokey" "-latchlock")
     (start-process "xkbset" (esm--debug-buffer) "xkbset" "exp" "=sticky")))
 
 
 ;;; Enforce tidy
 
-(defun esm-super-translate-to-ctl-meta ()
-  (dolist (key esm-all-keys-on-keyboard)
-    (define-key key-translation-map
-      (kbd (concat "s-" key)) (kbd (concat "C-" key)))))
 
 ;; Generalized flatten-ctl-x
 (defun esm-restem-all-leaves (here lower-stem upper-stem)
@@ -167,21 +163,6 @@ already been done."
                 (not (eq nil backup)))
        (setq ,keymap backup))))
 
-;; TODO: don't just operate on global map
-(defun esm-kill-shift ()
-  "Unbind."
-  (dolist (x esm-all-keys-on-keyboard-except-shifted-symbols)
-    (global-unset-key (kbd (concat "S-" x)))
-    (global-unset-key (kbd (concat "C-S-" x)))
-    (global-unset-key (kbd (concat "M-S-" x)))
-    (global-unset-key (kbd (concat "C-M-S-" x))))
-  (dolist (x esm-all-shifted-symbols)
-    (global-unset-key (kbd (concat "C-" x)))
-    (global-unset-key (kbd (concat "M-" x)))
-    (global-unset-key (kbd (concat "C-M-" x)))
-    (global-unset-key (kbd (concat "C-x C- " x)))
-    (global-unset-key (kbd (concat "C-x " x)))))
-
 (defun esm-bind-all-shiftsyms-to-insert ()
   "Bind all capital letters and shift symbols to self-insert."
   (dolist (leaf esm-all-shifted-symbols)
@@ -220,9 +201,8 @@ already been done."
 ;;; Keyboard scanning
 
 ;; Think this function is hairy and unnecessary? It's this way because the C
-;; function `describe-buffer-bindings' is the only way to get this information.
-;;
-;; Inspired by which-key--get-current-bindings. Thanks!
+;; function `describe-buffer-bindings' is the only way to get this information
+;; efficiently. Inspired by which-key--get-current-bindings. Thanks!
 (defun esm--current-bindings (&optional keep flush)
   "Get the list of all currently active bindings.
 This ignores those masked by other keymaps, returning only the
@@ -276,7 +256,6 @@ functions in the library aren't really ESC-aware."
                                 nil t)
         (push (cons (match-string 1) (match-string 2)) result)))
     result))
-
 
 
 ;;; Background facts
@@ -392,6 +371,7 @@ frame or font changes.")
   ;; synced with how we define "mods" here
   (if-let* ((mods '("A-" "C-" "H-" "M-" "S-" "s-"))
             (regexp (eval-when-compile (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-"))))
+            (case-fold-search nil)
             (first-match-pos (string-match-p regexp keydesc))
             (caught-mod (substring keydesc first-match-pos (+ 2 first-match-pos)))
             (now-verboten (-difference mods (list caught-mod))))
@@ -700,6 +680,7 @@ Assume that there are no modifiers beyond the root. If there are, IDK."
           nil ;; just exit
         (warn "escape-modality: Code should not have landed here")))))
 
+
 (defun esm--parent-stem (stem)
   (esm--parent-stem2 (esm--stem-to-keydesc stem)))
 
@@ -718,7 +699,7 @@ Tip: This is a thin wrapper around `defhydra', the magic happens
 when it's called by `esm-generate-hydras-async'."
   (eval `(defhydra ,(intern name)
            (nil nil :columns 10 :exit ,esm-exit-by-default
-                :body-pre (esm-generate-hydras-async)
+                ;; :body-pre (esm-generate-hydras-async)
                 ;; :body-post (esm-generate-hydras-async)
                 )
            ,name
@@ -756,10 +737,20 @@ while we're at it."
   (declare (pure t) (side-effect-free t))
   (let ((keydesc (car cell)))
     (or ;;(esm--key-contains-ctl keydesc)
-     (esm--key-has-more-than-one-modifier keydesc)
-     (esm--contains-upcase keydesc)
-     (esm--key-contains-multi-chords keydesc)
+     ;; (s-contains-p "backspace" keydesc)
+     ;; (s-contains-p "DEL" keydesc)
+     ;; (s-contains-p "SPC" keydesc)
+     ;; (esm--key-has-more-than-one-modifier keydesc)
+     ;; (esm--contains-upcase keydesc)
+     ;; (esm--key-contains-multi-chords keydesc)
      (esm--key-seq-mixes-modifiers keydesc))))
+
+;; (esm--key-has-more-than-one-modifier "s-i")
+;;      (esm--contains-upcase keydesc)
+;;      (esm--key-contains-multi-chords "s-i")
+;;      (esm--key-seq-mixes-modifiers "s-i")
+;; (esm--contains-upcase "s-i")
+;; (esm--contains-upcase "s-i")
 
 (defun esm--contains-upcase (keydesc)
   (let* ((steps (esm--key-seq-split keydesc))
@@ -775,7 +766,7 @@ while we're at it."
                          (esm--normalize (car x))
                        (car x))
                      (cdr x))))
-       (esm--unbind-illegal-keys)
+       ;; (esm--unbind-illegal-keys)
        (-remove (lambda (x) (or (string= "Prefix Command" (cdr x))
                            (null (intern (cdr x)))
                            (keymapp (intern (cdr x)))))) ;;
@@ -920,8 +911,6 @@ to for performance."
     (,(kbd "<f34>") . esm-M/body)
     (,(kbd "<f33>") . esm-s/body))
   :global t
-  ;; TODO: Faster init. Ideally run a deferred loop, and disable
-  ;; esm-generate-hydras-async until after the loop finishes.
   (unless t
     (when escape-modality-mode
 
@@ -929,6 +918,7 @@ to for performance."
 
       ;; TEST CODE
 
+      ;; TODO: Make it faster. Ideally run a deferred loop.
       (esm-generate-hydras-async)
 
       (esm--get-relevant-bindings)
