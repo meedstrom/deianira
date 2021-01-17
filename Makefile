@@ -7,14 +7,18 @@ ELC  	= $(EL:.el=.elc)
 
 compile: $(ELC)
 
-check: deianira.elc
+check: deianira-tests.elc
 	$(EMACS) -Q --batch -L . -l deianira.elc -f ert-run-tests-batch
+
+test: check
 
 clean:
 	rm -f $(ELC)
 
-run: $(ELC)
-    $(EMACS) -Q -L . -l foo-c.elc -f foo-mode
+#run: $(ELC)
+#    $(EMACS) -Q -L . -l foo-c.elc -f foo-mode
+
+deianira-tests.elc: $(ELC)
 
 .el.elc:
 	$(EMACS) -Q --batch -L . -f batch-byte-compile $<
