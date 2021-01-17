@@ -343,6 +343,112 @@ frame or font changes.")
                            "C-c C-c" ;;testing
                            ))
 
+;; TODO: perhaps it'd be possible to just hook window-buffer-change-functions
+;; to kill any hydra when minibuffer gets focus.
+;;
+;; Check dei--current-bindings for reference. This is a potentially neverending
+;; list, but it's not necessarily a big deal.
+(defvar dei-quitter-commands '(
+                               search-forward
+                               search-backward
+                               isearch-forward
+                               isearch-forward-word
+                               isearch-forward-symbol
+                               isearch-forward-regexp
+                               isearch-backward
+                               isearch-backward-regexp
+                               quoted-insert
+                               multi-occur
+                               consult-multi-occur
+                               projectile-multi-occur
+                               query-replace-regexp
+                               query-replace
+                               projectile-replace
+                               projectile-replace-regexp
+                               project-query-replace-regexp
+                               swiper
+                               helm-occur
+                               occur
+                               add-mode-abbrev
+                               add-global-abbrev
+                               keyboard-quit
+                               minibuffer-keyboard-quit
+                               keyboard-escape-quit
+                               execute-extended-command
+                               smex
+                               helm-M-x
+                               counsel-M-x
+                               magit-status
+                               consult-goto-line
+                               re-builder
+                               highlight-regexp
+                               highlight-phrase
+                               highlight-lines-matching-regexp
+                               unhighlight-regexp
+                               string-rectangle
+                               find-file
+                               find-file-read-only
+                               find-file-read-only-other-frame
+                               find-file-read-only-other-window
+                               find-file-literally
+                               find-file-other-frame
+                               find-file-other-tab
+                               find-file-other-window
+                               view-file
+                               view-file-other-frame
+                               view-file-other-window
+                               kmacro-start-macro
+                               kmacro-start-macro-or-insert-counter
+                               inverse-add-global-abbrev
+                               inverse-add-mode-abbrev
+                               make-frame-command
+                               other-frame
+                               display-buffer
+                               kill-buffer
+                               kill-buffer-ask
+                               kill-some-buffers
+                               save-some-buffers
+                               consult-complex-command
+                               repeat-complex-command
+                               set-keyboard-coding-system
+                               set-buffer-file-coding-system
+                               set-language-environment
+                               set-selection-coding-system
+                               set-terminal-coding-system
+                               set-next-selection-coding-system
+                               set-file-name-coding-system
+                               set-input-method
+                               consult-line
+                               eval-expression
+                               shell-command
+                               async-shell-command
+                               write-file
+                               save-buffers-kill-emacs
+                               save-buffers-kill-terminal
+                               kill-emacs
+                               my-save-buffers-kill-emacs-silently
+                               server-save-buffers-kill-terminal
+                               find-alternate-file
+                               describe-variable
+                               describe-function
+                               describe-symbol
+                               describe-face
+                               describe-coding-system
+                               describe-language-environment
+                               describe-key
+                               helpful-callable
+                               helpful-command
+                               helpful-variable
+                               helpful-function
+                               helpful-symbol
+                               sp-rewrap-sexp
+                               +default/man-or-woman
+                               +lookup/online
+                               doom/help-packages
+                               org-agenda
+                               org-capture
+                               ))
+
 (defvar dei-exit-by-default nil)
 
 

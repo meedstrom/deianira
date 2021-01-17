@@ -12,18 +12,18 @@ WARNING: This package has a couple of serious bugs, please don't link to it.
 
 #+begin_html
 <a title="Giulio Bonasone
-, CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a>
+, CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" align="center" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a>
 #+end_html
 
 A [[https://github.com/abo-abo/hydra][hydra]]-based which-key banisher.  [[https://en.wikipedia.org/wiki/Deianira][Deianira]] was the slayer of [[https://gitlab.com/jjzmajic/hercules.el][Hercules]], which is a "which-key-based hydra banisher".
 
-Currently the package is not that generalized and fits my own workflow only, but it took me a ton of sweat so I thought it worth publishing.  Although less general than Hercules, it does more in some areas, which could be spun out as separate packages at some point.
+Currently the package is not that generalized and fits my own workflow only, but it took me months to figure out how to even code it, so it might be an useful POC for somebody else.  Although less general than Hercules, it does more in some areas, which could be spun out as separate packages.
 
 ** Paradigm
 
 Imagine that after you press the Control key, Emacs behaves as if Control is still pressed for everything you do next, and then that if you press Meta, Emacs switches to behaving as if Meta is pressed.  That's basically what this package does.
 
-The angel's in the details, however.  If it was only the above, that'd be boring, but the sum of its parts is a whole new input paradigm.
+The angel's in the details, however.  If it only did the above, that'd be boring, but the sum of its parts is a whole new input paradigm.
 
 The paradigm is:
 
@@ -93,4 +93,4 @@ If programming against this library, always wrap a key description in =dei--norm
 
 ** Thanks
 
-I owe thanks to abo-abo and the other contributors to Hydra.  If I'd had to wrangle god-mode or which-key to my purposes, I would have needed to understand a lot more about the Emacs hotkey system than I did starting out.  With Hydra, I could just get started hacking and experimenting.  It's a friendly API for doing anything you want, so it's a fine example of the Emacs spirit.
+I owe thanks to abo-abo and the other contributors to Hydra.  If I'd had to wrangle god-mode or which-key to my purposes, I would have needed to understand a lot more about the Emacs hotkey internals than I did starting out.  With Hydra, I could just get started hacking and experimenting.  It's a friendly API for doing anything you want, so it's a fine example of the Emacs spirit.
