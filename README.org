@@ -68,7 +68,7 @@ Second, to turn modifier keys into leader keys, IOW to make it possible to press
 Chat to me, I'll walk you through.
 
 The problems are
-- We need an external program to get the Control, Meta and Super keys to send the F35, F34 and F33 key events, respectively.  I have been using =xcape=, and you can reproduce it by calling =esm-xmodmap-reload= and =esm-xcape-reload=, but xcape is buggy and unmaintained -- sometimes there is a severe latency issue -- so I should write instructions for setting up [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] instead.
+- We need an external program to get the Control, Meta and Super keys to send the F35, F34 and F33 key events, respectively.  I have been using =xcape=, and you can reproduce it by calling =dei-xmodmap-reload= and =dei-xcape-reload=, but xcape is buggy and unmaintained -- sometimes there is a severe latency issue -- so I should write instructions for setting up [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] instead.
 - It's up to the user to choose which keys to keep when "flattening" the keymap -- do you use ~C-x f~ or ~C-x C-f~ more?
 - We should come up with good suggestions for new places to put the commands of ~C-<SPC>~ and ~C-x <SPC>~ and certain others.
 - Though optional, we should teach the user to reclaim hotkey real estate with a set of suggested unbinds or rebinds. ~M-q~ and ~C-q~ are prime examples.
@@ -77,7 +77,7 @@ The problems are
 * Concepts
 ** Stem and leaf
 
-The source code makes a lot of references to "stem" and "leaf", which are defined most succinctly by =esm--get-leaf= and its complement, but in human language, the leaf is the last part of a key description (the kind of string you'd pass to =kbd=) that can correspond to an event.  The way Emacs thinks of it is different, and a necessity from the realities of keyboards: a key like ~C-<return>~ is a /single/ event, not two.  A control-modified character is simply a different character altogether.  This is way too impractical for me to work with, since it maps poorly to how I think about hotkeys.
+The source code makes a lot of references to "stem" and "leaf", which are defined most succinctly by =dei--get-leaf= and its complement, but in human language, the leaf is the last part of a key description (the kind of string you'd pass to =kbd=) that can correspond to an event.  The way Emacs thinks of it is different, and a necessity from the realities of keyboards: a key like ~C-<return>~ is a /single/ event, not two.  A control-modified character is simply a different character altogether.  This is way too impractical for me to work with, since it maps poorly to how I think about hotkeys.
 
 If you dive into the source, be aware of what a "stem" is.  A full key description like ="C-x a"= is split /without deleting any character/ into the stem ="C-x "= and the leaf ="a"=. Note the trailing space in the stem.  This is necessary to disambiguate the stem ="C-x "= from the valid key description ="C-x"=.  Other examples follow.
 
@@ -86,6 +86,6 @@ If you dive into the source, be aware of what a "stem" is.  A full key descripti
 | =C-x=             | ="C-"=   | ="x"=        |
 | =C-<M-return>=    | ="C-M-"= | ="<return>"= |
 
-If programming against this library, always wrap a key description in =esm--normalize= to safeguard against odd descriptions like =C-<M-return>=: the other functions expect a normalized key description, in this case =C-M-<return>=.
+If programming against this library, always wrap a key description in =dei--normalize= to safeguard against odd descriptions like =C-<M-return>=: the other functions expect a normalized key description, in this case =C-M-<return>=.
 ** Dire hydra
 An automatically generated hydra that covers the keyboard.

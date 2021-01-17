@@ -2,13 +2,13 @@
 .POSIX:
 .SUFFIXES: .el .elc
 EMACS	= emacs
-EL   	= escape-modality.el
+EL   	= deianira.el
 ELC  	= $(EL:.el=.elc)
 
 compile: $(ELC)
 
-check: escape-modality.elc
-	$(EMACS) -Q --batch -L . -l escape-modality.elc -f ert-run-tests-batch
+check: deianira.elc
+	$(EMACS) -Q --batch -L . -l deianira.elc -f ert-run-tests-batch
 
 clean:
 	rm -f $(ELC)
