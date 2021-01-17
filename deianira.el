@@ -500,6 +500,50 @@ unmodified, else return nil."
   (declare (pure t) (side-effect-free t))
   (length (dei--key-seq-split keydesc)))
 
+;; IDK if it fails well
+(defun dei--stem-to-keydesc (stem)
+  (declare (pure t) (side-effect-free t))
+  (let ((keydesc (substring stem 0 -1)))
+    (when (dei--valid-keydesc keydesc)
+      keydesc)))
+
+;; Assumption: Pre-normalized keydesc
+(defun dei--get-stem (keydesc)
+  (declare (pure t) (side-effect-free t))
+  (replace-regexp-in-string (concat (regexp-quote (dei--get-leaf keydesc)) "$")
+                            ""
+                            keydesc))
+
+(defun dei--corresponding-hydra-from-stem (stem)
+  (declare (pure t) (side-effect-free t))
+  (intern (concat (dei-dub-from-key stem) "/body")))
+
+;; Could probably be more clearly programmed
+;; Maybe toatlly uncessary
+(defun dei--parent-stem2 (keydesc)
+  "Drop leaf of KEYDESC, return a valid keydesc.
+Assume that there are no modifiers beyond the root. If there are, IDK."
+  (declare (pure t) (side-effect-free t))
+  (let* ((stem (dei--get-stem keydesc))
+         (stem-trimmed (substring stem 0 -1)))
+    (if (dei--valid-keydesc stem-trimmed)
+        (if (s-ends-with-p "-" stem-trimmed)
+            stem-trimmed ;; probably C-, but can be C-c C-.
+          (if (s-matches-p dei--modifier-regexp stem)
+              stem))
+      (if (s-matches-p dei--modifier-regexp keydesc)
+          nil ;; just exit
+        (warn "deianira: Code should not have landed here")))))
+
+(defun dei--parent-stem (stem)
+  (declare (pure t) (side-effect-free t))
+  (dei--parent-stem2 (dei--stem-to-keydesc stem)))
+
+(defun dei--parent-hydra (stem)
+  (declare (pure t) (side-effect-free t))
+  (if (dei--key-seq-steps=1 stem)
+      nil ;; exit
+    (dei--corresponding-hydra-from-stem (dei--parent-stem stem))))
 
 
 ;;; Library
@@ -646,49 +690,6 @@ form (KEY COMMAND HINT EXIT) as needed in `defhydra'."
     (-non-nil (list `("<backspace>" ,(dei--parent-hydra stem)
                       nil :exit t)
                     (when pop-key `(,pop-key nil nil :exit t))))))
-
-;; Assumption: Pre-normalized keydesc
-(defun dei--get-stem (keydesc)
-  (declare (pure t) (side-effect-free t))
-  (replace-regexp-in-string (concat (regexp-quote (dei--get-leaf keydesc)) "$")
-                            ""
-                            keydesc))
-
-;; IDK if it fails well
-(defun dei--stem-to-keydesc (stem)
-  (let ((keydesc (substring stem 0 -1)))
-    (when (dei--valid-keydesc keydesc)
-      keydesc)))
-
-(defun dei--corresponding-hydra-from-stem (stem)
-  (declare (pure t) (side-effect-free t))
-  (intern (concat (dei-dub-from-key stem) "/body")))
-
-;; Could probably be more clearly programmed
-;; Maybe toatlly uncessary
-(defun dei--parent-stem2 (keydesc)
-  "Drop leaf of KEYDESC, return a valid keydesc.
-Assume that there are no modifiers beyond the root. If there are, IDK."
-  (declare (pure t) (side-effect-free t))
-  (let* ((stem (dei--get-stem keydesc))
-         (stem-trimmed (substring stem 0 -1)))
-    (if (dei--valid-keydesc stem-trimmed)
-        (if (s-ends-with-p "-" stem-trimmed)
-            stem-trimmed ;; probably C-, but can be C-c C-.
-          (if (s-matches-p dei--modifier-regexp stem)
-              stem))
-      (if (s-matches-p dei--modifier-regexp keydesc)
-          nil ;; just exit
-        (warn "deianira: Code should not have landed here")))))
-
-
-(defun dei--parent-stem (stem)
-  (dei--parent-stem2 (dei--stem-to-keydesc stem)))
-
-(defun dei--parent-hydra (stem)
-  (if (dei--key-seq-steps=1 stem)
-      nil ;; exit
-    (dei--corresponding-hydra-from-stem (dei--parent-stem stem))))
 
 ;(dei--get-parent "C-x a ")
 ;(dei--specify-extra-heads "C-x a")
