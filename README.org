@@ -15,9 +15,9 @@ WARNING: This package has a couple of serious bugs, please don't link to it.
 , CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a>
 #+end_html
 
-The inverse of [[https://gitlab.com/jjzmajic/hercules.el][hercules.el]].  That is "an auto-magical, which-key-based hydra banisher", so this is an auto-magical, [[https://github.com/abo-abo/hydra][hydra]]-based which-key banisher.  From Greek mythology, [[https://en.wikipedia.org/wiki/Deianira][Deianira]] was the wife of Hercules and the one who slew him.
+An automatic [[https://github.com/abo-abo/hydra][hydra]]-based which-key banisher. Deianira ([[https://en.wikipedia.org/wiki/Deianira][wikipedia]]) is the slayer of [[https://gitlab.com/jjzmajic/hercules.el][Hercules]], which is "an auto-magical, which-key-based hydra banisher".
 
-Or that's what it could be: currently the package is not that generalized and fits my own workflow only, but it took sweat and tears to develop so I thought it worth publishing.  It includes a library of functions for [[stemleaf][manipulating key descriptions]]. In addition, it does more than Hercules in some areas, which could be spun out as separate packages at some point.
+Currently the package is not that generalized and fits my own workflow only, but it took me a ton of sweat to develop so I thought it worth publishing.  Although less general than Hercules, it does more in some areas, which could be spun out as separate packages at some point.
 
 ** Paradigm
 
@@ -28,14 +28,14 @@ The angel's in the details, however.  If it was only the above, that'd be boring
 The paradigm is:
 
 1. All hotkeys get a place in a hydra; hydra-ize the entire Emacs keymap.
-2. Control, Meta/Alt and Super/Win all become "leader keys" which pop up a hydra specific to them.
+2. Control, Alt, Meta, Super and Hyper all become "leader keys" which pop up a hydra specific to them.
 3. "Flatten" the keymap: we forbid any difference between the keys ~C-x C-e~ and ~C-x e~; we bind both to the same thing, so it won't matter if you keep holding down Control or not.
    - Necessary since I want every keybinding to be typeable by pressing each key in isolation separately, e.g. the sequence ~<ctl> x e~ maps to ~C-x e~, but a sequence like ~<ctl> x <ctl> e~ is weird, and I'd rather use the Control key to return to the root level.
 4. Forbid mixing modifiers: we don't allow key sequences like ~C-M-f~ or ~M-%~ (the percent sign implies you pressed Shift), or -- shudder --  ~C-c M-o~.  We allow only hotkeys that use a single modifier.
 5. Forbid the Shift key, everywhere.  That includes any capital character, like ~F~, in any subkeymap, so that includes hotkeys like ~C-h F~.
    - My biggest gripe with Vim is its excessive use of capitals, that I find about as uncomfortable as Control combos, a strange oversight in its design.
 6. Forbid Space and Enter in any hotkey.  Let these always insert space or newline.
-7. Forbid Backspace.  This is used to travel "up" the key sequence, i.e. return to the parent hydra, much like if you type a command in Vim's /ex/ command line and then backspace because you changed your mind -- there's no need to retype most of the command from scratch.  It's cognate to =which-key-undo-key=.
+7. Forbid Backspace in any hotkey.  This is used to travel "up" the key sequence, i.e. return to the parent hydra, much like if you type a command in Vim's /ex/ command line and then backspace because you changed your mind -- there's no need to retype most of the command from scratch.  It's cognate to =which-key-undo-key=.
 
 The consequences are:
 
@@ -78,9 +78,10 @@ The problems are
 - I'll develop to this section when the package matures a bit.
 
 ** Concepts
-*** <<stemleaf>>Stem and leaf
+*** Stem and leaf
+:CUSTOM_ID: stemleaf
 
-The source code makes a lot of references to "stem" and "leaf", which are defined most succinctly by =dei--get-leaf= and its complement, but in human language, the leaf is the last part of a key description (the kind of string you'd pass to =kbd=) that can correspond to an event.  The way Emacs thinks of it is different, and a necessity from the realities of keyboards: a key like ~C-<return>~ is a /single/ event, not two.  A control-modified character is simply a different character altogether.  This is way too impractical for me to work with, since it maps poorly to how I think about hotkeys.
+The source code makes a lot of references to "stem" and "leaf", which are defined most succinctly by =dei--get-leaf= and its complement, but in human language, the leaf is the last part of a key description (the kind of string you'd pass to =kbd=) that can correspond to an event.  The way Emacs thinks of it is different, and a necessity from the realities of keyboards: to our keyboards, a key like ~C-<return>~ is a /single/ event, not two.  A control-modified character is simply a different character altogether.  This is way too impractical for me to work with, since it maps poorly to how I think about hotkeys.
 
 If you dive into the source, be aware of what a "stem" is.  A full key description like =C-x a= is split /without deleting any character/ into the stem "C-x " and the leaf "a". Note the trailing space in the stem.  This is necessary to disambiguate the stem "C-x " from the valid key description =C-x=.  Other examples follow.
 
