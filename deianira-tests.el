@@ -1,24 +1,8 @@
 ;;; deianira-tests.el --- description -*- lexical-binding: t; -*-
-;;
-;; Copyright (C) 2021
-;;
-;; Author:  <http://github/me>
-;; Maintainer:  <me@debian>
-;; Created: January 06, 2021
-;; Modified: January 06, 2021
-;; Version: 0.0.1
-;; Keywords:
-;; Homepage: https://github.com/me/deianira-tests
-;; Package-Requires: ((emacs 27.1) (cl-lib "0.5"))
-;;
-;; This file is not part of GNU Emacs.
-;;
 ;;; Commentary:
-;;
-;;  description
-;;
 ;;; Code:
 
+(require 'deianira)
 
 (ert-deftest test-dei--current-bindings ()
   (let ((foo (dei--current-bindings)))
