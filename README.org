@@ -3,8 +3,9 @@
 #+EMAIL: meedstrom@teknik.io
 #+LANGUAGE: en
 
-#+ATTR_HTML: :width 200 :align right
-[[file:Deianera.jpg]]
+# FIXME: make a small picture
+# #+ATTR_HTML: :width 200 :align right
+# [[file:Deianera.jpg]]
 
 WARNING: This package has a couple of serious bugs, please don't link to it on Reddit or similar for now.
 
@@ -75,7 +76,7 @@ The problems are
 - I'll develop to this section when the package matures a bit.
 
 * Concepts
-** Stem and leaf
+*** Stem and leaf
 
 The source code makes a lot of references to "stem" and "leaf", which are defined most succinctly by =dei--get-leaf= and its complement, but in human language, the leaf is the last part of a key description (the kind of string you'd pass to =kbd=) that can correspond to an event.  The way Emacs thinks of it is different, and a necessity from the realities of keyboards: a key like ~C-<return>~ is a /single/ event, not two.  A control-modified character is simply a different character altogether.  This is way too impractical for me to work with, since it maps poorly to how I think about hotkeys.
 
@@ -87,5 +88,5 @@ If you dive into the source, be aware of what a "stem" is.  A full key descripti
 | =C-<M-return>=    | ="C-M-"= | ="<return>"= |
 
 If programming against this library, always wrap a key description in =dei--normalize= to safeguard against odd descriptions like =C-<M-return>=: the other functions expect a normalized key description, in this case =C-M-<return>=.
-** Dire hydra
+*** Dire hydra
 An automatically generated hydra that covers the keyboard.
