@@ -15,9 +15,9 @@ WARNING: This package has a couple of serious bugs, please don't link to it.
 , CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a>
 #+end_html
 
-An automatic [[https://github.com/abo-abo/hydra][hydra]]-based which-key banisher. The inverse of [[https://gitlab.com/jjzmajic/hercules.el][hercules.el]], which is "an auto-magical, which-key-based hydra banisher".  From Greek mythology, [[https://en.wikipedia.org/wiki/Deianira][Deianira]] was the wife of Hercules and the one who slew him.
+The inverse of [[https://gitlab.com/jjzmajic/hercules.el][hercules.el]].  That is "an auto-magical, which-key-based hydra banisher", so this is an auto-magical, [[https://github.com/abo-abo/hydra][hydra]]-based which-key banisher.  From Greek mythology, [[https://en.wikipedia.org/wiki/Deianira][Deianira]] was the wife of Hercules and the one who slew him.
 
-Or that's what it could be: currently the package is not that generalized and fits my own workflow only, but it took sweat and tears to develop so I thought it worth publishing.  It includes a library of functions for [[Stem and leaf][manipulating key descriptions]]. In addition, it does more than Hercules in some areas, which could be spun out as separate packages at some point.
+Or that's what it could be: currently the package is not that generalized and fits my own workflow only, but it took sweat and tears to develop so I thought it worth publishing.  It includes a library of functions for [[stemleaf][manipulating key descriptions]]. In addition, it does more than Hercules in some areas, which could be spun out as separate packages at some point.
 
 ** Paradigm
 
@@ -78,7 +78,7 @@ The problems are
 - I'll develop to this section when the package matures a bit.
 
 ** Concepts
-*** Stem and leaf
+*** <<stemleaf>>Stem and leaf
 
 The source code makes a lot of references to "stem" and "leaf", which are defined most succinctly by =dei--get-leaf= and its complement, but in human language, the leaf is the last part of a key description (the kind of string you'd pass to =kbd=) that can correspond to an event.  The way Emacs thinks of it is different, and a necessity from the realities of keyboards: a key like ~C-<return>~ is a /single/ event, not two.  A control-modified character is simply a different character altogether.  This is way too impractical for me to work with, since it maps poorly to how I think about hotkeys.
 
