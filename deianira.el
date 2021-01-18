@@ -42,7 +42,7 @@
 (require 'hydra)
 
 
-;;; Background facts
+;;;; Background facts
 
 (defconst dei--modifier-regexp
   (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-")))
@@ -99,361 +99,10 @@
 (defvar dei--hydra-keys-list-nonum (dei--hydra-keys-list-nonum))
 (defvar dei--all-duo-chords (dei--all-duo-chords))
 
-
-;;;; X11
-
-;; "We've not found a keyboard with more than 35 function keys total."
-;; -- /usr/include/X11/keysymdef.h
-;; i.e. F35 is the highest F-key defined in upstream keysymdef.h.
-;; Neat: I would have thought we need to check xmodmap -pke in case we've been
-;; starting emacs many times, but xmodmap will only apply the following rules
-;; if they don't already have a location.
-(defvar dei-xmodmap-rules
-  '(;; necessary for xcape to send them
-    "keycode any = F35"
-    "keycode any = F34"
-    "keycode any = F33"
-    "keycode any = F32"
-    "keycode any = F31"))
-
-(defvar dei-xcape-rules
-  '(
-    "Alt_L=F34"
-    "Alt_R=F34"
-    ;; "Meta_L=F34"
-    ;; "Meta_R=F34"
-    "Control_L=F35"
-    "Control_R=F35"
-    ;; "Hyper_L=F32"
-    ;; "Hyper_R=F32"
-    "Super_L=F33"
-    "Super_R=F33"))
-
-(defun dei-xmodmap-reload (&optional output-buffer)
-  "(Re-)apply the `dei-xmodmap-rules'."
-  (interactive)
-  (let* ((shell-command-dont-erase-buffer t)
-         (rules (string-join dei-xmodmap-rules "' -e '"))
-         (cmd (concat "xmodmap -e '" rules "'")))
-    (when (executable-find "xmodmap")
-      (start-process-shell-command cmd
-                                   (or output-buffer (dei--debug-buffer) "*Messages*")
-                                   cmd))))
-
-(defvar dei-xcape-process)
-
-(defvar dei-xcape-log-cleaner)
-
-(defun dei-clean-xcape-log ()
-  (when (get-buffer "*xcape*")
-    (with-current-buffer "*xcape*"
-      (delete-region (point-min) (point-max)))))
-
-(defun dei-xcape-reload ()
-  "(Re-)start the xcape process."
-  (interactive)
-  (let ((shell-command-dont-erase-buffer t)
-        (rules (string-join dei-xcape-rules ";")))
-    (when (executable-find "xcape")
-      (and (boundp 'dei-xcape-process)
-           (process-live-p dei-xcape-process)
-           (kill-process dei-xcape-process))
-      (setq dei-xcape-process
-            (start-process "xcape" "*xcape*" "nice" "-20" "xcape" "-d" "-e" rules))
-      (run-with-named-timer 'dei-xcape-log-cleaner 300 300 #'dei-clean-xcape-log))))
-
-(defun dei-xkbset-enable-sticky-keys ()
-  (interactive)
-  (when (executable-find "xkbset")
-    (start-process "xkbset" (dei--debug-buffer) "xkbset" "sticky" "-twokey" "-latchlock")
-    (start-process "xkbset" (dei--debug-buffer) "xkbset" "exp" "=sticky")))
 
 
-;;; Enforce tidy
-
-
-;; Generalized flatten-ctl-x
-(defun dei-restem-all-leaves (here lower-stem upper-stem)
-  "Duplicate bindings on UPPER-STEM to also exist on LOWER-STEM.
-Where they conflict, LOWER-STEM is overridden. The naming is
-inspired by overlayfs, which do a similar thing with filesystem
-mounts. HERE refers to the keymap such as global-map.  Typical
-use: (dei-restem-all-leaves global-map \"C-x \" \"C-x C-\")"
-  (dolist (leaf (dei--hydra-keys-in-a-list))
-    (dei-restem here leaf lower-stem upper-stem)))
-
-(defun dei-restem (here leaf new-stem reference-stem)
-  "Keeping LEAF, change stem."
-  (let ((ref-cmd (lookup-key here (kbd (concat reference-stem leaf)))))
-    (when (dei--of-interest-p ref-cmd)
-      (define-key here (kbd (concat new-stem leaf))
-        ref-cmd))))
-
-(defun dei-new-leaf (here stem new-leaf reference-leaf)
-  (define-key here (kbd (concat stem new-leaf))
-    (lookup-key here (kbd (concat stem reference-leaf)))))
-
-;; TODO: make this work
-(defmacro dei-backup-keymap-1 (keymap)
-  "Backup KEYMAP under the name dei-backup-KEYMAP, unless it's
-already been done."
-  `(when-let ((name (ignore-errors (symbol-name ',keymap))) ;; guard clause
-              (backup (intern (concat "dei-backup-" name))))
-     (unless (and (boundp backup)
-                  (not (eq nil backup)))
-       ;; Maybe you should use `copy-keymap' here
-       (set backup ,keymap))))
-
-;; TODO: make it not fail for unnamed maps
-;; TODO: backup unnamed maps too
-(defmacro dei-backup-keymap (keymap)
-  "Backup KEYMAP under the name dei-backup-KEYMAP, unless it's
-already been done."
-  `(let ((backup (intern (concat "dei-backup-" (symbol-name ',keymap)))))
-     (unless (and (boundp backup)
-                  (not (eq nil backup)))
-       ;; Maybe you should use `copy-keymap' here
-       (set backup ,keymap))))
-
-(defmacro dei-restore-keymap (keymap)
-  `(let ((backup (intern (concat "dei-backup-" (symbol-name ',keymap)))))
-     (when (and (boundp backup)
-                (not (eq nil backup)))
-       (setq ,keymap backup))))
-
-(defun dei-bind-all-shiftsyms-to-insert ()
-  "Bind all capital letters and shift symbols to self-insert."
-  (dolist (leaf dei-all-shifted-symbols)
-    (global-set-key (kbd leaf) #'self-insert-command)))
-
-;; (defun dei-super-from-ctl ()
-;;   (map-keymap (lambda (ev def)
-;;                 (let* ((case-fold-search nil)
-;;                        (key (key-description (list ev)))
-;;                        (newkey (replace-regexp-in-string
-;;                                 (rx word-start "C" word-end) "s" key t)))
-;;                   (and (dei--of-interest-p def)
-;;                        (not (equal key newkey))
-;;                        (define-key global-map (kbd newkey) def))))
-;;               global-map))
-
-;; TODO: Do this continuously over time
-;; TODO: Do this not only on global-map
-(defun dei-super-from-ctl (map)
-  (map-keymap (lambda (ev def)
-                (let* ((case-fold-search nil)
-                       (key (key-description (list ev)))
-                       (newkey (replace-regexp-in-string
-                                (rx word-start "C" word-end) "s" key t)))
-                  (when (and (dei--of-interest-p def)
-                             (not (equal key newkey))) ;; Don't proceed for those keys that didn't contain C- in the first place, e.g. M-f.
-                    (define-key map (kbd newkey) def)))
-                (when (keymapp def)
-                  (dei-super-from-ctl def))) ;; recurse
-              map)
-  ;; is this the thing that makes C-g need two presses sometimes?
-  (define-key key-translation-map (kbd "s-g") (kbd "C-g"))
-  )
-
-
-;;; Keyboard scanning
-
-;; Think this function is hairy and unnecessary? It's this way because the C
-;; function `describe-buffer-bindings' is the only way to get this information
-;; efficiently. Inspired by which-key--get-current-bindings. Thanks!
-(defun dei--current-bindings (&optional keep flush)
-  "Get the list of all currently active bindings.
-This ignores those masked by other keymaps, returning only the
-binding in the winning keymap.
-
-Optional argument KEEP is a regexp describing keys to keep. Can
-be left at nil to keep everything.
-
-Optional argument FLUSH is a regexp describing keys to discard
-after the above filter has been applied (even if KEEP was nil).
-You should pass a regexp that will catch \"ESC\" because a lot of
-functions in the library aren't really ESC-aware."
-  (let ((result nil)
-        (that-buffer (current-buffer)) ;; since we go to a temp buffer
-        (ignore-keys (eval-when-compile
-                       (regexp-opt '("mouse-" "remap" "scroll-bar" "select-"
-                                     "switch-" "help" "-state" "which-key-"
-                                     "-corner" "-divider" "-edge" "header-"
-                                     "mode-line" "tab-" "vertical-line"
-                                     "frame"))))
-        (ignore-bindings (eval-when-compile
-                           (regexp-opt '("self-insert-command" "ignore"
-                                         "ignore-event" "company-ignore"))))
-        (ignore-sections (eval-when-compile
-                           (regexp-opt '("Key translations"
-                                         "Function key map translations"
-                                         "Input decoding map translations")))))
-    (with-temp-buffer
-      (setq-local indent-tabs-mode t)
-      (describe-buffer-bindings that-buffer)
-      (goto-char (point-min))
-      (flush-lines ignore-bindings)
-      (flush-lines (rx (regexp ignore-sections)
-                       (* (not ""))))
-      (flush-lines (rx "---"))
-      (flush-lines (rx bol "key" (* nonl) "binding"))
-      (flush-lines (rx bol (* nonl) ":" eol))
-      (flush-lines (rx ""))
-      (flush-lines (rx " .. "))
-      (while (search-forward "\n\t" nil t)
-        (replace-match ""))
-      (goto-char (point-min))
-      (while (re-search-forward (rx "<" (group (regexp dei--modifier-regexp)))
-                                nil t)
-        (replace-match "\\1<")
-        (goto-char (point-min)))
-      (flush-lines (rx (regexp ignore-keys) (* nonl) "	"))
-      (when keep (keep-lines keep))
-      (when flush (flush-lines flush))
-      (while (re-search-forward (rx (group (+? nonl)) (+ "	") (group (+ nonl)))
-                                nil t)
-        (push (cons (match-string 1) (match-string 2)) result)))
-    result))
-
-
-
-;;; User settings
-
-(defun dei--colwidth ()
-  (or dei-colwidth-override
-      (let ((optimal (- (round (frame-parameter nil 'width) 10) 4)))
-        (max optimal 8))))
-
-(defvar dei-colwidth-override nil
-  "An integer for the width of hydra hints. If nil, figure it out
-from the frame width.")
-
-(defvar dei--colwidth (dei--colwidth)
-  "Width of hydra hint.
-You should prefer to call the function `dei--colwidth' in case of
-frame or font changes.")
-
-(defvar dei-quitters '(;;"C-q"
-                       "C-s" "C-g" "s-s" "s-g" "C-u" "M-x" "M-u" "s-u" "C-2"
-                       "C-c c"))
-
-(defvar dei-noquitters '("C-2 t" "C-2 n" "C-2 p" "C-x ;" "C-x x" "C-x q"
-                           "C-x h" "C-x u" "C-x i" "C-x p" "C-x l" "C-x 1"
-                           "C-x 2" "C-x 3" "C-x 0" "C-c c"
-                           "C-c C-c" ;;testing
-                           ))
-
-;; TODO: perhaps it'd be possible to just hook window-buffer-change-functions
-;; to kill any hydra when minibuffer gets focus.
-;;
-;; Check dei--current-bindings for reference. This is a potentially neverending
-;; list, but it's not necessarily a big deal.
-(defvar dei-quitter-commands '(
-                               search-forward
-                               search-backward
-                               isearch-forward
-                               isearch-forward-word
-                               isearch-forward-symbol
-                               isearch-forward-regexp
-                               isearch-backward
-                               isearch-backward-regexp
-                               quoted-insert
-                               multi-occur
-                               consult-multi-occur
-                               projectile-multi-occur
-                               query-replace-regexp
-                               query-replace
-                               projectile-replace
-                               projectile-replace-regexp
-                               project-query-replace-regexp
-                               swiper
-                               helm-occur
-                               occur
-                               add-mode-abbrev
-                               add-global-abbrev
-                               keyboard-quit
-                               minibuffer-keyboard-quit
-                               keyboard-escape-quit
-                               execute-extended-command
-                               smex
-                               helm-M-x
-                               counsel-M-x
-                               magit-status
-                               consult-goto-line
-                               re-builder
-                               highlight-regexp
-                               highlight-phrase
-                               highlight-lines-matching-regexp
-                               unhighlight-regexp
-                               string-rectangle
-                               find-file
-                               find-file-read-only
-                               find-file-read-only-other-frame
-                               find-file-read-only-other-window
-                               find-file-literally
-                               find-file-other-frame
-                               find-file-other-tab
-                               find-file-other-window
-                               view-file
-                               view-file-other-frame
-                               view-file-other-window
-                               kmacro-start-macro
-                               kmacro-start-macro-or-insert-counter
-                               inverse-add-global-abbrev
-                               inverse-add-mode-abbrev
-                               make-frame-command
-                               other-frame
-                               display-buffer
-                               kill-buffer
-                               kill-buffer-ask
-                               kill-some-buffers
-                               save-some-buffers
-                               consult-complex-command
-                               repeat-complex-command
-                               set-keyboard-coding-system
-                               set-buffer-file-coding-system
-                               set-language-environment
-                               set-selection-coding-system
-                               set-terminal-coding-system
-                               set-next-selection-coding-system
-                               set-file-name-coding-system
-                               set-input-method
-                               consult-line
-                               eval-expression
-                               shell-command
-                               async-shell-command
-                               write-file
-                               save-buffers-kill-emacs
-                               save-buffers-kill-terminal
-                               kill-emacs
-                               my-save-buffers-kill-emacs-silently
-                               server-save-buffers-kill-terminal
-                               find-alternate-file
-                               describe-variable
-                               describe-function
-                               describe-symbol
-                               describe-face
-                               describe-coding-system
-                               describe-language-environment
-                               describe-key
-                               helpful-callable
-                               helpful-command
-                               helpful-variable
-                               helpful-function
-                               helpful-symbol
-                               sp-rewrap-sexp
-                               +default/man-or-woman
-                               +lookup/online
-                               doom/help-packages
-                               org-agenda
-                               org-capture
-                               ))
-
-(defvar dei-exit-by-default nil)
-
-
-;;; Keydesc handling
-;; If it's not a pure function, it probably doesn't belong here.
+;;;; Handlers for key descriptions
+;; If it's not a pure function, it probably doesn't belong in this section.
 
 (defun dei--key-contains-ctl (keydesc)
   (declare (pure t) (side-effect-free t))
@@ -652,7 +301,204 @@ Assume that there are no modifiers beyond the root. If there are, IDK."
     (dei--corresponding-hydra-from-stem (dei--parent-stem stem))))
 
 
-;;; Library
+;;;; Keyboard scanning
+
+;; TODO: This does not turn up <f12>, why?
+;; Think this function is hairy and unnecessary? It's this way because the C
+;; function `describe-buffer-bindings' is the only way to get this information
+;; efficiently. Inspired by which-key--get-current-bindings. Thanks!
+(defun dei--current-bindings (&optional keep flush)
+  "Get the list of all currently active bindings.
+This ignores those masked by other keymaps, returning only the
+binding in the winning keymap.
+
+Optional argument KEEP is a regexp describing keys to keep. Can
+be left at nil to keep everything.
+
+Optional argument FLUSH is a regexp describing keys to discard
+after the above filter has been applied (even if KEEP was nil).
+You should pass a regexp that will catch \"ESC\" because a lot of
+functions in the library aren't really ESC-aware."
+  (let ((result nil)
+        (that-buffer (current-buffer)) ;; since we go to a temp buffer
+        (ignore-keys (eval-when-compile
+                       (regexp-opt '("mouse-" "remap" "scroll-bar" "select-"
+                                     "switch-" "help" "-state" "which-key-"
+                                     "-corner" "-divider" "-edge" "header-"
+                                     "mode-line" "tab-" "vertical-line"
+                                     "frame"))))
+        (ignore-bindings (eval-when-compile
+                           (regexp-opt '("self-insert-command" "ignore"
+                                         "ignore-event" "company-ignore"))))
+        (ignore-sections (eval-when-compile
+                           (regexp-opt '("Key translations"
+                                         "Function key map translations"
+                                         "Input decoding map translations")))))
+    (with-temp-buffer
+      (setq-local indent-tabs-mode t)
+      (describe-buffer-bindings that-buffer)
+      (goto-char (point-min))
+      (flush-lines ignore-bindings)
+      (flush-lines (rx (regexp ignore-sections)
+                       (* (not ""))))
+      (flush-lines (rx "---"))
+      (flush-lines (rx bol "key" (* nonl) "binding"))
+      (flush-lines (rx bol (* nonl) ":" eol))
+      (flush-lines (rx ""))
+      (flush-lines (rx " .. "))
+      (while (search-forward "\n\t" nil t)
+        (replace-match ""))
+      (goto-char (point-min))
+      (while (re-search-forward (rx "<" (group (regexp dei--modifier-regexp)))
+                                nil t)
+        (replace-match "\\1<")
+        (goto-char (point-min)))
+      (flush-lines (rx (regexp ignore-keys) (* nonl) "	"))
+      (when keep (keep-lines keep))
+      (when flush (flush-lines flush))
+      (while (re-search-forward (rx (group (+? nonl)) (+ "	") (group (+ nonl)))
+                                nil t)
+        (push (cons (match-string 1) (match-string 2)) result)))
+    result))
+
+
+
+;;;; User settings
+
+(defun dei--colwidth ()
+  (or dei-colwidth-override
+      (let ((optimal (- (round (frame-parameter nil 'width) 10) 4)))
+        (max optimal 8))))
+
+(defvar dei-colwidth-override nil
+  "An integer for the width of hydra hints. If nil, figure it out
+from the frame width.")
+
+(defvar dei--colwidth (dei--colwidth)
+  "Width of hydra hint.
+You should prefer to call the function `dei--colwidth' in case of
+frame or font changes.")
+
+(defvar dei-quitters '(;;"C-q"
+                       "C-s" "C-g" "s-s" "s-g" "C-u" "M-x" "M-u" "s-u" "C-2"
+                       "C-c c"))
+
+(defvar dei-noquitters '("C-2 t" "C-2 n" "C-2 p" "C-x ;" "C-x x" "C-x q"
+                           "C-x h" "C-x u" "C-x i" "C-x p" "C-x l" "C-x 1"
+                           "C-x 2" "C-x 3" "C-x 0" "C-c c"
+                           "C-c C-c" ;;testing
+                           ))
+
+;; TODO: perhaps it'd be possible to just hook window-buffer-change-functions
+;; to kill any hydra when minibuffer gets focus.
+;;
+;; Check dei--current-bindings for reference. This is a potentially neverending
+;; list, but it's not necessarily a big deal.
+(defvar dei-quitter-commands '(
+                               search-forward
+                               search-backward
+                               isearch-forward
+                               isearch-forward-word
+                               isearch-forward-symbol
+                               isearch-forward-regexp
+                               isearch-backward
+                               isearch-backward-regexp
+                               quoted-insert
+                               multi-occur
+                               consult-multi-occur
+                               projectile-multi-occur
+                               query-replace-regexp
+                               query-replace
+                               projectile-replace
+                               projectile-replace-regexp
+                               project-query-replace-regexp
+                               swiper
+                               helm-occur
+                               occur
+                               add-mode-abbrev
+                               add-global-abbrev
+                               keyboard-quit
+                               minibuffer-keyboard-quit
+                               keyboard-escape-quit
+                               execute-extended-command
+                               smex
+                               helm-M-x
+                               counsel-M-x
+                               magit-status
+                               consult-goto-line
+                               re-builder
+                               highlight-regexp
+                               highlight-phrase
+                               highlight-lines-matching-regexp
+                               unhighlight-regexp
+                               string-rectangle
+                               find-file
+                               find-file-read-only
+                               find-file-read-only-other-frame
+                               find-file-read-only-other-window
+                               find-file-literally
+                               find-file-other-frame
+                               find-file-other-tab
+                               find-file-other-window
+                               view-file
+                               view-file-other-frame
+                               view-file-other-window
+                               kmacro-start-macro
+                               kmacro-start-macro-or-insert-counter
+                               inverse-add-global-abbrev
+                               inverse-add-mode-abbrev
+                               make-frame-command
+                               other-frame
+                               display-buffer
+                               kill-buffer
+                               kill-buffer-ask
+                               kill-some-buffers
+                               save-some-buffers
+                               consult-complex-command
+                               repeat-complex-command
+                               set-keyboard-coding-system
+                               set-buffer-file-coding-system
+                               set-language-environment
+                               set-selection-coding-system
+                               set-terminal-coding-system
+                               set-next-selection-coding-system
+                               set-file-name-coding-system
+                               set-input-method
+                               consult-line
+                               eval-expression
+                               shell-command
+                               async-shell-command
+                               write-file
+                               save-buffers-kill-emacs
+                               save-buffers-kill-terminal
+                               kill-emacs
+                               my-save-buffers-kill-emacs-silently
+                               server-save-buffers-kill-terminal
+                               find-alternate-file
+                               describe-variable
+                               describe-function
+                               describe-symbol
+                               describe-face
+                               describe-coding-system
+                               describe-language-environment
+                               describe-key
+                               helpful-callable
+                               helpful-command
+                               helpful-variable
+                               helpful-function
+                               helpful-symbol
+                               sp-rewrap-sexp
+                               +default/man-or-woman
+                               +lookup/online
+                               doom/help-packages
+                               org-agenda
+                               org-capture
+                               ))
+
+(defvar dei-exit-by-default nil)
+
+
+;;;; Library
 
 (defvar dei-debug nil
   "A buffer name or nil.")
@@ -667,13 +513,6 @@ Assume that there are no modifiers beyond the root. If there are, IDK."
       (with-current-buffer buf
         (setq-local truncate-lines t)
         buf))))
-
-;; TODO: Difference from dei--corresponding-hydra?
-;; REVIEW: Can this be tested? Need Buttercup?
-(defun dei--subhydra-or-nil (stem leaf)
-  "Return the hydra body in question."
-  (if-let ((x (cdr (assoc (concat stem leaf) dei--live-hydras))))
-      (intern (concat x "/body"))))
 
 ;; REVIEW: Write test for it with a key-simulator
 (defun dei-universal-arg (arg)
@@ -701,13 +540,6 @@ you want to be able to type nccnccnccncc."
         ((string-match-p "^s-" keydesc)
          (dei-super/body))))
 
-;; TODO: delete
-(defun dei-cc-cc ()
-  (interactive)
-  ;; (call-interactively (key-binding (kbd "C-c c"))) ;; if flattened
-  (call-interactively (key-binding (kbd "C-c C-c")))
-  (dei-C/body))
-
 (defun dei-cmd (stem leaf)
   (key-binding (kbd (concat stem leaf))))
 
@@ -717,8 +549,30 @@ you want to be able to type nccnccnccncc."
 (defun dei--is-bound (stem leaf)
   (not (dei--is-unbound stem leaf)))
 
+;; REVIEW: This may be slow
+(defun dei--sort-like (index alist)
+  "Sort ALIST by `car' according to elements in INDEX.
+Using INDEX as a master reference, sort ALIST to follow it as
+well as possible, appending unknown members to the end.
+
+Example: With INDEX being '(\"b\" \"c\" \"d\" \"a\"),
+an example ALIST transformation may look like this.
+
+'((\"a\" nil)           '((\"b\" nil)
+  (\"b\" nil)      -->    (\"c\" nil)
+  (\"z\" nil)             (\"a\" nil)
+  (\"c\" nil))            (\"z\" nil))"
+  (declare (pure t) (side-effect-free t))
+  (append (-non-nil (cl-loop for leaf in index
+                             collect (--find (equal leaf (car it))
+                                             alist)))
+          (->> (-difference (-map #'car alist) index)
+               (--map (assoc it alist)))))
+
+;; (dei--sort-like '("b" "c" "d" "a") '(("a") ("b") ("z") ("c")))
+
 
-;;; Hydra blueprinting
+;;;; Hydra blueprinting
 
 (defun dei-head-cmd (stem leaf)
   (cond ((eq #'universal-argument (dei-cmd stem leaf))
@@ -726,8 +580,7 @@ you want to be able to type nccnccnccncc."
         (t `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
 
 (defun dei-head-hint (stem leaf)
-  (let* ((sym (or (dei--subhydra-or-nil stem leaf)
-                  (key-binding (kbd (concat stem leaf)))))
+  (let* ((sym (key-binding (kbd (concat stem leaf))))
          (name (if (symbolp sym)
                    (symbol-name sym)
                  " ")))
@@ -740,14 +593,12 @@ you want to be able to type nccnccnccncc."
 (defun dei-head (stem leaf)
   `( ,leaf
      ,(dei-head-cmd stem leaf)
-     ,(dei-head-hint stem leaf)
-     ,@(dei-head-exit stem leaf)))
+     ,(dei-head-hint stem leaf)))
 
 (defun dei-head-invisible (stem leaf)
   `( ,leaf
      ,(dei-head-cmd stem leaf)
-     nil
-     ,@(dei-head-exit stem leaf)))
+     nil))
 
 (defun dei-head-invisible-self-inserting-stemless (_stem leaf)
   `( ,leaf self-insert-command nil :exit t))
@@ -757,14 +608,23 @@ you want to be able to type nccnccnccncc."
 
 ;; Lists of heads
 
+;; It occurs to me that I need to treat differently (give nil hint) those that
+;; are in the main 10-column keys set and those that aren't, otherwise it fucks
+;; up the lv popup.  We also need to sort correctly.  We could discuss just
+;; using conditional logic per head as we used to, since 30-40 visible heads
+;; isn't that many, and have a separate set of specifiers for the invisible.
+;; So we would have two lists of subhydra gates, those that go in the visible
+;; set and those that don't...  Ok that's just unnecessary, may as well not
+;; have any special specifier for subhydra gates at all.
 (defun dei--specify-heads-to-subhydra (stem leaf-list)
   (cl-loop for leaf in leaf-list
            collect
            (let ((cmd (dei--corresponding-hydra stem leaf)))
-             `(,leaf
-               ,cmd
-               ,(symbol-name cmd)
-               :exit t))))
+             (list leaf
+                   cmd
+                   (when (member leaf dei--hydra-keys-list)
+                     (symbol-name cmd))
+                   :exit t))))
 
 (defun dei--specify-visible-heads (stem verboten-leafs)
   (let ((leaf-list (-difference dei--hydra-keys-list
@@ -807,7 +667,7 @@ you want to be able to type nccnccnccncc."
                                                           subhydra-gates))
                  (dei--specify-invisible-heads stem subhydra-gates)
                  (dei--specify-extra-heads stem))))
-    (cons stem heads)))
+    (cons stem (dei--sort-like dei--hydra-keys-list heads))))
 
 (defun dei--specify-dire-hydras ()
   (setq dei--live-stems (-difference dei--live-stems
@@ -826,6 +686,7 @@ you want to be able to type nccnccnccncc."
 
 ;; Final boss
 
+;; REVIEW: Maybe delete this function
 (defun dei--call-defhydra (name heads-list)
   "Create a hydra named NAME with HEADS-LIST.
 Tip: This is a thin wrapper around `defhydra', the magic happens
@@ -842,7 +703,7 @@ when it's called by `dei-generate-hydras-async'."
         t))
 
 
-;;; Async worker
+;;;; Async worker
 
 (defvar dei--after-scan-bindings-hook nil
   "Things to do after updating `dei--current-bindings'.
@@ -854,33 +715,21 @@ rescan.")
 (defvar dei--after-rebuild-hydra-hook nil
   "Hook run after updating hydras to match the local map.")
 
-;; Persistent variables helpful for debugging
-(defvar dei--keys-that-are-hydras nil)
-(defvar dei--current-bindings nil)
-(defvar dei--current-filtered-bindings nil)
-(defvar dei--last-filtered-bindings nil)
-(defvar dei--new-or-changed-bindings nil)
-(defvar dei--new-or-changed-stems nil)
-(defvar dei--defunct-bindings nil)
-(defvar dei--defunct-stems nil)
-(defvar dei--changed-keymaps nil)
-(defvar dei--hydra-blueprints nil)
-(defvar dei--live-stems nil)
-
 (defun dei--combined-filter (cell)
   "Filter for rejecting keys as irrelevant to work on.
 This function exists because there is a need to go into a list
 and look at the `car's, and so we may as well run each filter
 while we're at it."
   (declare (pure t) (side-effect-free t))
-  (let ((keydesc (car cell)))
+  (let ((keydesc (car cell))
+        (case-fold-search nil))
     (or ;;(dei--key-contains-ctl keydesc)
      ;; (s-contains-p "backspace" keydesc)
      ;; (s-contains-p "DEL" keydesc)
-     ;; (s-contains-p "SPC" keydesc)
-     ;; (dei--key-has-more-than-one-modifier keydesc)
-     ;; (dei--contains-upcase keydesc)
-     ;; (dei--key-contains-multi-chords keydesc)
+     (s-contains-p "S-" keydesc)
+     (dei--key-has-more-than-one-modifier keydesc)
+     (dei--contains-upcase keydesc)
+     (dei--key-contains-multi-chords keydesc)
      (dei--key-seq-mixes-modifiers keydesc))))
 
 ;; (dei--key-has-more-than-one-modifier "s-i")
@@ -904,7 +753,7 @@ while we're at it."
                          (dei--normalize (car x))
                        (car x))
                      (cdr x))))
-       ;; (dei--unbind-illegal-keys)
+       (dei--unbind-illegal-keys)
        ;; Remove subkeymaps because we infer their existence later via (-uniq
        ;; (-map (dei--get-stem))).
        (-remove (lambda (x) (or (string= "Prefix Command" (cdr x))
@@ -931,23 +780,43 @@ while we're at it."
 (defun dei--set-variables ()
   (setq dei--defunct-bindings (-difference dei--last-filtered-bindings
                                            dei--current-filtered-bindings))
-
   (setq dei--new-or-changed-bindings (-difference dei--current-filtered-bindings
                                                   dei--last-filtered-bindings))
-
   (setq dei--defunct-stems
         (->> dei--defunct-bindings
              (-map #'car)
              (-map #'dei--get-stem)
              (-uniq)))
-  
   (setq dei--new-or-changed-stems
-        (->> dei--new-bindings
+        (->> dei--new-or-changed-bindings
              (-map #'car)
              ;; Sort to avail the most relevant hydras to the user soonest.
              (seq-sort-by #'dei--key-seq-steps-length #'<)
              (-map #'dei--get-stem)
              (-uniq))))
+
+;; Persistent variables helpful for debugging
+(defvar dei--keys-that-are-hydras nil)
+(defvar dei--current-bindings nil)
+(defvar dei--current-filtered-bindings nil)
+(defvar dei--last-filtered-bindings nil)
+(defvar dei--new-or-changed-bindings nil)
+(defvar dei--new-or-changed-stems nil)
+(defvar dei--defunct-bindings nil)
+(defvar dei--defunct-stems nil)
+(defvar dei--live-stems nil)
+(defvar dei--changed-keymaps nil)
+(defvar dei--hydra-blueprints nil)
+
+;; Trial it yourself
+;; (dei--get-relevant-bindings)
+;; (dei--set-variables)
+;; (dei--specify-dire-hydras)
+(cl-loop
+         for x in dei--hydra-blueprints
+         do (progn (dei--call-defhydra (dei-dub-from-key (car x)) (cdr x))
+                   (push (car x) dei--live-stems)))
+(setq dei--last-filtered-bindings dei--current-filtered-bindings)
 
 (defun dei-generate-hydras-async ()
   "Regenerate hydras to match the local map."
@@ -974,6 +843,7 @@ while we're at it."
     (deferred:nextc it
       #'dei--specify-dire-hydras)
 
+    ;; TODO: This final step should wait until there is no hydra up.
     (deferred:nextc it
       (lambda ()
         (cl-loop
@@ -986,38 +856,164 @@ while we're at it."
       (lambda ()
         (run-hooks 'dei--after-rebuild-hydra-hook)))
 
-    (deferred:nextc it
-      #'dei--fix-which-key)
-
     (deferred:error it
       #'warn)))
 
-(defvar dei--live-stems)
 
-;; when I want the package to be more modular, this should sit on a hook
-;; NOTE: keymap-based replacements are more performant, see README:
-;; https://github.com/justbur/emacs-which-key
-;; not that I care
-(defun dei--fix-which-key ()
-  "Hide keys with repeated modifiers like C-x C-f from which-key.
-We do this because it's bound to the same command as C-x f in our
-paradigm, so all these keys just crowd the display.
+
+;;;; Bonus functions for X11
 
-Destructive; overwrites `which-key-replacement-alist' (but does
-not change the value as saved in `custom-file') ignoring any
-rules already present, because they may not work without enabling
-`which-key-allow-multiple-replacements'. Customizations of
-which-key are mostly superfluous in our paradigm, so we opt not
-to for performance."
-  (if (bound-and-true-p dei--current-bindings)
-      (->> dei--current-bindings
-           (-map #'car)
-           (-remove #'dei--key-seq-steps=1)
-           (-filter #'dei--key-has-more-than-one-modifier)
-           (--map (s-replace "\\" "\\\\" it))
-           (--map (cons (cons it nil) t))
-           (setq which-key-replacement-alist))
-    (message "deianira: Variable dei--current-bindings unexpectedly empty.")))
+;; "We've not found a keyboard with more than 35 function keys total."
+;; -- /usr/include/X11/keysymdef.h
+;; i.e. F35 is the highest F-key defined in upstream keysymdef.h.
+;; Neat: I would have thought we need to check xmodmap -pke in case we've been
+;; starting emacs many times, but xmodmap will only apply the following rules
+;; if they don't already have a location.
+(defvar dei-xmodmap-rules
+  '(;; necessary for xcape to send them
+    "keycode any = F35"
+    "keycode any = F34"
+    "keycode any = F33"
+    "keycode any = F32"
+    "keycode any = F31"))
+
+(defvar dei-xcape-rules
+  '(
+    "Alt_L=F34"
+    "Alt_R=F34"
+    ;; "Meta_L=F34"
+    ;; "Meta_R=F34"
+    "Control_L=F35"
+    "Control_R=F35"
+    ;; "Hyper_L=F32"
+    ;; "Hyper_R=F32"
+    "Super_L=F33"
+    "Super_R=F33"))
+
+(defun dei-xmodmap-reload (&optional output-buffer)
+  "(Re-)apply the `dei-xmodmap-rules'."
+  (interactive)
+  (let* ((shell-command-dont-erase-buffer t)
+         (rules (string-join dei-xmodmap-rules "' -e '"))
+         (cmd (concat "xmodmap -e '" rules "'")))
+    (when (executable-find "xmodmap")
+      (start-process-shell-command cmd
+                                   (or output-buffer (dei--debug-buffer) "*Messages*")
+                                   cmd))))
+
+(defvar dei-xcape-process)
+
+(defvar dei-xcape-log-cleaner)
+
+(defun dei-clean-xcape-log ()
+  (when (get-buffer "*xcape*")
+    (with-current-buffer "*xcape*"
+      (delete-region (point-min) (point-max)))))
+
+(defun dei-xcape-reload ()
+  "(Re-)start the xcape process."
+  (interactive)
+  (let ((shell-command-dont-erase-buffer t)
+        (rules (string-join dei-xcape-rules ";")))
+    (when (executable-find "xcape")
+      (and (boundp 'dei-xcape-process)
+           (process-live-p dei-xcape-process)
+           (kill-process dei-xcape-process))
+      (setq dei-xcape-process
+            (start-process "xcape" "*xcape*" "nice" "-20" "xcape" "-d" "-e" rules))
+      (run-with-named-timer 'dei-xcape-log-cleaner 300 300 #'dei-clean-xcape-log))))
+
+(defun dei-xkbset-enable-sticky-keys ()
+  (interactive)
+  (when (executable-find "xkbset")
+    (start-process "xkbset" (dei--debug-buffer) "xkbset" "sticky" "-twokey" "-latchlock")
+    (start-process "xkbset" (dei--debug-buffer) "xkbset" "exp" "=sticky")))
+
+
+;;;; Bonus functions for mass remaps
+
+;; Generalized flatten-ctl-x
+(defun dei-restem-all-leaves (here lower-stem upper-stem)
+  "Duplicate bindings on UPPER-STEM to also exist on LOWER-STEM.
+Where they conflict, LOWER-STEM is overridden. The naming is
+inspired by overlayfs, which do a similar thing with filesystem
+mounts. HERE refers to the keymap such as global-map.  Typical
+use: (dei-restem-all-leaves global-map \"C-x \" \"C-x C-\")"
+  (dolist (leaf (dei--hydra-keys-in-a-list))
+    (dei-restem here leaf lower-stem upper-stem)))
+
+(defun dei-restem (here leaf new-stem reference-stem)
+  "Keeping LEAF, change stem."
+  (let ((ref-cmd (lookup-key here (kbd (concat reference-stem leaf)))))
+    (when (dei--of-interest-p ref-cmd)
+      (define-key here (kbd (concat new-stem leaf))
+        ref-cmd))))
+
+(defun dei-new-leaf (here stem new-leaf reference-leaf)
+  (define-key here (kbd (concat stem new-leaf))
+    (lookup-key here (kbd (concat stem reference-leaf)))))
+
+;; TODO: make this work
+(defmacro dei-backup-keymap-1 (keymap)
+  "Backup KEYMAP under the name dei-backup-KEYMAP, unless it's
+already been done."
+  `(when-let ((name (ignore-errors (symbol-name ',keymap))) ;; guard clause
+              (backup (intern (concat "dei-backup-" name))))
+     (unless (and (boundp backup)
+                  (not (eq nil backup)))
+       ;; Maybe you should use `copy-keymap' here
+       (set backup ,keymap))))
+
+;; TODO: make it not fail for unnamed maps
+;; TODO: backup unnamed maps too
+(defmacro dei-backup-keymap (keymap)
+  "Backup KEYMAP under the name dei-backup-KEYMAP, unless it's
+already been done."
+  `(let ((backup (intern (concat "dei-backup-" (symbol-name ',keymap)))))
+     (unless (and (boundp backup)
+                  (not (eq nil backup)))
+       ;; Maybe you should use `copy-keymap' here
+       (set backup ,keymap))))
+
+(defmacro dei-restore-keymap (keymap)
+  `(let ((backup (intern (concat "dei-backup-" (symbol-name ',keymap)))))
+     (when (and (boundp backup)
+                (not (eq nil backup)))
+       (setq ,keymap backup))))
+
+(defun dei-bind-all-shiftsyms-to-insert ()
+  "Bind all capital letters and shift symbols to self-insert."
+  (dolist (leaf dei-all-shifted-symbols)
+    (global-set-key (kbd leaf) #'self-insert-command)))
+
+;; (defun dei-super-from-ctl ()
+;;   (map-keymap (lambda (ev def)
+;;                 (let* ((case-fold-search nil)
+;;                        (key (key-description (list ev)))
+;;                        (newkey (replace-regexp-in-string
+;;                                 (rx word-start "C" word-end) "s" key t)))
+;;                   (and (dei--of-interest-p def)
+;;                        (not (equal key newkey))
+;;                        (define-key global-map (kbd newkey) def))))
+;;               global-map))
+
+;; TODO: Do this continuously over time
+;; TODO: Do this not only on global-map
+(defun dei-super-from-ctl (map)
+  (map-keymap (lambda (ev def)
+                (let* ((case-fold-search nil)
+                       (key (key-description (list ev)))
+                       (newkey (replace-regexp-in-string
+                                (rx word-start "C" word-end) "s" key t)))
+                  (when (and (dei--of-interest-p def)
+                             (not (equal key newkey))) ;; Don't proceed for those keys that didn't contain C- in the first place, e.g. M-f.
+                    (define-key map (kbd newkey) def)))
+                (when (keymapp def)
+                  (dei-super-from-ctl def))) ;; recurse
+              map)
+  ;; is this the thing that makes C-g need two presses sometimes?
+  (define-key key-translation-map (kbd "s-g") (kbd "C-g"))
+  )
 
 
 ;;;; Main
@@ -1029,32 +1025,14 @@ to for performance."
   " ESM"
   `((,(kbd "<f35>") . dei-C/body)
     (,(kbd "<f34>") . dei-M/body)
-    (,(kbd "<f33>") . dei-s/body))
+    (,(kbd "<f33>") . dei-s/body)
+    (,(kbd "<f32>") . dei-H/body)
+    (,(kbd "<f31>") . dei-A/body))
   :global t
   (unless t
     (when deianira-mode
 
       (add-hook 'window-buffer-change-functions #'dei-generate-hydras-async)
-
-      ;; TEST CODE
-
-      ;; TODO: Make it faster. Ideally run a deferred loop.
-      (dei-generate-hydras-async)
-
-      (dei--get-relevant-bindings)
-      (dei--get-relevant-bindings)
-      (dei--set-variables)
-      (setq dei--new-or-changed-stems
-            (-uniq (mapcar #'dei--get-stem
-                           ;; Sort by length to avail the most relevant hydras to the user soonest.
-                           (seq-sort-by #'dei--key-seq-steps-length #'< dei--new-or-rebound-keys))))
-      (dei--specify-dire-hydras)
-
-      ;; the unnamed lambda that builds it all
-      (cl-loop for x in dei--hydra-blueprints
-               do (push (dei--call-defhydra (car x) (cdr x))
-                        dei--live-hydras))
-      (setq dei--last-filtered-bindings dei--current-filtered-bindings)
 
       )))
 
