@@ -706,7 +706,7 @@ you want to be able to type nccnccnccncc."
   (interactive)
   ;; (call-interactively (key-binding (kbd "C-c c"))) ;; if flattened
   (call-interactively (key-binding (kbd "C-c C-c")))
-  (dei-control/body))
+  (dei-C/body))
 
 (defun dei-cmd (stem leaf)
   (key-binding (kbd (concat stem leaf))))
@@ -718,75 +718,73 @@ you want to be able to type nccnccnccncc."
   (not (dei--is-unbound stem leaf)))
 
 
-;;; Hydra specifier
+;;; Hydra blueprinting
 
 (defun dei-head-cmd (stem leaf)
-  (cond ((not (dei--of-interest-p (dei-cmd stem leaf)))
-         leaf) ;; make a blank spot
-        ((keymapp (dei-cmd stem leaf))
-         (dei--corresponding-hydra stem leaf))
-        ((string= (concat stem leaf) "C-c c")
-         #'dei-cc-cc)
-        ((string= (concat stem leaf) "C-g") ;; TODO: don't check key, check if the binding is keyboard-quit.
-         #'keyboard-quit)
-        ((eq #'universal-argument (dei-cmd stem leaf))
+  (cond ((eq #'universal-argument (dei-cmd stem leaf))
          #'dei-universal-arg)
         (t `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
 
 (defun dei-head-hint (stem leaf)
   (let* ((sym (or (dei--subhydra-or-nil stem leaf)
-                  ;; (dei-is-known-prefix stem leaf)
                   (key-binding (kbd (concat stem leaf)))))
-         (name (if (symbolp sym) (symbol-name sym) " ")))
+         (name (if (symbolp sym)
+                   (symbol-name sym)
+                 " ")))
     (if (string= name "nil")
         " "
       (if (> (length name) dei--colwidth)
           (substring name 0 dei--colwidth)
         name))))
 
-(defun dei-head-key (stem leaf)
-  "If the given hotkey is bound to a command, return LEAF,
-otherwise return a space character. This can be used to
-make a visible blank spot in a hydra for hotkeys that are unbound."
-  (if (dei--of-interest-p (dei-cmd stem leaf))
-      leaf
-    " "))
-
-(defun dei-head-exit (stem leaf &optional exit-almost-never-p)
-  (cond ((dei--subhydra-or-nil stem leaf) '(:exit t)) ;; important
-        ;; ((eq #'universal-argument (dei-cmd stem leaf)) '(:exit nil))
-        ((member (concat stem leaf) dei-quitters) '(:exit t))
-        ((member (concat stem leaf) dei-noquitters) '(:exit nil))
-        ((dei--is-unbound stem leaf) '(:exit t))
-        (exit-almost-never-p '(:exit nil))
-        (t '()))) ;; defer to hydra's default behavior
-
 (defun dei-head (stem leaf)
-  "Return a \"head\" specification, in other words a list in the
-form (KEY COMMAND HINT EXIT) as needed in `defhydra'."
-  `( ,(dei-head-key stem leaf) ,(dei-head-cmd stem leaf) ,(dei-head-hint stem leaf)
+  `( ,leaf
+     ,(dei-head-cmd stem leaf)
+     ,(dei-head-hint stem leaf)
      ,@(dei-head-exit stem leaf)))
 
 (defun dei-head-invisible (stem leaf)
-  `( ,(dei-head-key stem leaf) ,(dei-head-cmd stem leaf) nil
-     ,@(dei-head-exit stem leaf 'almost-never)))
+  `( ,leaf
+     ,(dei-head-cmd stem leaf)
+     nil
+     ,@(dei-head-exit stem leaf)))
 
-(defun dei-head-invisible-self-inserting (_stem leaf)
+(defun dei-head-invisible-self-inserting-stemless (_stem leaf)
   `( ,leaf self-insert-command nil :exit t))
 
-(defun dei--specify-visible-heads (stem &optional keys)
-  (cl-loop for leaf in (or keys dei--hydra-keys-list)
-           collect (dei-head stem leaf)))
+(defun dei-head-invisible-exiting-stemless (_stem leaf)
+  `( ,leaf ,(dei-head-cmd "" leaf) nil :exit t))
 
-(defun dei--specify-invisible-heads (stem)
-  (append (cl-loop for leaf in '("<left>" "<right>" "<up>" "<down>"
-                                 "=" "\\" "'" "`"
-                                 "<f5>")  ;; each new key generates quite a lot of heads...
-                   collect (dei-head-invisible stem leaf))
-          (cl-loop for chord in dei--all-duo-chords
-                   collect (dei-head-invisible "" chord))
-          (cl-loop for leaf in dei--all-shifted-symbols
-                   collect (dei-head-invisible-self-inserting stem leaf))))
+;; Lists of heads
+
+(defun dei--specify-heads-to-subhydra (stem leaf-list)
+  (cl-loop for leaf in leaf-list
+           collect
+           (let ((cmd (dei--corresponding-hydra stem leaf)))
+             `(,leaf
+               ,cmd
+               ,(symbol-name cmd)
+               :exit t))))
+
+(defun dei--specify-visible-heads (stem verboten-leafs)
+  (let ((leaf-list (-difference dei--hydra-keys-list
+                                verboten-leafs)))
+    (cl-loop for leaf in leaf-list
+             collect `(,leaf
+                       ,(dei-head-cmd stem leaf)
+                       ,(dei-head-hint stem leaf)))))
+
+(defun dei--specify-invisible-heads (stem verboten-leafs)
+  (let ((x (append
+            (cl-loop for leaf in  '("<left>" "<right>" "<up>" "<down>"
+                                    "=" "\\" "'" "`" "<f5>")
+                     collect (dei-head-invisible stem leaf))
+            (cl-loop for leaf in (append dei--all-shifted-symbols
+                                         '("<SPC>" "<RET>"))
+                     collect (dei-head-invisible-self-inserting-stemless stem leaf))
+            (cl-loop for leaf in '("<menu>" "C-g")
+                     collect (dei-head-invisible-exiting-stemless stem leaf)))))
+    (-remove (lambda (head) (member (car head) verboten-leafs)) x)))
 
 (defun dei--specify-extra-heads (stem)
   (declare (pure t) (side-effect-free t))
@@ -797,21 +795,50 @@ form (KEY COMMAND HINT EXIT) as needed in `defhydra'."
                       nil :exit t)
                     (when pop-key `(,pop-key nil nil :exit t))))))
 
-;(dei--get-parent "C-x a ")
-;(dei--specify-extra-heads "C-x a")
-;(dei--corresponding-hydra (dei--parent-stem "C-x a ") "")
+;; Dire hydras
 
-(defun dei--call-defhydra (name heads)
-  "Create a hydra named NAME with HEADS.
+(defun dei--specify-dire-hydra (stem &optional verboten-leafs)
+  (let* ((subhydra-gates (->> dei--keys-that-are-hydras
+                              (--filter (s-matches-p stem it))
+                              (-map #'dei--get-leaf)))
+         (heads (append
+                 (dei--specify-heads-to-subhydra stem subhydra-gates)
+                 (dei--specify-visible-heads stem (append verboten-leafs
+                                                          subhydra-gates))
+                 (dei--specify-invisible-heads stem subhydra-gates)
+                 (dei--specify-extra-heads stem))))
+    (cons stem heads)))
+
+(defun dei--specify-dire-hydras ()
+  (setq dei--live-stems (-difference dei--live-stems
+                                     dei--defunct-stems))
+  (setq dei--all-stems (-uniq (append dei--new-or-changed-stems
+                                      dei--live-stems)))
+  (setq dei--keys-that-are-hydras
+        (-difference (-map #'s-trim-right dei--all-stems)
+                     ;; subtract the root stems since they are still invalid
+                     ;; keydescs, which is ok bc no hydra refers to them
+                     '("C-" "M-" "s-" "H-" "A-")))
+  (setq dei--hydra-blueprints
+        (cl-loop
+         for stem in dei--new-or-changed-stems
+         collect (dei--specify-dire-hydra stem))))
+
+;; Final boss
+
+(defun dei--call-defhydra (name heads-list)
+  "Create a hydra named NAME with HEADS-LIST.
 Tip: This is a thin wrapper around `defhydra', the magic happens
 when it's called by `dei-generate-hydras-async'."
   (eval `(defhydra ,(intern name)
-           (nil nil :columns 10 :exit ,dei-exit-by-default
-                ;; :body-pre (dei-generate-hydras-async)
-                ;; :body-post (dei-generate-hydras-async)
-                )
+           (:columns 10
+            :exit nil
+            :foreign-keys run
+            ;; :body-pre (dei-generate-hydras-async)
+            ;; :body-post (dei-generate-hydras-async)
+            )
            ,name
-           ,@heads)
+           ,@heads-list)
         t))
 
 
@@ -828,14 +855,17 @@ rescan.")
   "Hook run after updating hydras to match the local map.")
 
 ;; Persistent variables helpful for debugging
+(defvar dei--keys-that-are-hydras nil)
 (defvar dei--current-bindings nil)
+(defvar dei--current-filtered-bindings nil)
 (defvar dei--last-filtered-bindings nil)
-(defvar dei--new-or-rebound-keys nil)
+(defvar dei--new-or-changed-bindings nil)
+(defvar dei--new-or-changed-stems nil)
+(defvar dei--defunct-bindings nil)
+(defvar dei--defunct-stems nil)
 (defvar dei--changed-keymaps nil)
 (defvar dei--hydra-blueprints nil)
-(defvar dei--live-hydras nil)
-(defvar dei--defunct-bindings nil)
-(defvar dei--defunct-hydras nil)
+(defvar dei--live-stems nil)
 
 (defun dei--combined-filter (cell)
   "Filter for rejecting keys as irrelevant to work on.
@@ -875,6 +905,8 @@ while we're at it."
                        (car x))
                      (cdr x))))
        ;; (dei--unbind-illegal-keys)
+       ;; Remove subkeymaps because we infer their existence later via (-uniq
+       ;; (-map (dei--get-stem))).
        (-remove (lambda (x) (or (string= "Prefix Command" (cdr x))
                            (null (intern (cdr x)))
                            (keymapp (intern (cdr x)))))) ;;
@@ -897,42 +929,26 @@ while we're at it."
 ;;      current minus their intersection (cases where the key's definition
 ;;      didn't change), which should never be relevant to look at.
 (defun dei--set-variables ()
-  (when dei-debug (message "Updating variables"))
   (setq dei--defunct-bindings (-difference dei--last-filtered-bindings
                                            dei--current-filtered-bindings))
-  (setq dei--new-or-rebound-keys
-        (-map #'car (-difference dei--current-filtered-bindings
-                                 dei--last-filtered-bindings)))
-  ;; Mark hydras for oblivion or redefinition
-  (setq dei--defunct-hydras (-intersection dei--live-hydras
-                                           (-map #'car dei--defunct-bindings)))
-  ;; Unlist said marked hydras so they will be reborn. (Actually, we don't ever
-  ;; check this variable, it's now debugging only).
-  (setq dei--live-hydras
-        (seq-remove (lambda (x) (member x dei--defunct-hydras))
-                    dei--live-hydras)))
 
-(defun dei--specify-dire-hydra-pair (stem)
-  (list
-   (cons (dei-dub-from-key stem)
-         (append (dei--specify-visible-heads stem)
-                 (dei--specify-invisible-heads stem)
-                 (dei--specify-extra-heads stem)))
-   ;; For each hydra, a nonum hydra for when universal-arg is active, so the digit arguments work.
-   ;; (cons (concat (dei-dub-from-key stem) "-nonum")
-   ;;          (append (dei--specify-visible-heads
-   ;;                   stem dei--hydra-keys-list-nonum)
-   ;;                  (dei--specify-invisible-heads stem)
-   ;;                  (dei--specify-extra-heads stem)))
-   ))
+  (setq dei--new-or-changed-bindings (-difference dei--current-filtered-bindings
+                                                  dei--last-filtered-bindings))
 
-;; NOTE: See tests in the manual tests file
-(defun dei--specify-dire-hydras ()
-  (setq dei--hydra-blueprints
-        (cl-loop for key in dei--new-or-changed-stems
-                 append (dei--specify-dire-hydra-pair key))))
+  (setq dei--defunct-stems
+        (->> dei--defunct-bindings
+             (-map #'car)
+             (-map #'dei--get-stem)
+             (-uniq)))
+  
+  (setq dei--new-or-changed-stems
+        (->> dei--new-bindings
+             (-map #'car)
+             ;; Sort to avail the most relevant hydras to the user soonest.
+             (seq-sort-by #'dei--key-seq-steps-length #'<)
+             (-map #'dei--get-stem)
+             (-uniq))))
 
-;; The magic spell that runs the entire damn codebase
 (defun dei-generate-hydras-async ()
   "Regenerate hydras to match the local map."
   (deferred:$
@@ -946,16 +962,6 @@ while we're at it."
     (deferred:nextc it
       #'dei--set-variables)
 
-    (deferred:nextc it
-      (lambda ()
-        (setq dei--new-or-changed-stems
-              (-uniq (mapcar #'dei--get-stem
-                             ;; Sort by length to avail the most relevant hydras to the user soonest.
-                             (seq-sort-by #'dei--key-seq-steps-length #'< dei--new-or-rebound-keys))))))
-
-    (deferred:nextc it
-      #'dei--specify-dire-hydras)
-
     ;; Re-cache settings in case of changed frame parameters or user options
     (deferred:nextc it
       (lambda ()
@@ -966,10 +972,14 @@ while we're at it."
         (setq dei--all-duo-chords (dei--all-duo-chords))))
 
     (deferred:nextc it
+      #'dei--specify-dire-hydras)
+
+    (deferred:nextc it
       (lambda ()
-        (cl-loop for x in dei--hydra-blueprints
-                 do (push (dei--call-defhydra (car x) (cdr x))
-                          dei--live-hydras))
+        (cl-loop
+         for x in dei--hydra-blueprints
+         do (progn (dei--call-defhydra (dei-dub-from-key (car x)) (cdr x))
+                   (push (car x) dei--live-stems)))
         (setq dei--last-filtered-bindings dei--current-filtered-bindings)))
 
     (deferred:nextc it
@@ -981,6 +991,8 @@ while we're at it."
 
     (deferred:error it
       #'warn)))
+
+(defvar dei--live-stems)
 
 ;; when I want the package to be more modular, this should sit on a hook
 ;; NOTE: keymap-based replacements are more performant, see README:
