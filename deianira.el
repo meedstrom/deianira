@@ -303,10 +303,9 @@ Assume that there are no modifiers beyond the root. If there are, IDK."
 
 ;;;; Keyboard scanning
 
-;; TODO: This does not turn up <f12>, why?
-;; Think this function is hairy and unnecessary? It's this way because the C
-;; function `describe-buffer-bindings' is the only way to get this information
-;; efficiently. Inspired by which-key--get-current-bindings. Thanks!
+;; Think this function is hairy and unnecessary?  We have it because the C
+;; function `describe-buffer-bindings' seems the only way to get this information
+;; efficiently.  Inspired by which-key--get-current-bindings. Thanks!
 (defun dei--current-bindings (&optional keep flush)
   "Get the list of all currently active bindings.
 This ignores those masked by other keymaps, returning only the
@@ -361,7 +360,6 @@ functions in the library aren't really ESC-aware."
         (push (cons (match-string 1) (match-string 2)) result)))
     result))
 
-
 
 ;;;; User settings
 
@@ -379,123 +377,29 @@ from the frame width.")
 You should prefer to call the function `dei--colwidth' in case of
 frame or font changes.")
 
-(defvar dei-quitters '(;;"C-q"
-                       "C-s" "C-g" "s-s" "s-g" "C-u" "M-x" "M-u" "s-u" "C-2"
-                       "C-c c"))
+(defvar dei-quitter-keys
+  '("<menu>" "C-g" "C-c c"))
 
-(defvar dei-noquitters '("C-2 t" "C-2 n" "C-2 p" "C-x ;" "C-x x" "C-x q"
-                           "C-x h" "C-x u" "C-x i" "C-x p" "C-x l" "C-x 1"
-                           "C-x 2" "C-x 3" "C-x 0" "C-c c"
-                           "C-c C-c" ;;testing
-                           ))
-
-;; TODO: perhaps it'd be possible to just hook window-buffer-change-functions
-;; to kill any hydra when minibuffer gets focus.
-;;
-;; Check dei--current-bindings for reference. This is a potentially neverending
-;; list, but it's not necessarily a big deal.
-(defvar dei-quitter-commands '(
-                               search-forward
-                               search-backward
-                               isearch-forward
-                               isearch-forward-word
-                               isearch-forward-symbol
-                               isearch-forward-regexp
-                               isearch-backward
-                               isearch-backward-regexp
-                               quoted-insert
-                               multi-occur
-                               consult-multi-occur
-                               projectile-multi-occur
-                               query-replace-regexp
-                               query-replace
-                               projectile-replace
-                               projectile-replace-regexp
-                               project-query-replace-regexp
-                               swiper
-                               helm-occur
-                               occur
-                               add-mode-abbrev
-                               add-global-abbrev
-                               keyboard-quit
+;; NOTE: No need to add commands that focus the minibuffer, as
+;;       we slay the hydra automatically.
+(defvar dei-quitter-commands '(keyboard-quit
                                minibuffer-keyboard-quit
                                keyboard-escape-quit
                                execute-extended-command
-                               smex
-                               helm-M-x
                                counsel-M-x
+                               helm-M-x
                                magit-status
-                               consult-goto-line
                                re-builder
-                               highlight-regexp
-                               highlight-phrase
-                               highlight-lines-matching-regexp
-                               unhighlight-regexp
-                               string-rectangle
-                               find-file
-                               find-file-read-only
-                               find-file-read-only-other-frame
-                               find-file-read-only-other-window
-                               find-file-literally
-                               find-file-other-frame
-                               find-file-other-tab
-                               find-file-other-window
-                               view-file
-                               view-file-other-frame
-                               view-file-other-window
-                               kmacro-start-macro
-                               kmacro-start-macro-or-insert-counter
-                               inverse-add-global-abbrev
-                               inverse-add-mode-abbrev
+                               ffap-other-frame
                                make-frame-command
                                other-frame
-                               display-buffer
-                               kill-buffer
-                               kill-buffer-ask
-                               kill-some-buffers
-                               save-some-buffers
-                               consult-complex-command
-                               repeat-complex-command
-                               set-keyboard-coding-system
-                               set-buffer-file-coding-system
-                               set-language-environment
-                               set-selection-coding-system
-                               set-terminal-coding-system
-                               set-next-selection-coding-system
-                               set-file-name-coding-system
-                               set-input-method
-                               consult-line
-                               eval-expression
-                               shell-command
-                               async-shell-command
-                               write-file
-                               save-buffers-kill-emacs
-                               save-buffers-kill-terminal
                                kill-emacs
                                my-save-buffers-kill-emacs-silently
-                               server-save-buffers-kill-terminal
-                               find-alternate-file
-                               describe-variable
-                               describe-function
-                               describe-symbol
-                               describe-face
-                               describe-coding-system
-                               describe-language-environment
-                               describe-key
-                               helpful-callable
-                               helpful-command
-                               helpful-variable
-                               helpful-function
-                               helpful-symbol
-                               sp-rewrap-sexp
-                               +default/man-or-woman
                                +lookup/online
-                               doom/help-packages
+                               org-noter
                                org-agenda
-                               org-capture
-                               ))
-
-(defvar dei-exit-by-default nil)
+                               org-roam-capture
+                               org-capture))
 
 
 ;;;; Library
@@ -559,7 +463,7 @@ Example: With INDEX being '(\"b\" \"c\" \"d\" \"a\"),
 an example ALIST transformation may look like this.
 
 '((\"a\" nil)           '((\"b\" nil)
-  (\"b\" nil)      -->    (\"c\" nil)
+  (\"b\" nil)      ⟶      (\"c\" nil)
   (\"z\" nil)             (\"a\" nil)
   (\"c\" nil))            (\"z\" nil))"
   (declare (pure t) (side-effect-free t))
@@ -575,9 +479,7 @@ an example ALIST transformation may look like this.
 ;;;; Hydra blueprinting
 
 (defun dei-head-cmd (stem leaf)
-  (cond ((eq #'universal-argument (dei-cmd stem leaf))
-         #'dei-universal-arg)
-        (t `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
+  `(call-interactively (key-binding (kbd ,(concat stem leaf)))))
 
 (defun dei-head-hint (stem leaf)
   (let* ((sym (key-binding (kbd (concat stem leaf))))
@@ -595,16 +497,24 @@ an example ALIST transformation may look like this.
      ,(dei-head-cmd stem leaf)
      ,(dei-head-hint stem leaf)))
 
-(defun dei-head-invisible (stem leaf)
+(defun dei--head-invisible (stem leaf)
   `( ,leaf
      ,(dei-head-cmd stem leaf)
      nil))
+
+(defsubst dei--head-invisible (stem leaf)
+  (list leaf
+        (key-binding (kbd (concat stem leaf)))
+        nil))
 
 (defun dei-head-invisible-self-inserting-stemless (_stem leaf)
   `( ,leaf self-insert-command nil :exit t))
 
 (defun dei-head-invisible-exiting-stemless (_stem leaf)
   `( ,leaf ,(dei-head-cmd "" leaf) nil :exit t))
+
+(defun dei-head-invisible-stemless (_stem leaf)
+  `( ,leaf ,(dei-head-cmd "" leaf) nil))
 
 ;; Lists of heads
 
@@ -636,9 +546,10 @@ an example ALIST transformation may look like this.
 
 (defun dei--specify-invisible-heads (stem verboten-leafs)
   (let ((x (append
+            ;; TODO: Use all-keys-on-keyboard ... But not the function keys
             (cl-loop for leaf in  '("<left>" "<right>" "<up>" "<down>"
-                                    "=" "\\" "'" "`" "<f5>")
-                     collect (dei-head-invisible stem leaf))
+                                    "=" "\\" "'" "`")
+                     collect (dei--head-invisible stem leaf))
             (cl-loop for leaf in (append dei--all-shifted-symbols
                                          '("<SPC>" "<RET>"))
                      collect (dei-head-invisible-self-inserting-stemless stem leaf))
@@ -651,12 +562,20 @@ an example ALIST transformation may look like this.
   (let ((pop-key (cond ((string= "C-" stem) "<f35>")
                        ((string= "M-" stem) "<f34>")
                        ((string= "s-" stem) "<f33>"))))
-    (-non-nil (list `("<backspace>" ,(dei--parent-hydra stem)
-                      nil :exit t)
-                    (when pop-key `(,pop-key nil nil :exit t))))))
+    (-non-nil (list `("<backspace>" ,(dei--parent-hydra stem) nil :exit t)
+                    (when pop-key
+                      `(,pop-key nil nil :exit t))
+                    ;; TODO: use (where-is-internal #'universal-argument)
+                    '("<f12>" dei-universal-arg nil)))))
+;; Tests
+;; (dei--specify-extra-heads "C-")
+;; (dei--specify-extra-heads "C-x ")
 
 ;; Dire hydras
 
+;; TODO: put extra heads first, then when subsequent functions make heads for
+;; the same leaf, drop them via -uniq. Unless you can come up with a more
+;; efficient way to work (probably putting the logic in dei--head-cmd).
 (defun dei--specify-dire-hydra (stem &optional verboten-leafs)
   (let* ((subhydra-gates (->> dei--keys-that-are-hydras
                               (--filter (s-matches-p stem it))
@@ -702,6 +621,7 @@ when it's called by `dei-generate-hydras-async'."
            ,@heads-list)
         t))
 
+
 
 ;;;; Async worker
 
@@ -745,23 +665,28 @@ while we're at it."
     (--any-p (member it dei--all-shifted-symbols) steps-without-modifier)))
 
 (defun dei--get-relevant-bindings ()
-  (->> (dei--current-bindings (rx bol (regexp dei--modifier-regexp))
+  (->> (dei--current-bindings nil
+                              ;; (rx bol (regexp dei--modifier-regexp)) ;; NOTE: filtering for modifier regexp gets rid of function keys
                               ;; (rx (or "ESC" "C-"))
-                              (rx (or "ESC")))
+                              (rx (or "esc" "tab"
+                                      (eval doom-leader-alt-key) ;; fulla Shift
+                                      (eval doom-localleader-alt-key)
+                                      "<key-chord>" "<compose-last-chars>")))
        (-map (lambda (x)
                (cons (if (dei--valid-keydesc (car x))
                          (dei--normalize (car x))
                        (car x))
                      (cdr x))))
        (dei--unbind-illegal-keys)
-       ;; Remove subkeymaps because we infer their existence later via (-uniq
-       ;; (-map (dei--get-stem))).
+       ;; Remove submaps because we infer their existence later by looking
+       ;; at the stems that exist via (-uniq (-map #'dei--get-stem)).
        (-remove (lambda (x) (or (string= "Prefix Command" (cdr x))
                            (null (intern (cdr x)))
                            (keymapp (intern (cdr x)))))) ;;
        (setq dei--current-bindings) ;; should end up the same as filtered bindings once you run the function twice
        (-remove #'dei--combined-filter)
        (setq dei--current-filtered-bindings)))
+;; (dei--get-relevant-bindings)
 
 (defun dei--unbind-illegal-keys (input)
   (let* ((illegal (seq-filter #'dei--combined-filter input))
@@ -773,6 +698,9 @@ while we're at it."
                   (define-key (eval map t) (kbd x) nil))))
             sorted))
   input)
+
+;; (dei--normalize "<key-chord>")
+;; (dei--normalize "<compose-last-chars>")
 
 ;; NOTE: Visualize a Venn diagram. The defunct and the new are the last and
 ;;      current minus their intersection (cases where the key's definition
@@ -793,8 +721,10 @@ while we're at it."
              ;; Sort to avail the most relevant hydras to the user soonest.
              (seq-sort-by #'dei--key-seq-steps-length #'<)
              (-map #'dei--get-stem)
+             (-remove #'string-empty-p) ;; keys like <insertchar>
              (-uniq))))
 
+(dei--get-stem "<insertchar>")
 ;; Persistent variables helpful for debugging
 (defvar dei--keys-that-are-hydras nil)
 (defvar dei--current-bindings nil)
@@ -808,15 +738,15 @@ while we're at it."
 (defvar dei--changed-keymaps nil)
 (defvar dei--hydra-blueprints nil)
 
-;; Trial it yourself
+;; Trial it yourself.
+;; MUST run in sequence.
 ;; (dei--get-relevant-bindings)
 ;; (dei--set-variables)
 ;; (dei--specify-dire-hydras)
-(cl-loop
-         for x in dei--hydra-blueprints
-         do (progn (dei--call-defhydra (dei-dub-from-key (car x)) (cdr x))
-                   (push (car x) dei--live-stems)))
-(setq dei--last-filtered-bindings dei--current-filtered-bindings)
+;(cl-loop for x in dei--hydra-blueprints
+ ;        do (progn (dei--call-defhydra (dei-dub-from-key (car x)) (cdr x))
+  ;                 (push (car x) dei--live-stems)))
+;; (setq dei--last-filtered-bindings dei--current-filtered-bindings)
 
 (defun dei-generate-hydras-async ()
   "Regenerate hydras to match the local map."
@@ -1017,6 +947,23 @@ already been done."
 
 
 ;;;; Main
+;; Things that summon and slay the hydras we've made.
+
+(defun dei--disable-if-minibuffer (&rest _)
+  (setq hydra-deactivate t)
+  (when (or (minibufferp)
+            (string-match-p "magit:" (buffer-name)))
+    (call-interactively #'hydra-keyboard-quit))
+  _)
+
+;; wip
+(defun dei--disable (&rest _)
+  (setq hydra-deactivate t)
+  (call-interactively #'hydra-keyboard-quit)
+  _)
+;; (advice-add #'selectrum-read :before #'dei--disable)
+;; (advice-remove #'selectrum-read #'dei--disable)
+
 
 ;;;###autoload
 (define-minor-mode deianira-mode
@@ -1029,12 +976,21 @@ already been done."
     (,(kbd "<f32>") . dei-H/body)
     (,(kbd "<f31>") . dei-A/body))
   :global t
+  (if deianira-mode
+      (progn
+        ;; Does not work for the consult-* functions with selectrum-mode.
+        ;; It's ok because they ignore the hydra and let you type, but why?
+        (add-hook 'window-buffer-change-functions #'my--disable-if-minibuffer))
+    (remove-hook 'window-buffer-change-functions #'my--disable-if-minibuffer))
+
+  ;; --- Experiment area ---
   (unless t
-    (when deianira-mode
 
-      (add-hook 'window-buffer-change-functions #'dei-generate-hydras-async)
 
-      )))
+    (add-hook 'window-buffer-change-functions #'dei-generate-hydras-async)
+
+
+    ))
 
 (provide 'deianira)
 ;;; deianira.el ends here
