@@ -63,7 +63,7 @@
    )
   "All keys, except where a held-down Shift is implied.")
 
-(defconst dei--all-shifted-symbols
+(defconst dei-all-shifted-symbols
   (split-string
    "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
    "" t))
@@ -71,7 +71,7 @@
 (defconst dei-all-keys-on-keyboard
   (append
    dei-all-keys-on-keyboard-except-shifted-symbols
-   dei--all-shifted-symbols))
+   dei-all-shifted-symbols))
 
 (defun dei--hydra-keys-in-a-list ()
   (split-string dei--hydra-keys "" t))
@@ -190,6 +190,8 @@ It does not fail if CMD is a keymap, check that separately."
        (-map #'dei--normalize-build-segments)
        (s-join " ")))
 
+(defalias 'dei--not-a-dangling-stem #'dei--valid-keydesc)
+
 (defun dei--valid-keydesc (keydesc)
   "Check that KEYDESC is not a dangling stem.
 I.e. it's something you'd pass to `kbd'. If true, return KEYDESC
@@ -197,7 +199,7 @@ unmodified, else return nil."
   (declare (pure t) (side-effect-free t))
   (when (or (string-match-p (rx "--" eol) keydesc)
             (string-match-p (rx " -" eol) keydesc)
-            (string-match-p (rx (not (any "- ")) eol) keydesc))
+            (string-match-p (rx (not (or "-" " ")) eol) keydesc))
     keydesc))
 
 (defun dei-dub-from-key (keydesc)
@@ -299,6 +301,26 @@ Assume that there are no modifiers beyond the root. If there are, IDK."
   (if (dei--key-seq-steps=1 stem)
       nil ;; exit
     (dei--corresponding-hydra-from-stem (dei--parent-stem stem))))
+
+;; Roughly the inverse of dei-dub-from-key (but that one does more than squash)
+(defun dei--squashed-to-proper-keydesc (squashed-key)
+  "Turn a compressed key description into `kbd'-compatible.
+SQUASHED-KEY may look like \"Cxp\", \"sxp\", \"<f12>a<RET>\".
+Does not fully handle the TAB case."
+  (declare (pure t) (side-effect-free t))
+  (let* ((foo "C<f12>x<insert>")
+         (foo (s-split "<" foo t))
+         (foo (--mapcat (s-split ">" it t) foo))
+         (foo (--map (if (and (> (length it) 1)
+                              (not (equal it "TAB")))
+                         (concat "<" it ">")
+                       it) foo))
+         (foo (cons (if (s-matches-p "[ACHMSs]" (car foo))
+                        (concat (car foo) "-")
+                      (concat (car foo) " "))
+                    (cdr foo)))
+         (foo (concat (car foo) (s-join " " (cdr foo)))))
+    foo))
 
 
 ;;;; Keyboard scanning
@@ -478,10 +500,10 @@ an example ALIST transformation may look like this.
 
 ;;;; Hydra blueprinting
 
-(defun dei-head-cmd (stem leaf)
+(defun dei--head-arg-cmd (stem leaf)
   `(call-interactively (key-binding (kbd ,(concat stem leaf)))))
 
-(defun dei-head-hint (stem leaf)
+(defun dei--head-arg-hint (stem leaf)
   (let* ((sym (key-binding (kbd (concat stem leaf))))
          (name (if (symbolp sym)
                    (symbol-name sym)
@@ -492,15 +514,23 @@ an example ALIST transformation may look like this.
           (substring name 0 dei--colwidth)
         name))))
 
+(defun dei--head-arg-exit (stem leaf)
+  (when (or (member (concat stem leaf) dei-quitter-keys)
+            (member (key-binding (kbd (concat stem leaf))) dei-quitter-commands))
+    '(:exit t)))
+
 (defun dei-head (stem leaf)
   `( ,leaf
-     ,(dei-head-cmd stem leaf)
-     ,(dei-head-hint stem leaf)))
+     ,(dei--head-arg-cmd stem leaf)
+     ,(dei--head-arg-hint stem leaf)
+     ,@(dei--head-arg-exit stem leaf)))
 
 (defun dei--head-invisible (stem leaf)
   `( ,leaf
-     ,(dei-head-cmd stem leaf)
-     nil))
+     ,(dei--head-arg-cmd stem leaf)
+     nil
+     ,@(dei--head-arg-exit stem leaf)
+     ))
 
 (defsubst dei--head-invisible (stem leaf)
   (list leaf
@@ -511,10 +541,10 @@ an example ALIST transformation may look like this.
   `( ,leaf self-insert-command nil :exit t))
 
 (defun dei-head-invisible-exiting-stemless (_stem leaf)
-  `( ,leaf ,(dei-head-cmd "" leaf) nil :exit t))
+  `( ,leaf ,(dei--head-arg-cmd "" leaf) nil :exit t))
 
 (defun dei-head-invisible-stemless (_stem leaf)
-  `( ,leaf ,(dei-head-cmd "" leaf) nil))
+  `( ,leaf ,(dei--head-arg-cmd "" leaf) nil))
 
 ;; Lists of heads
 
@@ -541,8 +571,9 @@ an example ALIST transformation may look like this.
                                 verboten-leafs)))
     (cl-loop for leaf in leaf-list
              collect `(,leaf
-                       ,(dei-head-cmd stem leaf)
-                       ,(dei-head-hint stem leaf)))))
+                       ,(dei--head-arg-cmd stem leaf)
+                       ,(dei--head-arg-hint stem leaf)
+                       ,@(dei--head-arg-exit stem leaf)))))
 
 (defun dei--specify-invisible-heads (stem verboten-leafs)
   (let ((x (append
@@ -550,7 +581,7 @@ an example ALIST transformation may look like this.
             (cl-loop for leaf in  '("<left>" "<right>" "<up>" "<down>"
                                     "=" "\\" "'" "`")
                      collect (dei--head-invisible stem leaf))
-            (cl-loop for leaf in (append dei--all-shifted-symbols
+            (cl-loop for leaf in (append dei-all-shifted-symbols
                                          '("<SPC>" "<RET>"))
                      collect (dei-head-invisible-self-inserting-stemless stem leaf))
             (cl-loop for leaf in '("<menu>" "C-g")
@@ -561,7 +592,9 @@ an example ALIST transformation may look like this.
   (declare (pure t) (side-effect-free t))
   (let ((pop-key (cond ((string= "C-" stem) "<f35>")
                        ((string= "M-" stem) "<f34>")
-                       ((string= "s-" stem) "<f33>"))))
+                       ((string= "s-" stem) "<f33>")
+                       ((string= "H-" stem) "<f32>")
+                       ((string= "A-" stem) "<f31>"))))
     (-non-nil (list `("<backspace>" ,(dei--parent-hydra stem) nil :exit t)
                     (when pop-key
                       `(,pop-key nil nil :exit t))
@@ -662,7 +695,24 @@ while we're at it."
 (defun dei--contains-upcase (keydesc)
   (let* ((steps (dei--key-seq-split keydesc))
          (steps-without-modifier (mapcar #'dei--get-leaf steps)))
-    (--any-p (member it dei--all-shifted-symbols) steps-without-modifier)))
+    (--any-p (member it dei-all-shifted-symbols) steps-without-modifier)))
+
+
+;; TODO: think about API. I think I want to be able to just specify each
+;; exception in a single list, even for different stems
+;; wip
+(defun dei--auto-remap-buffer-bindings ()
+  (let ((diff)))
+  (dolist (leaf dei--all-keys-on-keyboard)
+    (when-let ((map (help--binding-locus (kbd (concat "C-c C-" leaf)) nil)))
+      ;; Haven't decided which of these to run. First is probably cleaner.
+      (dei-restem map leaf "C-c " "C-c C-")
+      ;; (local-set-key (kbd (concat "C-c " leaf)) (key-binding (kbd (concat "C-c C-" leaf))))
+      ))
+
+;; (add-hook 'prog-mode-hook #'dei--auto-remap-buffer-bindings)
+;; (add-hook 'text-mode-hook)
+;; (add-hook 'special-mode-hook)
 
 (defun dei--get-relevant-bindings ()
   (->> (dei--current-bindings nil
@@ -677,7 +727,7 @@ while we're at it."
                          (dei--normalize (car x))
                        (car x))
                      (cdr x))))
-       (dei--unbind-illegal-keys)
+       ;; (dei--unbind-illegal-keys)
        ;; Remove submaps because we infer their existence later by looking
        ;; at the stems that exist via (-uniq (-map #'dei--get-stem)).
        (-remove (lambda (x) (or (string= "Prefix Command" (cdr x))
@@ -687,6 +737,8 @@ while we're at it."
        (-remove #'dei--combined-filter)
        (setq dei--current-filtered-bindings)))
 ;; (dei--get-relevant-bindings)
+
+(add-hook 'dei--after-scan-bindings-hook #'dei--unbind-illegal-keys)
 
 (defun dei--unbind-illegal-keys (input)
   (let* ((illegal (seq-filter #'dei--combined-filter input))
@@ -719,12 +771,12 @@ while we're at it."
         (->> dei--new-or-changed-bindings
              (-map #'car)
              ;; Sort to avail the most relevant hydras to the user soonest.
+             ;; NOTE: only matters if we run defhydra from an async loop
              (seq-sort-by #'dei--key-seq-steps-length #'<)
              (-map #'dei--get-stem)
-             (-remove #'string-empty-p) ;; keys like <insertchar>
+             (-remove #'string-empty-p) ;; keys like <insertchar> have "" stem
              (-uniq))))
 
-(dei--get-stem "<insertchar>")
 ;; Persistent variables helpful for debugging
 (defvar dei--keys-that-are-hydras nil)
 (defvar dei--current-bindings nil)
@@ -862,6 +914,110 @@ while we're at it."
 
 ;;;; Bonus functions for mass remaps
 
+;; TODO: Support a nil value
+(defvar dei-rechord-wins-flattening t
+  "Non-nil if reused-chord should win as opposed to chord-once.
+This means that the behavior of C-x C-f will be kept and
+duplicated to C-x f, so they both do what the former always did
+If nil, both will instead do what C-x f always did.  This
+variable sets the default approach, but you can override specific
+cases in `dei-flatten-winners', and if only one is bound but not
+the other then it will duplicate since there is no contest.")
+
+(defvar dei-flattening-winners '(("C-c C-c")
+                              ("C-x a")
+                              ("C-c C-c" . org-mode-map))
+  "Alist of keys that always win.
+See `dei-rechord-wins-flattening' for explanation.
+
+Each item has the format (KEY-OR-COMMAND . KEYMAP).
+
+KEY-OR-COMMAND can be either a `kbd'-compatible key description
+or a symbol which is assumed to refer to a command.
+In the event that you add e.g. both (\"C-x C-f\") and
+(set-fill-column), normally a binding of C-x f, the first item
+wins, so C-x f will be bound to find-file regardless.
+
+If KEYMAP is nil, apply the winner in whichever keymap it is
+found in. Otherwise it should be a major or minor mode map. It
+will likely have no effect if it is a prefix command such as
+Control-X-prefix or kmacro-keymap.")
+
+;; WIP: First, just flatten everything, not taking into account winners.
+(defun dei--mass-remap ()
+  (dolist (x dei--current-bindings)
+    (dei--flatten-binding (car x))))
+
+(defconst dei--ignore-keys
+  (regexp-opt '("mouse" "remap" "scroll-bar" "select" "switch" "help" "state"
+                "which-key" "corner" "divider" "edge" "header" "mode-line"
+                "tab" "vertical-line" "frame" "open" "menu")))
+
+(defun dei--where-is (command)
+  (->> (where-is-internal command)
+       (-map #'key-description)
+       (--remove (string-match-p dei--ignore-keys it))
+       (-map #'dei--normalize)))
+
+(defun dei--is-chord (keydesc)
+  (declare (pure t) (side-effect-free t))
+  (cl-assert (dei--key-seq-steps=1 keydesc))
+  (string-match (rx bol nonl "-") keydesc))
+
+;; TODO: refactor at the end for easier reading
+;; TODO: Catch cases like C-c p a so they will become C-c C-p C-a.
+(defun dei--flatten-binding (keydesc &optional keymap)
+  "Duplicate KEYDESC binding to or from its sibling.
+Assumes that the command to be bound is not itself a keymap,
+because those will be implied by binding their children anyway.
+You can use `dei--get-relevant-bindings' to filter out keymaps,
+and run this function on the results."
+  (let ((command (key-binding (kbd keydesc)))
+        (steps (dei--key-seq-split keydesc)))
+    (and (or (commandp command))
+         (/= 1 (length steps))
+         (when (dei--is-chord (car steps))
+           (let* ((root-modifier (match-string 0 (car steps))) ;; from is-chord
+                  (most-steps (butlast steps))
+                  (last-step (-last-item steps))
+                  (leaf (dei--get-leaf keydesc))
+                  (sibling-keydesc
+                   (if (dei--is-chord last-step)
+                       (s-join " " (-snoc most-steps leaf))
+                     (s-join " " (-snoc most-steps
+                                        (concat root-modifier leaf)))))
+                  (sibling-command (key-binding (kbd sibling-keydesc)))
+                  (map (or keymap (symbol-value
+                                   (help--binding-locus (kbd keydesc) nil)))))
+             (if (or (commandp sibling-command))
+                 (progn
+                   ;; TODO: check dei--flattening-winners
+                   (if dei-rechord-wins-flattening
+                       (if (dei--is-chord last-step)
+                           (define-key map (kbd sibling-keydesc) command)
+                         (define-key map (kbd keydesc) sibling-command))
+                     (if (dei--is-chord last-step)
+                         (define-key map (kbd keydesc) sibling-command)
+                       (define-key map (kbd sibling-keydesc) command))))
+               (define-key map (kbd sibling-keydesc) command)))))))
+
+;; Prior art from `which-key-show-minor-mode-keymap', thanks!
+(defun dei--current-minor-mode-maps ()
+  (mapcar #'car
+          (cl-remove-if-not
+           (lambda (entry)
+             (and (symbol-value (car entry))
+                  (not (equal (cdr entry) (make-sparse-keymap)))))
+           minor-mode-map-alist)))
+
+;; Prior art from `which-key-show-major-mode', thanks!
+(defun dei--current-major-mode-map ()
+  (let ((map-sym (intern (format "%s-map" major-mode))))
+    (if (and (boundp map-sym)
+             (keymapp (symbol-value map-sym)))
+        map-sym
+      nil)))
+
 ;; Generalized flatten-ctl-x
 (defun dei-restem-all-leaves (here lower-stem upper-stem)
   "Duplicate bindings on UPPER-STEM to also exist on LOWER-STEM.
@@ -911,6 +1067,11 @@ already been done."
                 (not (eq nil backup)))
        (setq ,keymap backup))))
 
+;; (help--binding-locus (kbd "C-x n w") nil)
+;;(help--binding-locus (kbd "C-c") nil)
+
+;; TODO: do this in keymaps found by help--binding-locus for the capitals
+;; found in dei--current-bindings.
 (defun dei-bind-all-shiftsyms-to-insert ()
   "Bind all capital letters and shift symbols to self-insert."
   (dolist (leaf dei-all-shifted-symbols)
