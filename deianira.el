@@ -22,7 +22,7 @@
 ;; Version: 0.1.0
 ;; Keywords: convenience emulations help
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "26.1") (hydra "0.15.0") (deferred) (dash) (s))
+;; Package-Requires: ((emacs "27.1") (hydra "0.15.0") (deferred "0.5.0") (dash) (s))
 
 ;;; Commentary:
 
@@ -32,7 +32,6 @@
 (require 'seq)
 (require 'subr-x)
 (require 'cl-lib)
-(require 'ert)
 (require 'help)
 
 ;; external dependencies
@@ -45,62 +44,79 @@
 ;;;; User settings
 
 (defcustom dei-hydra-keys "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
-  "Keys to make visible in hydra. Length should be divisible by 10."
+  "Keys to show in hydra hint. Length should be divisible by `dei-columns'."
   :type 'string)
 
 (defcustom dei-colwidth-override nil
-  "Width in characters of hydra hints. If nil, figure it out
-from the frame width."
+  "Character width of hydra hint. If nil, determine from frame."
   :type 'number)
 
-;; unused
+(defcustom dei-columns 10
+  "Amount of columns to display in the hydra hint."
+  :type 'number)
+
 ;; TODO: use it
-(defvar dei-pseudo-quitter-keys '("C-c c")
-  "Keys that send you to the root hydra.")
+(defcustom dei-pseudo-quitter-keys
+  '("C-c c")
+  "Keys that send you to the root hydra.
+Unused for now."
+  :type '(repeat string))
 
-;; unused
 ;; TODO: use it
-(defvar dei-pseudo-quitter-commands '(set-mark-command
-                                      rectangle-mark-mode)
-  "Commands that send you to the root hydra.")
+(defcustom dei-pseudo-quitter-commands
+  '(set-mark-command
+    rectangle-mark-mode)
+  "Commands that send you to the root hydra.
+Unused for now."
+  :type '(repeat symbol))
 
-(defvar dei-quitter-keys '("<menu>" "C-g")
-  "Keys that kill the hydra.")
+(defcustom dei-quitter-keys
+  '("<menu>"
+    "C-g")
+  "Keys that kill the hydra."
+  :type '(repeat string))
 
-;; NOTE: You don't need to add commands that focus the minibuffer, as
-;;       we slay the hydra automatically when minibuffer gets focus.
-(defvar dei-quitter-commands '(keyboard-quit
-                               minibuffer-keyboard-quit
-                               keyboard-escape-quit
-                               execute-extended-command
-                               counsel-M-x
-                               helm-M-x
-                               magit-status
-                               dired
-                               dired-jump
-                               re-builder
-                               ffap-other-frame
-                               make-frame-command
-                               other-frame
-                               kill-emacs
-                               my-save-buffers-kill-emacs-silently
-                               +lookup/online
-                               org-noter
-                               org-agenda
-                               org-roam-capture
-                               org-capture)
-  "Commands that kill the hydra.")
+(defcustom dei-quitter-commands
+  '(keyboard-quit
+    minibuffer-keyboard-quit
+    keyboard-escape-quit
+    execute-extended-command
+    counsel-M-x
+    helm-M-x
+    magit-status
+    dired
+    dired-jump
+    re-builder
+    ffap-other-frame
+    make-frame-command
+    other-frame
+    kill-emacs
+    +lookup/online
+    org-noter
+    org-agenda
+    org-roam-capture
+    org-capture)
+  "Commands that kill the hydra.
+Note that you don't need to add commands that focus the
+minibuffer, as we slay the hydra automatically when minibuffer
+gets focus."
+  :type '(repeat symbol))
+
+(defcustom dei-extra-heads
+  '(("<print>" hydra--universal-argument nil)
+    ("-" hydra--negative-argument nil)
+    ("<f5>" hydra-repeat nil))
+  "Heads to add to every hydra."
+  :type '(repeat sexp))
 
 
 ;;;; Background facts
-;; TODO: we might not need many of these anymore, delete?
 
 (defconst dei--modifier-regexp
   (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-")))
 
-;; doesn't include escape
 ;; unused
-(defconst dei-all-keys-on-keyboard-except-shifted-symbols
+(defconst dei-all-keys-on-keyboard
   (append
    (split-string
     "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./"
@@ -114,19 +130,12 @@ from the frame width."
    ;; "DEL <return> <f13> <f14> <f15> <f16> <f17> <f18> <f19> <f20>
    ;; <iso-lefttab> <XF86MonBrightnessUp>") ;; and so on...
    )
-  "All keys, except where a held-down Shift is implied.")
+  "All keys, except where a held Shift is implied.")
 
-;; unused
 (defconst dei-all-shifted-symbols
   (split-string
    "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
    "" t))
-
-;; unused
-(defconst dei--all-keys-on-keyboard
-  (append
-   dei-all-keys-on-keyboard-except-shifted-symbols
-   dei-all-shifted-symbols))
 
 (defun dei--hydra-keys-list-reeval ()
   (split-string dei-hydra-keys "" t))
@@ -137,19 +146,6 @@ from the frame width."
 (defun dei--hydra-keys-list-nonum-reeval ()
   (split-string (replace-regexp-in-string (rx num) "" dei-hydra-keys) "" t))
 
-;; "List of keys like C-a, C-e, M-f, M-g but not C-M-f or M-%."
-;; NOTE: it's not quite all of them since it uses dei-hydra-keys. Also avoids Shift.
-(defun dei--all-duo-chords-reeval ()
-  (let (chords)
-    (mapc (lambda (char)
-            (push (concat "A-" (string char)) chords)
-            (push (concat "C-" (string char)) chords)
-            (push (concat "H-" (string char)) chords)
-            (push (concat "M-" (string char)) chords)
-            (push (concat "s-" (string char)) chords))
-          dei-hydra-keys)
-    chords))
-
 (defun dei--calc-colwidth ()
   (or dei-colwidth-override
       (let ((optimal (- (round (frame-parameter nil 'width) 10) 4)))
@@ -158,7 +154,6 @@ from the frame width."
 (defvar dei--hydra-keys-list (dei--hydra-keys-list-reeval))
 (defvar dei--hydra-keys-nonum (dei--hydra-keys-nonum-reeval))
 (defvar dei--hydra-keys-list-nonum (dei--hydra-keys-list-nonum-reeval))
-(defvar dei--all-duo-chords (dei--all-duo-chords-reeval))
 (defvar dei--colwidth (dei--calc-colwidth))
 
 
@@ -193,16 +188,6 @@ from the frame width."
             (caught-mod (substring keydesc first-match-pos (+ 2 first-match-pos)))
             (now-verboten (-difference mods (list caught-mod))))
       (string-match-p (eval `(rx (or ,@now-verboten)) t) keydesc)))
-
-(defun dei--of-interest-p (cmd)
-  "Return t if CMD is worth carrying over to another key.
-It does not fail if CMD is a keymap, check that separately."
-  (declare (pure t) (side-effect-free t))
-  (not (member cmd '(self-insert-command
-                     nil
-                     ignore
-                     ignore-event
-                     company-ignore))))
 
 (defun dei--get-leaf (keydesc)
   (declare (pure t) (side-effect-free t))
@@ -457,6 +442,16 @@ functions in the library aren't really ESC-aware."
         (setq-local truncate-lines t)
         buf))))
 
+(defun dei--of-interest-p (cmd)
+  "Return t if CMD is worth carrying over to another key.
+It does not fail if CMD is a keymap, check that separately."
+  (declare (pure t) (side-effect-free t))
+  (not (member cmd '(self-insert-command
+                     nil
+                     ignore
+                     ignore-event
+                     company-ignore))))
+
 ;; REVIEW: Write test for it with a key-simulator
 (defun dei-universal-arg (arg)
   (interactive "P")
@@ -581,8 +576,8 @@ an example ALIST transformation may look like this:
   `( ,leaf
      ,(dei--head-arg-cmd stem leaf)
      nil
-     ,@(dei--head-arg-exit stem leaf)
-     ))
+     ,@(dei--head-arg-exit stem leaf)))
+
 
 (defun dei--head-invisible-self-inserting-stemless (_stem leaf)
   `( ,leaf self-insert-command nil :exit t))
@@ -635,7 +630,7 @@ an example ALIST transformation may look like this:
                      collect (dei--head-invisible-exiting-stemless stem leaf)))))
     (-remove (lambda (head) (member (car head) verboten-leafs)) x)))
 
-(defun dei--specify-extra-heads (stem) 
+(defun dei--specify-extra-heads (stem)
   (let ((pop-key (cond ((string= "C-" stem) "<f35>")
                        ((string= "M-" stem) "<f34>")
                        ((string= "s-" stem) "<f33>")
@@ -645,16 +640,7 @@ an example ALIST transformation may look like this:
      `(("<backspace>" ,(dei--parent-hydra stem) nil :exit t)
        ,(when pop-key
           `(,pop-key nil nil :exit t))
-       ,@(cl-loop for x in (dei--where-is #'universal-argument)
-                  collect `(,x dei-universal-arg nil))
-       ;; Search only universal-argument-map because it should have only one
-       ;; key for neg arg (typically -) while global-map has many redundant
-       ;; chords of the same, which would be pointless to copy into the hydra.
-       ,@(cl-loop for x in (dei--where-is #'negative-argument
-                                          universal-argument-map)
-                  collect `(,x dei-negative-arg nil))
-       ,@(cl-loop for x in (dei--where-is #'repeat)
-                  collect `(,x hydra-repeat nil))
+       ,@dei-extra-heads
        ))))
 
 ;; Tests
@@ -662,22 +648,21 @@ an example ALIST transformation may look like this:
 ;; (dei--specify-invisible-heads "C-")
 ;; (dei--specify-extra-heads "C-x ")
 
-;; Dire hydras
-
-;; TODO: put extra heads first, then when subsequent functions make heads for
-;; the same leaf, drop them via -uniq. Unless you can come up with a more
-;; efficient way to work (probably putting the logic in dei--head-cmd).
 (defun dei--specify-dire-hydra (stem &optional verboten-leafs)
   (let* ((subhydra-gates (->> dei--keys-that-are-hydras
                               (--filter (s-matches-p stem it))
                               (-map #'dei--get-leaf)))
+         (extra-heads (dei--specify-extra-heads stem))
+         (verboten-leafs (append verboten-leafs
+                                 (-map #'car extra-heads)))
          (heads (append
+                 extra-heads
                  (dei--specify-heads-to-subhydra stem subhydra-gates)
                  (dei--specify-visible-heads stem (append verboten-leafs
                                                           subhydra-gates))
-                 (dei--specify-invisible-heads stem subhydra-gates)
-                 (dei--specify-extra-heads stem))))
-    (cons stem (dei--sort-like dei--hydra-keys-list heads))))
+                 (dei--specify-invisible-heads stem (append verboten-leafs
+                                                            subhydra-gates))))
+    (cons stem (dei--sort-like dei--hydra-keys-list heads)))))
 
 (defun dei--specify-dire-hydras ()
   (setq dei--live-stems (-difference dei--live-stems
@@ -695,23 +680,19 @@ an example ALIST transformation may look like this:
          collect (dei--specify-dire-hydra stem))))
 
 ;; Final boss
-
-;; REVIEW: Maybe delete this function
-(defun dei--call-defhydra (name heads-list)
-  "Create a hydra named NAME with HEADS-LIST.
+(defun dei--call-defhydra (stem heads-list)
+  "Create a hydra named after STEM with HEADS-LIST.
 Tip: This is a thin wrapper around `defhydra', the magic happens
 when it's called by `dei-generate-hydras-async'."
-  (eval `(defhydra ,(intern name)
-           (:columns 10
+  (eval `(defhydra ,(intern (dei--dub-from-key stem))
+           (:columns ,dei-columns
             :exit nil
             :foreign-keys run
             ;; :body-pre (dei-generate-hydras-async)
-            ;; :body-post (dei-generate-hydras-async)
-            )
-           ,name
+            :body-post (dei-generate-hydras-async))
+           ,stem
            ,@heads-list)
         t))
-
 
 
 ;;;; Async worker
@@ -763,9 +744,9 @@ while we're at it."
   (dolist (leaf dei--all-keys-on-keyboard)
     (when-let ((map (help--binding-locus (kbd (concat "C-c C-" leaf)) nil)))
       ;; Haven't decided which of these to run. First is probably cleaner.
-      (dei-restem map leaf "C-c " "C-c C-")
+      (dei-restem map leaf "C-c " "C-c C-"))))
       ;; (local-set-key (kbd (concat "C-c " leaf)) (key-binding (kbd (concat "C-c C-" leaf))))
-      )))
+
 
 ;; (add-hook 'prog-mode-hook #'dei--auto-remap-buffer-bindings)
 ;; (add-hook 'text-mode-hook)
@@ -865,7 +846,7 @@ while we're at it."
 ;; (dei--set-variables)
 ;; (dei--specify-dire-hydras)
 (cl-loop for x in dei--hydra-blueprints
-         do (progn (dei--call-defhydra (dei--dub-from-key (car x)) (cdr x))
+         do (progn (dei--call-defhydra (car x) (cdr x))
                    (push (car x) dei--live-stems)))
 (setq dei--last-filtered-bindings dei--current-filtered-bindings)
 
@@ -888,8 +869,7 @@ while we're at it."
         (setq dei--colwidth (dei--calc-colwidth))
         (setq dei--hydra-keys-list (dei--hydra-keys-list-reeval))
         (setq dei--hydra-keys-nonum (dei--hydra-keys-nonum-reeval))
-        (setq dei--hydra-keys-list-nonum (dei--hydra-keys-list-nonum-reeval))
-        (setq dei--all-duo-chords (dei--all-duo-chords-reeval))))
+        (setq dei--hydra-keys-list-nonum (dei--hydra-keys-list-nonum-reeval))))
 
     (deferred:nextc it
       #'dei--specify-dire-hydras)
@@ -923,11 +903,11 @@ while we're at it."
     "keycode any = F34"
     "keycode any = F33"
     "keycode any = F32"
-    "keycode any = F31"
+    "keycode any = F31"))
     ;; clear lshift. weeeeird!
     ;;"remove shift = Shift_L"
     ;;"keysym Shift_L = F30 F30 F30 F30"
-    ))
+
 
 ;; NOTE: User may have to modify this, due to differences in keyboards.
 (defvar dei-xcape-rules
@@ -995,8 +975,8 @@ cases in `dei-flatten-winners', and if only one is bound but not
 the other then it will duplicate since there is no contest.")
 
 (defvar dei-flattening-winners '(("C-c C-c")
-                              ("C-x a")
-                              ("C-c C-c" . org-mode-map))
+                                 ("C-x a")
+                                 ("C-c C-c" . org-mode-map))
   "Alist of keys that always win.
 See `dei-rechord-wins-flattening' for explanation.
 
@@ -1177,8 +1157,8 @@ already been done."
                   (dei-super-from-ctl def))) ;; recurse
               map)
   ;; is this the thing that makes C-g need two presses sometimes?
-  (define-key key-translation-map (kbd "s-g") (kbd "C-g"))
-  )
+  (define-key key-translation-map (kbd "s-g") (kbd "C-g")))
+
 
 
 ;;;; Main
@@ -1223,8 +1203,8 @@ already been done."
 
   ;; --- Experiment area ---
   (unless t
-    (add-hook 'window-buffer-change-functions #'dei-generate-hydras-async)
-    ))
+    (add-hook 'window-buffer-change-functions #'dei-generate-hydras-async)))
+
 
 (provide 'deianira)
 ;;; deianira.el ends here
