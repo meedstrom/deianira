@@ -3,6 +3,7 @@
 ;;; Code:
 
 (require 'deianira)
+(require 'ert)
 
 (ert-deftest test-dei--current-bindings ()
   (let ((foo (dei--current-bindings)))
