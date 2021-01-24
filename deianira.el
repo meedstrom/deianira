@@ -1050,17 +1050,20 @@ and run this function on the results."
          (/= 1 (length steps))
          (when (dei--chord-match (car steps))
            (let* ((root-modifier (match-string 0 (car steps)))
-                  (most-steps (butlast steps))
+                  (most-steps (butlast steps)) ;; often one step
                   (last-step (-last-item steps))
                   (leaf (dei--get-leaf last-step)) ;; may be same as last-step
-                  (map (or keymap (symbol-value
-                                   (help--binding-locus (kbd keydesc) nil))))
+                  (map (or keymap
+                           ;; hopefully same map as (key-binding)'s origin
+                           (symbol-value
+                            (help--binding-locus (kbd keydesc) nil))))
                   (this-is-rechord-p (not (null (dei--chord-match last-step))))
                   (rechorded-keydesc (if this-is-rechord-p
                                          keydesc
                                        (s-join " " (-snoc most-steps
                                                           (concat root-modifier
                                                                   leaf)))))
+                  
                   (rechorded-command (key-binding (kbd rechorded-keydesc)))
                   (chordonce-keydesc (if this-is-rechord-p
                                          (s-join " " (-snoc most-steps leaf))
@@ -1070,11 +1073,10 @@ and run this function on the results."
                                        chordonce-keydesc
                                      rechorded-keydesc))
                   (sibling-command (key-binding (kbd sibling-keydesc)))
+                  ;; TODO: name this better
                   (winner-map (cdr (assoc keydesc dei--flatwinners-w-keymaps))))
-             ;; TODO: actually flatten the winner-w-keymap separately (outside
-             ;; this fn), because there can be many hits of assoc on the same
-             ;; key.
-             (unless (equal winner-map map) 
+             ;; why don't we want to execute in this case?
+             (unless (equal winner-map map)
                (if (commandp sibling-command)
                    (cond ((member sibling-keydesc dei--flatwinners)
                           (dei--define map (kbd keydesc) sibling-command))
@@ -1088,9 +1090,9 @@ and run this function on the results."
                  ;; don't need to do it both directions since this whole function will
                  ;; probably be on the other keydesc later if it hasn't already.
                  (dei--define map (kbd sibling-keydesc) command)))
-             (when winner-map (dei--define winner-map
-                                (kbd sibling-keydesc)
-                                (lookup-key winner-map (kbd keydesc)))))))))
+             (when keymap (dei--define keymap
+                                       (kbd sibling-keydesc)
+                                       (lookup-key keymap (kbd keydesc)))))))))
 
 ;; Just a debug helper
 (defun dei--define (map key def)
