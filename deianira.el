@@ -104,8 +104,8 @@ gets focus."
   :type '(repeat symbol))
 
 (defcustom dei-extra-heads
-  '(("<print>" hydra--universal-argument nil)
-    ("-" hydra--negative-argument nil)
+  '(("<print>" dei-universal-arg nil)
+    ("-" dei-negative-arg nil)
     ("<f5>" hydra-repeat nil))
   "Heads to add to every hydra."
   :type '(repeat sexp))
@@ -632,24 +632,26 @@ an example ALIST transformation may look like this:
     (-remove (lambda (head) (member (car head) verboten-leafs)) x)))
 
 (defun dei--specify-extra-heads (stem)
-  (let ((pop-key (cond ((string= "C-" stem) "<f35>")
-                       ((string= "M-" stem) "<f34>")
-                       ((string= "s-" stem) "<f33>")
-                       ((string= "H-" stem) "<f32>")
-                       ((string= "A-" stem) "<f31>"))))
+  (let ((self-poppers (cond ((string= "C-" stem) '("<f35>" "C-<f35>"))
+                            ((string= "M-" stem) '("<f34>" "M-<f34>"))
+                            ((string= "s-" stem) '("<f33>" "s-<f33>"))
+                            ((string= "H-" stem) '("<f32>" "H-<f32>"))
+                            ((string= "A-" stem) '("<f31>" "A-<f31>")))))
     (-non-nil
      `(("<backspace>" ,(dei--parent-hydra stem) nil :exit t)
-       ,(when pop-key
-          `(,pop-key nil nil :exit t))
+       ,@(when self-poppers
+           (cl-loop for key in self-poppers
+                    collect `(,key nil nil :exit t)))
        ,@dei-extra-heads))))
 
 ;; Tests
 ;; (dei--specify-extra-heads "M-s ")
+;; (dei--specify-extra-heads "M-")
 ;; (setq foo (dei--specify-dire-hydra "M-s "))
 ;; (dei--specify-invisible-heads "C-")
-;; (dei--specify-extra-heads "C-x ")
+;; (append nil (-map #'car (dei--specify-extra-heads "C-")))
 
-(defun dei--specify-dire-hydra (stem &optional verboten-leafs)
+(defun dei--specify-dire-hydra (stem &optional name verboten-leafs)
   "The real magic kinda happens here."
   (let* ((extra-heads (dei--specify-extra-heads stem))
          (verboten-leafs (append (-map #'car extra-heads)
@@ -657,7 +659,8 @@ an example ALIST transformation may look like this:
          (heads (append
                  extra-heads
                  (dei--specify-visible-heads stem verboten-leafs)
-                 (dei--specify-invisible-heads stem verboten-leafs))))))
+                 (dei--specify-invisible-heads stem verboten-leafs))))
+    (-cons* stem name heads)))
 
 (defun dei--specify-dire-hydras ()
   (setq dei--live-stems (-difference dei--live-stems
@@ -672,14 +675,32 @@ an example ALIST transformation may look like this:
   (setq dei--hydra-blueprints
         (cl-loop
          for stem in dei--new-or-changed-stems
-         collect (dei--specify-dire-hydra stem))))
+         append (list (dei--specify-dire-hydra
+                       stem (dei--dub-from-key stem))
+                      (dei--specify-dire-hydra
+                       stem
+                       (concat (dei--dub-from-key stem) "-nonum")
+                       (split-string "1234567890" "" t))))))
 
 ;; Final boss
-(defun dei--call-defhydra (stem list-of-heads)
+(defun dei--call-defhydra (name list-of-heads)
+  "Create a hydra named after STEM with LIST-OF-HEADS."
+  (eval `(defhydra ,(intern name)
+           (:columns ,dei-columns
+            :exit nil
+            :hint nil ;; test
+            :foreign-keys run
+            :post (dei-generate-hydras-async))
+           ,name
+           ,@list-of-heads)
+        t))
+
+(defun dei--call-defhydra* (stem list-of-heads)
   "Create a hydra named after STEM with LIST-OF-HEADS."
   (eval `(defhydra ,(intern (dei--dub-from-key stem))
            (:columns ,dei-columns
             :exit nil
+            :hint nil ;; test
             :foreign-keys run
             :post (dei-generate-hydras-async))
            ,stem
@@ -841,7 +862,7 @@ while we're at it."
 ;; (dei--set-variables)
 ;; (dei--specify-dire-hydras)
 (cl-loop for x in dei--hydra-blueprints
-         do (progn (dei--call-defhydra (car x) (cdr x))
+         do (progn (dei--call-defhydra (cadr x) (cddr x))
                    (push (car x) dei--live-stems)))
 ;(setq dei--last-filtered-bindings dei--current-filtered-bindings)
 
@@ -862,6 +883,7 @@ while we're at it."
     (deferred:nextc it
       (lambda ()
         (setq dei--colwidth (dei--calc-colwidth))
+        (setq dei--filler (dei--filler-recalc))
         (setq dei--hydra-keys-list (dei--hydra-keys-list-reeval))
         (setq dei--hydra-keys-nonum (dei--hydra-keys-nonum-reeval))
         (setq dei--hydra-keys-list-nonum (dei--hydra-keys-list-nonum-reeval))))
@@ -875,7 +897,7 @@ while we're at it."
         (unless (dei--hydra-active-p)
           (cl-loop
            for x in dei--hydra-blueprints
-           do (progn (dei--call-defhydra (car x) (cdr x))
+           do (progn (dei--call-defhydra (cadr x) (cddr x))
                      (push (car x) dei--live-stems)))
           (setq dei--last-filtered-bindings dei--current-filtered-bindings))))
 
@@ -1182,11 +1204,18 @@ already been done."
   "Bind root hydras."
   nil
   " Δ"
-  `((,(kbd "<f35>") . dei-C/body)
+  `(
+    (,(kbd "<f35>") . dei-C/body)
     (,(kbd "<f34>") . dei-M/body)
     (,(kbd "<f33>") . dei-s/body)
     (,(kbd "<f32>") . dei-H/body)
-    (,(kbd "<f31>") . dei-A/body))
+    (,(kbd "<f31>") . dei-A/body)
+    ;; in case of sticky keys
+    (,(kbd "C-<f35>") . dei-C/body)
+    (,(kbd "M-<f34>") . dei-M/body)
+    (,(kbd "s-<f33>") . dei-s/body)
+    (,(kbd "H-<f32>") . dei-H/body)
+    (,(kbd "A-<f31>") . dei-A/body))
   :global t
   (if deianira-mode
       (progn
