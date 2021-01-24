@@ -579,17 +579,16 @@ an example ALIST transformation may look like this:
 (defun dei--head-invisible (stem leaf)
   `( ,leaf
      ,(dei--head-arg-cmd stem leaf)
-     nil
      ,@(dei--head-arg-exit stem leaf)))
 
 (defun dei--head-invisible-self-inserting-stemless (_stem leaf)
-  `( ,leaf self-insert-command nil :exit t))
+  `( ,leaf self-insert-command :exit t))
 
 (defun dei--head-invisible-exiting-stemless (_stem leaf)
-  `( ,leaf ,(dei--head-arg-cmd "" leaf) nil :exit t))
+  `( ,leaf ,(dei--head-arg-cmd "" leaf) :exit t))
 
 (defun dei--head-invisible-stemless (_stem leaf)
-  `( ,leaf ,(dei--head-arg-cmd "" leaf) nil))
+  `( ,leaf ,(dei--head-arg-cmd "" leaf)))
 
 ;; Lists of heads
 
@@ -630,9 +629,9 @@ an example ALIST transformation may look like this:
 Basically, change `dei-universal-argument' to
 `hydra--universal-argument' and drop any :exit keyword."
   (cond ((eq (cadr head) 'dei-universal-argument)
-         `(,(car head) hydra--universal-argument ,@(caddr head)))
-         ((eq (cadr head) 'dei-negative-argument)
-          `(,(car head) hydra--negative-argument ,@(caddr head)))
+         (list (car head) 'hydra--universal-argument))
+        ((eq (cadr head) 'dei-negative-argument)
+         (list (car head) 'hydra--negative-argument))
          (t
           head)))
 
@@ -647,11 +646,11 @@ Basically, change `dei-universal-argument' to
                   dei-extra-heads)))
     (-non-nil
      `(,(if nonum-p
-            `("<backspace>" ,(dei--hydra-from-stem stem) nil :exit t)
-          `("<backspace>" ,(dei--parent-hydra stem) nil :exit t))
+            `("<backspace>" ,(dei--hydra-from-stem stem) :exit t)
+          `("<backspace>" ,(dei--parent-hydra stem) :exit t))
        ,@(when self-poppers
            (cl-loop for key in self-poppers
-                    collect `(,key nil nil :exit t)))
+                    collect `(,key nil :exit t)))
        ,@extras))))
 
 ;; Tests
@@ -699,7 +698,7 @@ Basically, change `dei-universal-argument' to
   (eval `(defhydra ,(intern name)
            (:columns ,dei-columns
             :exit nil
-            :hint nil ;; test
+            :hint nil
             :foreign-keys run
             :post (dei-generate-hydras-async))
            ,name
