@@ -732,7 +732,10 @@ while we're at it."
      ;; (s-contains-p "backspace" keydesc)
      ;; (s-contains-p "DEL" keydesc)
      (s-contains-p "S-" keydesc)
-     (dei--key-has-more-than-one-modifier keydesc)
+     (s-contains-p "SPC" keydesc)
+     (s-contains-p "RET" keydesc)
+     (s-contains-p "return" keydesc)
+     ;; (dei--key-has-more-than-one-modifier keydesc)
      (dei--contains-upcase keydesc)
      (dei--key-contains-multi-chords keydesc)
      (dei--key-seq-mixes-modifiers keydesc))))
@@ -748,21 +751,6 @@ while we're at it."
   (let* ((steps (dei--key-seq-split keydesc))
          (steps-without-modifier (mapcar #'dei--get-leaf steps)))
     (--any-p (member it dei-all-shifted-symbols) steps-without-modifier)))
-
-;; TODO: think about API. I think I want to be able to just specify each
-;; exception in a single list, even for different stems
-;; wip
-(defun dei--auto-remap-buffer-bindings ()
-  (let ((diff)))
-  (dolist (leaf dei--all-keys-on-keyboard)
-    (when-let ((map (help--binding-locus (kbd (concat "C-c C-" leaf)) nil)))
-      ;; Haven't decided which of these to run. First is probably cleaner.
-      (dei-restem map leaf "C-c " "C-c C-"))))
-      ;; (local-set-key (kbd (concat "C-c " leaf)) (key-binding (kbd (concat "C-c C-" leaf))))
-
-;; (add-hook 'prog-mode-hook #'dei--auto-remap-buffer-bindings)
-;; (add-hook 'text-mode-hook)
-;; (add-hook 'special-mode-hook)
 
 (defun dei--get-relevant-bindings ()
   (->> (dei--current-bindings
@@ -790,8 +778,12 @@ while we're at it."
        (setq dei--current-filtered-bindings)))
 ;; (dei--get-relevant-bindings)
 
-;; TODO: make the function just use dei--current-bindings instead of input
-;; (add-hook 'dei--after-scan-bindings-hook #'dei--unbind-illegal-keys)
+(add-hook 'dei--after-scan-bindings-hook #'dei--unbind-illegal-keys -5)
+(add-hook 'dei--after-scan-bindings-hook #'dei--mass-remap 5)
+
+;; (add-hook 'prog-mode-hook #'dei--mass-remap)
+;; (add-hook 'text-mode-hook)
+;; (add-hook 'special-mode-hook)
 
 (defun dei--unbind-illegal-keys ()
   (let* ((illegal (seq-filter #'dei--combined-filter dei--current-bindings))
@@ -802,9 +794,6 @@ while we're at it."
                 (unless (null map) ;; there's a bug that leaves some keys in `describe-bindings' but not in the apparently active map, and they get a null map. Check dei--current-bindings, C-M-q and C-M-@ are in there
                   (define-key (eval map t) (kbd x) nil))))
             sorted)))
-
-;; (dei--normalize "<key-chord>")
-;; (dei--normalize "<compose-last-chars>")
 
 ;; NOTE: Visualize a Venn diagram. The defunct and the new are the last and
 ;;      current minus their intersection (cases where the key's definition
@@ -842,20 +831,6 @@ while we're at it."
 (defvar dei--changed-keymaps nil)
 (defvar dei--hydra-blueprints nil)
 
-(defun dei-reset ()
-  "Re-generate hydras from scratch."
-  (interactive)
-  (setq dei--last-filtered-bindings nil)
-  (dei--get-relevant-bindings)
-  (dei--unbind-illegal-keys)
-  (dei--get-relevant-bindings)
-  (dei--set-variables)
-  (dei--specify-dire-hydras)
-  (cl-loop for x in dei--hydra-blueprints
-         do (progn (dei--call-defhydra (cadr x) (cddr x))
-                   (push (car x) dei--live-stems)))
-  (setq dei--last-filtered-bindings dei--current-filtered-bindings))
-
 (defun dei-generate-hydras-async ()
   "Regenerate hydras to match the local map."
   (interactive)
@@ -866,6 +841,9 @@ while we're at it."
     (deferred:nextc it
       (lambda ()
         (run-hooks 'dei--after-scan-bindings-hook)))
+
+    (deferred:next
+      #'dei--get-relevant-bindings)
 
     (deferred:nextc it
       #'dei--set-variables)
@@ -984,6 +962,7 @@ the other then it will duplicate since there is no contest.")
 
 (defvar dei-flattening-winners '(("C-c C-c")
                                  ("C-x a")
+                                 ("C-x g")
                                  ("C-c C-c" . org-mode-map))
   "Alist of keys that always win.
 See `dei-rechord-wins-flattening' for explanation.
@@ -1002,7 +981,7 @@ will likely have no effect if it is a prefix command such as
 Control-X-prefix or kmacro-keymap.")
 
 (defvar dei--flatwinners-w-keymaps nil)
-(defvar dei--flatwinners-universal nil)
+(defvar dei--flatwinners nil)
 
 (defun dei--mass-remap ()
   (setq dei--flatwinners-w-keymaps (-filter #'cdr dei-flattening-winners))
@@ -1096,46 +1075,13 @@ and run this function on the results."
 
 ;; Just a debug helper
 (defun dei--define (map key def)
-  (dei--echo (list "Will call `define-key' with args:" 'map key def))
+  (dei--echo (list "Will call `define-key' with args:"
+                   'map ;; too damn big expression
+                   key
+                   def))
   (define-key map key def))
 ;(setq dei-debug "*Deianira debug*")
 ;(dei--flatten-binding "C-x d")
-
-
-(defun dei--flatten-binding* (keydesc &optional keymap)
-  "Duplicate KEYDESC binding to or from its sibling.
-Assumes that the command to be bound is not itself a keymap,
-because those will be implied by binding their children anyway.
-You can use `dei--get-relevant-bindings' to filter out keymaps,
-and run this function on the results."
-  (let ((command (key-binding (kbd keydesc)))
-        (steps (dei--key-seq-split keydesc)))
-    (and (or (commandp command))
-         (/= 1 (length steps))
-         (when (dei--is-chord (car steps))
-           (let* ((root-modifier (match-string 0 (car steps))) ;; from is-chord
-                  (most-steps (butlast steps))
-                  (last-step (-last-item steps))
-                  (leaf (dei--get-leaf keydesc))
-                  (sibling-keydesc
-                   (if (dei--is-chord last-step)
-                       (s-join " " (-snoc most-steps leaf))
-                     (s-join " " (-snoc most-steps
-                                        (concat root-modifier leaf)))))
-                  (sibling-command (key-binding (kbd sibling-keydesc)))
-                  (map (or keymap (symbol-value
-                                   (help--binding-locus (kbd keydesc) nil)))))
-             (if (commandp sibling-command)
-                 (progn
-                   ;; TODO: check dei--flattening-winners
-                   (if dei-rechord-wins-flattening
-                       (if (dei--is-chord last-step)
-                           (define-key map (kbd sibling-keydesc) command)
-                         (define-key map (kbd keydesc) sibling-command))
-                     (if (dei--is-chord last-step)
-                         (define-key map (kbd keydesc) sibling-command)
-                       (define-key map (kbd sibling-keydesc) command))))
-               (define-key map (kbd sibling-keydesc) command)))))))
 
 ;; Prior art from `which-key-show-minor-mode-keymap', thanks!
 (defun dei--current-minor-mode-maps ()
@@ -1263,6 +1209,21 @@ already been done."
     (dei--slay))
   args)
 
+(defun dei-reset ()
+  "Re-generate hydras from scratch."
+  (interactive)
+  (setq dei--last-filtered-bindings nil)
+  (dei--get-relevant-bindings)
+  (dei--mass-remap)
+  ;; (dei--unbind-illegal-keys)
+  (dei--get-relevant-bindings)
+  (dei--set-variables)
+  (dei--specify-dire-hydras)
+  (cl-loop for x in dei--hydra-blueprints
+         do (progn (dei--call-defhydra (cadr x) (cddr x))
+                   (push (car x) dei--live-stems)))
+  (setq dei--last-filtered-bindings dei--current-filtered-bindings))
+
 ;;;###autoload
 (define-minor-mode deianira-mode
   "Bind root hydras."
@@ -1274,8 +1235,8 @@ already been done."
     (,(kbd "<f33>") . dei-s/body)
     (,(kbd "<f32>") . dei-H/body)
     (,(kbd "<f31>") . dei-A/body)
-    (,(kbd "<f2>") . dei-<f2>/body)
-    (,(kbd "<f10>") . dei-<f10>/body)
+    ;; (,(kbd "<f2>") . dei-<f2>/body)
+    ;; (,(kbd "<f10>") . dei-<f10>/body)
     ;; in case of sticky keys
     (,(kbd "C-<f35>") . dei-C/body)
     (,(kbd "M-<f34>") . dei-M/body)
