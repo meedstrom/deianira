@@ -958,11 +958,12 @@ duplicated to C-x f, so they both do what the former always did
 If nil, both will instead do what C-x f always did.  This
 variable sets the default approach, but you can override specific
 cases in `dei-flatten-winners', and if only one is bound but not
-the other then it will duplicate since there is no contest.")
+the other, it will duplicate since there is no contest.")
 
 (defvar dei-flattening-winners '(("C-c C-c")
                                  ("C-x a")
                                  ("C-x g")
+                                 ("C-x b")
                                  ("C-c C-c" . org-mode-map))
   "Alist of keys that always win.
 See `dei-rechord-wins-flattening' for explanation.
@@ -986,6 +987,8 @@ Control-X-prefix or kmacro-keymap.")
 (defun dei--mass-remap ()
   (setq dei--flatwinners-w-keymaps (-filter #'cdr dei-flattening-winners))
   (setq dei--flatwinners (-map #'car (-remove #'cdr dei-flattening-winners)))
+  (dolist (x dei--flatwinners-w-keymaps)
+    (dei--flatten-binding (car x) (cdr x)))
   (dolist (x (-remove (lambda (x)
                         (or (string= "Prefix Command" (cdr x))
                             (null (intern (cdr x)))
@@ -993,15 +996,13 @@ Control-X-prefix or kmacro-keymap.")
                       dei--current-bindings))
     (dei--flatten-binding (car x)))
   ;; When the root is unchorded, like <f1> or similar, just unchord all children.
-  ;; It's really unimportant though.
   ;; (dei--unbind-illegal-keys)
-  (dolist (x dei--flatwinners-w-keymaps)
-    (dei--flatten-binding (car x) (cdr x))))
+  )
 
 (defconst dei--ignore-keys
   (regexp-opt '("mouse" "remap" "scroll-bar" "select" "switch" "help" "state"
                 "which-key" "corner" "divider" "edge" "header" "mode-line"
-                "tab" "vertical-line" "frame" "open" "menu" "kp-")))
+                "tab" "vertical-line" "frame" "open" "menu" "kp-" "iso-")))
 
 (defun dei--where-is (command &optional keymap)
   (->> (where-is-internal command (when keymap (list keymap)))
@@ -1009,8 +1010,7 @@ Control-X-prefix or kmacro-keymap.")
        (--remove (string-match-p dei--ignore-keys it))
        (-map #'dei--normalize)))
 
-(defalias 'dei--chord-match #'dei--is-chord)
-(defun dei--is-chord (keydesc)
+(defun dei--chord-match (keydesc)
   (declare (pure t) (side-effect-free t))
   (cl-assert (dei--key-seq-steps=1 keydesc))
   (string-match (rx bol nonl "-") keydesc))
@@ -1037,20 +1037,20 @@ and run this function on the results."
                            (symbol-value
                             (help--binding-locus (kbd keydesc) nil))))
                   (this-is-rechord-p (not (null (dei--chord-match last-step))))
-                  (rechorded-keydesc (if this-is-rechord-p
+                  (rechord-keydesc (if this-is-rechord-p
                                          keydesc
                                        (s-join " " (-snoc most-steps
                                                           (concat root-modifier
                                                                   leaf)))))
                   
-                  (rechorded-command (key-binding (kbd rechorded-keydesc)))
+                  (rechord-command (key-binding (kbd rechord-keydesc)))
                   (chordonce-keydesc (if this-is-rechord-p
                                          (s-join " " (-snoc most-steps leaf))
                                        keydesc))
                   (chordonce-command (key-binding (kbd chordonce-keydesc)))
                   (sibling-keydesc (if this-is-rechord-p
                                        chordonce-keydesc
-                                     rechorded-keydesc))
+                                     rechord-keydesc))
                   (sibling-command (key-binding (kbd sibling-keydesc)))
                   ;; TODO: name this better
                   (winner-map (cdr (assoc keydesc dei--flatwinners-w-keymaps))))
@@ -1062,9 +1062,9 @@ and run this function on the results."
                          ((member keydesc dei--flatwinners)
                           (dei--define map (kbd sibling-keydesc) command))
                          (dei-rechord-wins-flattening
-                          (dei--define map (kbd chordonce-keydesc) rechorded-command))
+                          (dei--define map (kbd chordonce-keydesc) rechord-command))
                          (t
-                          (dei--define map (kbd rechorded-keydesc) chordonce-command)))
+                          (dei--define map (kbd rechord-keydesc) chordonce-command)))
                  ;; If one of the two is not bound, just duplicate the other.  We
                  ;; don't need to do it both directions since this whole function will
                  ;; probably be on the other keydesc later if it hasn't already.
@@ -1080,77 +1080,11 @@ and run this function on the results."
                    key
                    def))
   (define-key map key def))
-;(setq dei-debug "*Deianira debug*")
-;(dei--flatten-binding "C-x d")
-
-;; Prior art from `which-key-show-minor-mode-keymap', thanks!
-(defun dei--current-minor-mode-maps ()
-  (mapcar #'car
-          (cl-remove-if-not
-           (lambda (entry)
-             (and (symbol-value (car entry))
-                  (not (equal (cdr entry) (make-sparse-keymap)))))
-           minor-mode-map-alist)))
-
-;; Prior art from `which-key-show-major-mode', thanks!
-(defun dei--current-major-mode-map ()
-  (let ((map-sym (intern (format "%s-map" major-mode))))
-    (if (and (boundp map-sym)
-             (keymapp (symbol-value map-sym)))
-        map-sym
-      nil)))
-
-;; Generalized flatten-ctl-x
-(defun dei-restem-all-leaves (here lower-stem upper-stem)
-  "Duplicate bindings on UPPER-STEM to also exist on LOWER-STEM.
-Where they conflict, LOWER-STEM is overridden. The naming is
-inspired by overlayfs, which do a similar thing with filesystem
-mounts. HERE refers to the keymap such as global-map.  Typical
-use: (dei-restem-all-leaves global-map \"C-x \" \"C-x C-\")"
-  (dolist (leaf (dei--hydra-keys-list-reeval))
-    (dei-restem here leaf lower-stem upper-stem)))
-
-(defun dei-restem (here leaf new-stem reference-stem)
-  "Keeping LEAF, change stem."
-  (let ((ref-cmd (lookup-key here (kbd (concat reference-stem leaf)))))
-    (when (dei--of-interest-p ref-cmd)
-      (define-key here (kbd (concat new-stem leaf))
-        ref-cmd))))
-
-(defun dei-new-leaf (here stem new-leaf reference-leaf)
-  (define-key here (kbd (concat stem new-leaf))
-    (lookup-key here (kbd (concat stem reference-leaf)))))
-
-;; TODO: make this work
-(defmacro dei-backup-keymap-1 (keymap)
-  "Backup KEYMAP under the name dei-backup-KEYMAP, unless it's
-already been done."
-  `(when-let ((name (ignore-errors (symbol-name ',keymap))) ;; guard clause
-              (backup (intern (concat "dei-backup-" name))))
-     (unless (and (boundp backup)
-                  (not (eq nil backup)))
-       ;; Maybe you should use `copy-keymap' here
-       (set backup ,keymap))))
-
-;; TODO: make it not fail for unnamed maps
-;; TODO: backup unnamed maps too
-(defmacro dei-backup-keymap (keymap)
-  "Backup KEYMAP under the name dei-backup-KEYMAP, unless it's
-already been done."
-  `(let ((backup (intern (concat "dei-backup-" (symbol-name ',keymap)))))
-     (unless (and (boundp backup)
-                  (not (eq nil backup)))
-       ;; Maybe you should use `copy-keymap' here
-       (set backup ,keymap))))
-
-(defmacro dei-restore-keymap (keymap)
-  `(let ((backup (intern (concat "dei-backup-" (symbol-name ',keymap)))))
-     (when (and (boundp backup)
-                (not (eq nil backup)))
-       (setq ,keymap backup))))
+;; (setq dei-debug "*Deianira debug*")
+;; (dei--flatten-binding "C-x d")
 
 ;; (help--binding-locus (kbd "C-x n w") nil)
-;;(help--binding-locus (kbd "C-c") nil)
+;; (help--binding-locus (kbd "C-c") nil)
 
 ;; TODO: do this in keymaps found by help--binding-locus for the capitals
 ;; found in dei--current-bindings.
@@ -1158,35 +1092,6 @@ already been done."
   "Bind all capital letters and shift symbols to self-insert."
   (dolist (leaf dei-all-shifted-symbols)
     (global-set-key (kbd leaf) #'self-insert-command)))
-
-;; (defun dei-super-from-ctl ()
-;;   (map-keymap (lambda (ev def)
-;;                 (let* ((case-fold-search nil)
-;;                        (key (key-description (list ev)))
-;;                        (newkey (replace-regexp-in-string
-;;                                 (rx word-start "C" word-end) "s" key t)))
-;;                   (and (dei--of-interest-p def)
-;;                        (not (equal key newkey))
-;;                        (define-key global-map (kbd newkey) def))))
-;;               global-map))
-
-;; TODO: Do this continuously over time
-;; TODO: Do this not only on global-map
-(defun dei-super-from-ctl (map)
-  (map-keymap (lambda (ev def)
-                (let* ((case-fold-search nil)
-                       (key (key-description (list ev)))
-                       (newkey (replace-regexp-in-string
-                                (rx word-start "C" word-end) "s" key t)))
-                  (when (and (dei--of-interest-p def)
-                             (not (equal key newkey))) ;; Don't proceed for those keys that didn't contain C- in the first place, e.g. M-f.
-                    (define-key map (kbd newkey) def)))
-                (when (keymapp def)
-                  (dei-super-from-ctl def))) ;; recurse
-              map)
-  ;; is this the thing that makes C-g need two presses sometimes?
-  (define-key key-translation-map (kbd "s-g") (kbd "C-g")))
-
 
 
 ;;;; Main
@@ -1224,6 +1129,8 @@ already been done."
                    (push (car x) dei--live-stems)))
   (setq dei--last-filtered-bindings dei--current-filtered-bindings))
 
+(defvar dei--old-hydra-cell-format nil)
+
 ;;;###autoload
 (define-minor-mode deianira-mode
   "Bind root hydras."
@@ -1244,15 +1151,19 @@ already been done."
     (,(kbd "H-<f32>") . dei-H/body)
     (,(kbd "A-<f31>") . dei-A/body))
   :global t
+  (require 'hydra)
   (if deianira-mode
       (progn
         ;; Does not work for the consult-* functions with selectrum-mode.
         ;; It's ok because they ignore the hydra and let you type, but why?
         (add-hook 'window-buffer-change-functions #'dei--slay-if-minibuffer)
-
+        (setq dei--old-hydra-cell-format hydra-cell-format)
+        (setq hydra-cell-format "% -20s %% -11`%s")
         (define-key hydra-base-map (kbd "C-u") nil)
         (when (null dei--live-stems)
           (dei-reset)))
+    (when hydra-cell-format)
+    (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") #'hydra--universal-argument)
     (remove-hook 'window-buffer-change-functions #'dei--slay-if-minibuffer)))
 
