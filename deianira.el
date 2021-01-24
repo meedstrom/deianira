@@ -104,8 +104,8 @@ gets focus."
   :type '(repeat symbol))
 
 (defcustom dei-extra-heads
-  '(("<print>" dei-universal-arg nil)
-    ("-" dei-negative-arg nil)
+  '(("<print>" dei-universal-argument nil :exit t)
+    ("-" dei-negative-argument nil :exit t)
     ("<f5>" hydra-repeat nil))
   "Heads to add to every hydra."
   :type '(repeat sexp))
@@ -141,12 +141,6 @@ gets focus."
 (defun dei--hydra-keys-list-reeval ()
   (split-string dei-hydra-keys "" t))
 
-(defun dei--hydra-keys-nonum-reeval ()
-    (replace-regexp-in-string (rx num) "" dei-hydra-keys))
-
-(defun dei--hydra-keys-list-nonum-reeval ()
-  (split-string (replace-regexp-in-string (rx num) "" dei-hydra-keys) "" t))
-
 (defun dei--calc-colwidth ()
   (or dei-colwidth-override
       (let ((optimal (- (round (frame-parameter nil 'width) 10) 4)))
@@ -156,8 +150,6 @@ gets focus."
   (make-string dei--colwidth (string-to-char " ")))
 
 (defvar dei--hydra-keys-list (dei--hydra-keys-list-reeval))
-(defvar dei--hydra-keys-nonum (dei--hydra-keys-nonum-reeval))
-(defvar dei--hydra-keys-list-nonum (dei--hydra-keys-list-nonum-reeval))
 (defvar dei--colwidth (dei--calc-colwidth))
 (defvar dei--filler (dei--filler-recalc))
 
@@ -460,7 +452,9 @@ It does not fail if CMD is a keymap, check that separately."
                      company-ignore))))
 
 ;; REVIEW: Write test for it with a key-simulator
-(defun dei-universal-arg (arg)
+;; FIXME: Seems to cause "max lisp nesting" error.
+(defun dei-universal-argument (arg)
+  "Enter a nonum hydra and activate the universal argument."
   (interactive "P")
   (prefix-command-preserve-state)
   (call-interactively
@@ -469,7 +463,7 @@ It does not fail if CMD is a keymap, check that separately."
             "-nonum/body")))
   (hydra--universal-argument arg))
 
-(defun dei-negative-arg (arg)
+(defun dei-negative-argument (arg)
   (interactive "P")
   (prefix-command-preserve-state)
   (call-interactively
@@ -609,7 +603,7 @@ an example ALIST transformation may look like this:
                      (symbol-name cmd))
                    :exit t))))
 
-(defun dei--specify-visible-heads (stem verboten-leafs)
+(defun dei--specify-visible-heads (stem &optional verboten-leafs)
   (let ((leaf-list (-difference dei--hydra-keys-list
                                 verboten-leafs)))
     (cl-loop for leaf in leaf-list
@@ -631,31 +625,49 @@ an example ALIST transformation may look like this:
                      collect (dei--head-invisible-exiting-stemless stem leaf)))))
     (-remove (lambda (head) (member (car head) verboten-leafs)) x)))
 
-(defun dei--specify-extra-heads (stem)
+(defun dei--convert-head-for-nonum (head)
+  "If HEAD is a keyboard prefix command, fix it for nonum hydra.
+Basically, change `dei-universal-argument' to
+`hydra--universal-argument' and drop any :exit keyword."
+  (cond ((eq (cadr head) 'dei-universal-argument)
+         `(,(car head) hydra--universal-argument ,@(caddr head)))
+         ((eq (cadr head) 'dei-negative-argument)
+          `(,(car head) hydra--negative-argument ,@(caddr head)))
+         (t
+          head)))
+
+(defun dei--specify-extra-heads (stem &optional nonum-p)
   (let ((self-poppers (cond ((string= "C-" stem) '("<f35>" "C-<f35>"))
                             ((string= "M-" stem) '("<f34>" "M-<f34>"))
                             ((string= "s-" stem) '("<f33>" "s-<f33>"))
                             ((string= "H-" stem) '("<f32>" "H-<f32>"))
-                            ((string= "A-" stem) '("<f31>" "A-<f31>")))))
+                            ((string= "A-" stem) '("<f31>" "A-<f31>"))))
+        (extras (if nonum-p
+                    (mapcar #'dei--convert-head-for-nonum dei-extra-heads)
+                  dei-extra-heads)))
     (-non-nil
-     `(("<backspace>" ,(dei--parent-hydra stem) nil :exit t)
+     `(,(if nonum-p
+            `("<backspace>" ,(dei--hydra-from-stem stem) nil :exit t)
+          `("<backspace>" ,(dei--parent-hydra stem) nil :exit t))
        ,@(when self-poppers
            (cl-loop for key in self-poppers
                     collect `(,key nil nil :exit t)))
-       ,@dei-extra-heads))))
+       ,@extras))))
 
 ;; Tests
 ;; (dei--specify-extra-heads "M-s ")
 ;; (dei--specify-extra-heads "M-")
+;; (dei--specify-extra-heads "M-" t)
 ;; (setq foo (dei--specify-dire-hydra "M-s "))
 ;; (dei--specify-invisible-heads "C-")
 ;; (append nil (-map #'car (dei--specify-extra-heads "C-")))
 
-(defun dei--specify-dire-hydra (stem &optional name verboten-leafs)
+(defun dei--specify-dire-hydra (stem name &optional nonum-p)
   "The real magic kinda happens here."
-  (let* ((extra-heads (dei--specify-extra-heads stem))
+  (let* ((extra-heads (dei--specify-extra-heads stem nonum-p))
          (verboten-leafs (append (-map #'car extra-heads)
-                                 verboten-leafs))
+                                 (when nonum-p
+                                   (split-string "1234567890" "" t))))
          (heads (append
                  extra-heads
                  (dei--specify-visible-heads stem verboten-leafs)
@@ -675,12 +687,11 @@ an example ALIST transformation may look like this:
   (setq dei--hydra-blueprints
         (cl-loop
          for stem in dei--new-or-changed-stems
-         append (list (dei--specify-dire-hydra
-                       stem (dei--dub-from-key stem))
-                      (dei--specify-dire-hydra
-                       stem
-                       (concat (dei--dub-from-key stem) "-nonum")
-                       (split-string "1234567890" "" t))))))
+         append (list (dei--specify-dire-hydra stem
+                                               (dei--dub-from-key stem))
+                      (dei--specify-dire-hydra stem
+                                               (concat (dei--dub-from-key stem) "-nonum")
+                                               t)))))
 
 ;; Final boss
 (defun dei--call-defhydra (name list-of-heads)
@@ -692,18 +703,6 @@ an example ALIST transformation may look like this:
             :foreign-keys run
             :post (dei-generate-hydras-async))
            ,name
-           ,@list-of-heads)
-        t))
-
-(defun dei--call-defhydra* (stem list-of-heads)
-  "Create a hydra named after STEM with LIST-OF-HEADS."
-  (eval `(defhydra ,(intern (dei--dub-from-key stem))
-           (:columns ,dei-columns
-            :exit nil
-            :hint nil ;; test
-            :foreign-keys run
-            :post (dei-generate-hydras-async))
-           ,stem
            ,@list-of-heads)
         t))
 
@@ -804,17 +803,6 @@ while we're at it."
                   (define-key (eval map t) (kbd x) nil))))
             sorted)))
 
-(defun dei--unbind-illegal-keys* (input)
-  (let* ((illegal (seq-filter #'dei--combined-filter input))
-         (illegal-keys (seq-map #'car illegal))
-         (sorted (seq-sort-by #'dei--key-seq-steps-length #'> illegal-keys)))
-    (seq-do (lambda (x)
-              (let ((map (help--binding-locus (kbd x) nil)))
-                (unless (null map) ;; there's a bug that leaves some keys in `describe-bindings' but not in the apparently active map, and they get a null map. Check dei--current-bindings, C-M-q and C-M-@ are in there
-                  (define-key (eval map t) (kbd x) nil))))
-            sorted))
-  input)
-
 ;; (dei--normalize "<key-chord>")
 ;; (dei--normalize "<compose-last-chars>")
 
@@ -854,20 +842,23 @@ while we're at it."
 (defvar dei--changed-keymaps nil)
 (defvar dei--hydra-blueprints nil)
 
-;; Trial it yourself.
-;; MUST run in sequence.
-;; (dei--get-relevant-bindings)
-;; (dei--unbind-illegal-keys)
-;; (dei--get-relevant-bindings)
-;; (dei--set-variables)
-;; (dei--specify-dire-hydras)
-(cl-loop for x in dei--hydra-blueprints
+(defun dei-reset ()
+  "Re-generate hydras from scratch."
+  (interactive)
+  (setq dei--last-filtered-bindings nil)
+  (dei--get-relevant-bindings)
+  (dei--unbind-illegal-keys)
+  (dei--get-relevant-bindings)
+  (dei--set-variables)
+  (dei--specify-dire-hydras)
+  (cl-loop for x in dei--hydra-blueprints
          do (progn (dei--call-defhydra (cadr x) (cddr x))
                    (push (car x) dei--live-stems)))
-;(setq dei--last-filtered-bindings dei--current-filtered-bindings)
+  (setq dei--last-filtered-bindings dei--current-filtered-bindings))
 
 (defun dei-generate-hydras-async ()
   "Regenerate hydras to match the local map."
+  (interactive)
   (deferred:$
     (deferred:next
       #'dei--get-relevant-bindings)
@@ -884,9 +875,7 @@ while we're at it."
       (lambda ()
         (setq dei--colwidth (dei--calc-colwidth))
         (setq dei--filler (dei--filler-recalc))
-        (setq dei--hydra-keys-list (dei--hydra-keys-list-reeval))
-        (setq dei--hydra-keys-nonum (dei--hydra-keys-nonum-reeval))
-        (setq dei--hydra-keys-list-nonum (dei--hydra-keys-list-nonum-reeval))))
+        (setq dei--hydra-keys-list (dei--hydra-keys-list-reeval))))
 
     (deferred:nextc it
       #'dei--specify-dire-hydras)
@@ -969,14 +958,17 @@ while we're at it."
            (process-live-p dei-xcape-process)
            (kill-process dei-xcape-process))
       (setq dei-xcape-process
-            (start-process "xcape" "*xcape*" "nice" "-20" "xcape" "-d" "-e" rules))
+            (start-process "xcape" "*xcape*"
+                           "nice" "-20" "xcape" "-d" "-e" rules))
       (named-timer-run 'dei-xcape-log-cleaner 300 300 #'dei-clean-xcape-log))))
 
 (defun dei-xkbset-enable-sticky-keys ()
   (interactive)
   (when (executable-find "xkbset")
-    (start-process "xkbset" (dei--debug-buffer) "xkbset" "sticky" "-twokey" "-latchlock")
-    (start-process "xkbset" (dei--debug-buffer) "xkbset" "exp" "=sticky")))
+    (start-process "xkbset" (dei--debug-buffer)
+                   "xkbset" "sticky" "-twokey" "-latchlock")
+    (start-process "xkbset" (dei--debug-buffer)
+                   "xkbset" "exp" "=sticky")))
 
 
 ;;;; Bonus functions for mass remaps
@@ -1210,6 +1202,8 @@ already been done."
     (,(kbd "<f33>") . dei-s/body)
     (,(kbd "<f32>") . dei-H/body)
     (,(kbd "<f31>") . dei-A/body)
+    (,(kbd "<f2>") . dei-<f2>/body)
+    (,(kbd "<f10>") . dei-<f10>/body)
     ;; in case of sticky keys
     (,(kbd "C-<f35>") . dei-C/body)
     (,(kbd "M-<f34>") . dei-M/body)
@@ -1221,14 +1215,13 @@ already been done."
       (progn
         ;; Does not work for the consult-* functions with selectrum-mode.
         ;; It's ok because they ignore the hydra and let you type, but why?
-        (add-hook 'window-buffer-change-functions #'dei--disable-if-minibuffer))
-    (remove-hook 'window-buffer-change-functions #'dei--disable-if-minibuffer))
+        (add-hook 'window-buffer-change-functions #'dei--disable-if-minibuffer)
 
-  ;; --- Experiment area ---
-  (unless t
-    (dei-generate-hydras-async)
-
-    ))
+        (define-key hydra-base-map (kbd "C-u") nil)
+        (when (null dei--live-stems)
+          (dei-reset)))
+    (define-key hydra-base-map (kbd "C-u") #'hydra--universal-argument)
+    (remove-hook 'window-buffer-change-functions #'dei--disable-if-minibuffer)))
 
 (provide 'deianira)
 ;;; deianira.el ends here
