@@ -82,6 +82,7 @@ Unused for now."
     minibuffer-keyboard-quit
     keyboard-escape-quit
     execute-extended-command
+    abort-recursive-edit
     counsel-M-x
     helm-M-x
     magit-status
@@ -93,6 +94,7 @@ Unused for now."
     other-frame
     kill-emacs
     +lookup/online
+    +doom-dashboard/open
     org-noter
     org-agenda
     org-roam-capture
@@ -452,7 +454,6 @@ It does not fail if CMD is a keymap, check that separately."
                      company-ignore))))
 
 ;; REVIEW: Write test for it with a key-simulator
-;; FIXME: Seems to cause "max lisp nesting" error.
 (defun dei-universal-argument (arg)
   "Enter a nonum hydra and activate the universal argument."
   (interactive "P")
@@ -1000,14 +1001,23 @@ found in. Otherwise it should be a major or minor mode map. It
 will likely have no effect if it is a prefix command such as
 Control-X-prefix or kmacro-keymap.")
 
-;; WIP: First, just flatten everything, not taking into account winners.
+(defvar dei--flatwinners-w-keymaps nil)
+(defvar dei--flatwinners-universal nil)
+
 (defun dei--mass-remap ()
+  (setq dei--flatwinners-w-keymaps (-filter #'cdr dei-flattening-winners))
+  (setq dei--flatwinners (-map #'car (-remove #'cdr dei-flattening-winners)))
   (dolist (x (-remove (lambda (x)
                         (or (string= "Prefix Command" (cdr x))
                             (null (intern (cdr x)))
                             (keymapp (intern (cdr x)))))
                       dei--current-bindings))
-    (dei--flatten-binding (car x))))
+    (dei--flatten-binding (car x)))
+  ;; When the root is unchorded, like <f1> or similar, just unchord all children.
+  ;; It's really unimportant though.
+  ;; (dei--unbind-illegal-keys)
+  (dolist (x dei--flatwinners-w-keymaps)
+    (dei--flatten-binding (car x) (cdr x))))
 
 (defconst dei--ignore-keys
   (regexp-opt '("mouse" "remap" "scroll-bar" "select" "switch" "help" "state"
@@ -1020,14 +1030,77 @@ Control-X-prefix or kmacro-keymap.")
        (--remove (string-match-p dei--ignore-keys it))
        (-map #'dei--normalize)))
 
+(defalias 'dei--chord-match #'dei--is-chord)
 (defun dei--is-chord (keydesc)
   (declare (pure t) (side-effect-free t))
   (cl-assert (dei--key-seq-steps=1 keydesc))
   (string-match (rx bol nonl "-") keydesc))
 
-;; TODO: refactor at the end for easier reading
 ;; TODO: Catch cases like C-c p a so they will become C-c C-p C-a.
+;; TODO: Make it easier to test/debug
 (defun dei--flatten-binding (keydesc &optional keymap)
+  "Duplicate KEYDESC binding to or from its sibling.
+Assumes that the command to be bound is not itself a keymap,
+because those will be implied by binding their children anyway.
+You can use `dei--get-relevant-bindings' to filter out keymaps,
+and run this function on the results."
+  (let ((command (key-binding (kbd keydesc)))
+        (steps (dei--key-seq-split keydesc)))
+    (and (commandp command)
+         (/= 1 (length steps))
+         (when (dei--chord-match (car steps))
+           (let* ((root-modifier (match-string 0 (car steps)))
+                  (most-steps (butlast steps))
+                  (last-step (-last-item steps))
+                  (leaf (dei--get-leaf last-step)) ;; may be same as last-step
+                  (map (or keymap (symbol-value
+                                   (help--binding-locus (kbd keydesc) nil))))
+                  (this-is-rechord-p (not (null (dei--chord-match last-step))))
+                  (rechorded-keydesc (if this-is-rechord-p
+                                         keydesc
+                                       (s-join " " (-snoc most-steps
+                                                          (concat root-modifier
+                                                                  leaf)))))
+                  (rechorded-command (key-binding (kbd rechorded-keydesc)))
+                  (chordonce-keydesc (if this-is-rechord-p
+                                         (s-join " " (-snoc most-steps leaf))
+                                       keydesc))
+                  (chordonce-command (key-binding (kbd chordonce-keydesc)))
+                  (sibling-keydesc (if this-is-rechord-p
+                                       chordonce-keydesc
+                                     rechorded-keydesc))
+                  (sibling-command (key-binding (kbd sibling-keydesc)))
+                  (winner-map (cdr (assoc keydesc dei--flatwinners-w-keymaps))))
+             ;; TODO: actually flatten the winner-w-keymap separately (outside
+             ;; this fn), because there can be many hits of assoc on the same
+             ;; key.
+             (unless (equal winner-map map) 
+               (if (commandp sibling-command)
+                   (cond ((member sibling-keydesc dei--flatwinners)
+                          (dei--define map (kbd keydesc) sibling-command))
+                         ((member keydesc dei--flatwinners)
+                          (dei--define map (kbd sibling-keydesc) command))
+                         (dei-rechord-wins-flattening
+                          (dei--define map (kbd chordonce-keydesc) rechorded-command))
+                         (t
+                          (dei--define map (kbd rechorded-keydesc) chordonce-command)))
+                 ;; If one of the two is not bound, just duplicate the other.  We
+                 ;; don't need to do it both directions since this whole function will
+                 ;; probably be on the other keydesc later if it hasn't already.
+                 (dei--define map (kbd sibling-keydesc) command)))
+             (when winner-map (dei--define winner-map
+                                (kbd sibling-keydesc)
+                                (lookup-key winner-map (kbd keydesc)))))))))
+
+;; Just a debug helper
+(defun dei--define (map key def)
+  (dei--echo (list "Will call `define-key' with args:" 'map key def))
+  (define-key map key def))
+;(setq dei-debug "*Deianira debug*")
+;(dei--flatten-binding "C-x d")
+
+
+(defun dei--flatten-binding* (keydesc &optional keymap)
   "Duplicate KEYDESC binding to or from its sibling.
 Assumes that the command to be bound is not itself a keymap,
 because those will be implied by binding their children anyway.
@@ -1050,7 +1123,7 @@ and run this function on the results."
                   (sibling-command (key-binding (kbd sibling-keydesc)))
                   (map (or keymap (symbol-value
                                    (help--binding-locus (kbd keydesc) nil)))))
-             (if (or (commandp sibling-command))
+             (if (commandp sibling-command)
                  (progn
                    ;; TODO: check dei--flattening-winners
                    (if dei-rechord-wins-flattening
@@ -1171,24 +1244,22 @@ already been done."
 ;;;; Main
 ;; Things that summon and slay the hydras we've made.
 
-;; untested
 (defun dei--hydra-active-p ()
   (not (null hydra-curr-map)))
 
-(defun dei--disable-if-minibuffer (&rest args)
-  (setq hydra-deactivate t)
-  (when (or (minibufferp)
-            (string-match-p "magit:" (buffer-name)))
+(defun dei--slay (&rest args)
+  (when (dei--hydra-active-p)
+    (setq hydra-deactivate t)
     (call-interactively #'hydra-keyboard-quit))
   args)
+;; (advice-add #'selectrum-read :before #'dei--slay)
+;; (advice-remove #'selectrum-read #'dei--slay)
 
-;; wip
-(defun dei--disable (&rest args)
-  (setq hydra-deactivate t)
-  (call-interactively #'hydra-keyboard-quit)
+(defun dei--slay-if-minibuffer (&rest args)
+  (when (or (minibufferp)
+            (string-match-p "magit:" (buffer-name))) ;; doesnt work i think
+    (dei--slay))
   args)
-;; (advice-add #'selectrum-read :before #'dei--disable)
-;; (advice-remove #'selectrum-read #'dei--disable)
 
 ;;;###autoload
 (define-minor-mode deianira-mode
@@ -1214,13 +1285,13 @@ already been done."
       (progn
         ;; Does not work for the consult-* functions with selectrum-mode.
         ;; It's ok because they ignore the hydra and let you type, but why?
-        (add-hook 'window-buffer-change-functions #'dei--disable-if-minibuffer)
+        (add-hook 'window-buffer-change-functions #'dei--slay-if-minibuffer)
 
         (define-key hydra-base-map (kbd "C-u") nil)
         (when (null dei--live-stems)
           (dei-reset)))
     (define-key hydra-base-map (kbd "C-u") #'hydra--universal-argument)
-    (remove-hook 'window-buffer-change-functions #'dei--disable-if-minibuffer)))
+    (remove-hook 'window-buffer-change-functions #'dei--slay-if-minibuffer)))
 
 (provide 'deianira)
 ;;; deianira.el ends here
