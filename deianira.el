@@ -304,9 +304,8 @@ unmodified, else return nil."
 (defun dei--stem-to-keydesc (stem)
   "Trim a space off STEM.
 Would be engineered to cover stems like C-c C-, but we assume
-those don't exist.  We also assume you have special handling for
-the root modifier stems like C- and M- and never call this
-function on them."
+those will never be passed.  Otherwise this could not be an
+invertible function."
   (declare (pure t) (side-effect-free t))
   (cl-assert (s-ends-with-p " " stem))
   (substring stem 0 -1))
@@ -558,7 +557,9 @@ an example ALIST transformation may look like this:
   (let* ((sym (if (member (concat stem leaf) dei--keys-that-are-hydras)
                   (dei--corresponding-hydra stem leaf)
                 (key-binding (kbd (concat stem leaf)))))
-         (name (symbol-name sym)))
+         (name (if (symbolp sym)
+                   (symbol-name sym)
+                 (concat stem leaf))))
     (if (null sym)
         dei--filler
       (if (> (length name) dei--colwidth)
@@ -656,6 +657,7 @@ Basically, change `dei-universal-argument' to
 
 ;; Tests
 ;; (dei--specify-extra-heads "M-s ")
+;; (dei--specify-extra-heads "M-s M-")
 ;; (dei--specify-extra-heads "M-")
 ;; (dei--specify-extra-heads "M-" t)
 ;; (setq foo (dei--specify-dire-hydra "M-s "))
@@ -719,26 +721,34 @@ rescan.")
 (defvar dei--after-rebuild-hydra-hook nil
   "Hook run after updating hydras to match the local map.")
 
-(defun dei--combined-filter (cell)
-  "Filter for rejecting keys as irrelevant to work on.
-This function exists because there is a need to go into a list
-and look at the `car's, and so we may as well run each filter
-while we're at it."
+(defun dei--filter-illegal-keys (cell)
+  "Filter for keys that should be unbound."
   (declare (pure t) (side-effect-free t))
   (let ((keydesc (car cell))
         (case-fold-search nil))
     (or
      ;; (dei--key-contains-ctl keydesc)
-     ;; (s-contains-p "backspace" keydesc)
-     ;; (s-contains-p "DEL" keydesc)
      (s-contains-p "S-" keydesc)
-     (s-contains-p "SPC" keydesc)
-     (s-contains-p "RET" keydesc)
-     (s-contains-p "return" keydesc)
-     ;; (dei--key-has-more-than-one-modifier keydesc)
+     ;;(s-matches-p (rx nonl (or "DEL" "<backspace>")) keydesc)
+     (s-matches-p (rx nonl (or "SPC" "RET" "<return>")) keydesc)
+     (s-matches-p (rx (or "SPC" "RET" "<return>") nonl) keydesc)
      (dei--contains-upcase keydesc)
      (dei--key-contains-multi-chords keydesc)
      (dei--key-seq-mixes-modifiers keydesc))))
+
+(defun dei--filter-for-hydra-making (cell)
+  "Filter for keys that are irrelevant when we make a hydra."
+  (declare (pure t) (side-effect-free t))
+  (let ((keydesc (car cell))
+        (case-fold-search nil))
+    (or
+     (dei--key-has-more-than-one-modifier keydesc)
+     ;; Attempt to find iso-transl-ctl-x-8-map, usually C-x 8 but user could
+     ;; have relocated it (which is prolly smart).
+     (member keydesc
+             (-map #'dei--parent-key
+                   (-remove #'dei--key-has-more-than-one-modifier
+                            (dei--where-is #'insert-char)))))))
 
 ;; (dei--key-has-more-than-one-modifier "s-i")
 ;;      (dei--contains-upcase keydesc)
@@ -754,16 +764,21 @@ while we're at it."
 
 (defun dei--get-relevant-bindings ()
   (->> (dei--current-bindings
-        nil ;; (rx bol (regexp dei--modifier-regexp)) ;; NOTE: filtering for modifier regexp gets rid of function keys
-        (rx (or "ESC" ;; critical
-                "TAB" "DEL" "backspace"
-                ;; "C-"
-                "<f1>" (seq bol "C-h") ;; user should fix
-                ;; TODO: make hydras, but don't unbind violators
-                (literal doom-leader-alt-key) ;; fulla Shift
-                (literal doom-localleader-alt-key)
-                "<key-chord>" "<compose-last-chars>"
-                "-margin>" "-fringe>")))
+        nil
+        (rx (or
+             (regexp (eval-when-compile
+                       (regexp-opt
+                        '("ESC" ;; critical to filter out, I think
+                          "TAB" "DEL" "backspace" ;; one day, I will let unbind-illegal-keys handle these
+                          "<key-chord>" "<compose-last-chars>"
+                          "-margin>" "-fringe>" "iso-leftab" "iso-lefttab"))))
+             ;; "C-"
+             (seq string-start
+                  (or "<f1>"
+                      "C-h"  ;; user should fix this keymap themself
+                      ;; TODO: make hydras still, without unbinding violators
+                      (literal doom-leader-alt-key) ;; fulla Shift
+                      (literal doom-localleader-alt-key))))))
        (-map (lambda (x)
                (cons (dei--normalize (car x))
                      (cdr x))))
@@ -774,7 +789,8 @@ while we're at it."
                   (or (string= "Prefix Command" (cdr x))
                       (null (intern (cdr x)))
                       (keymapp (intern (cdr x))))))
-       (-remove #'dei--combined-filter)
+       (-remove #'dei--filter-illegal-keys)
+       (-remove #'dei--filter-for-hydra-making)
        (setq dei--current-filtered-bindings)))
 ;; (dei--get-relevant-bindings)
 
@@ -786,7 +802,7 @@ while we're at it."
 ;; (add-hook 'special-mode-hook)
 
 (defun dei--unbind-illegal-keys ()
-  (let* ((illegal (seq-filter #'dei--combined-filter dei--current-bindings))
+  (let* ((illegal (seq-filter #'dei--filter-illegal-keys dei--current-bindings))
          (illegal-keys (seq-map #'car illegal))
          (sorted (seq-sort-by #'dei--key-seq-steps-length #'> illegal-keys)))
     (seq-do (lambda (x)
@@ -855,6 +871,7 @@ while we're at it."
         (setq dei--filler (dei--filler-recalc))
         (setq dei--hydra-keys-list (dei--hydra-keys-list-reeval))))
 
+    ;; TODO: do a deferred loop
     (deferred:nextc it
       #'dei--specify-dire-hydras)
 
@@ -1162,7 +1179,7 @@ and run this function on the results."
         (define-key hydra-base-map (kbd "C-u") nil)
         (when (null dei--live-stems)
           (dei-reset)))
-    (when hydra-cell-format)
+
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") #'hydra--universal-argument)
     (remove-hook 'window-buffer-change-functions #'dei--slay-if-minibuffer)))
