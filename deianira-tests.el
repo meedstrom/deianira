@@ -5,7 +5,7 @@
 (require 'deianira)
 (require 'ert)
 
-(ert-deftest test-dei--current-bindings ()
+(ert-deftest test:dei--current-bindings ()
   (let ((foo (dei--current-bindings)))
     (should (-none-p #'null (-map #'dei--valid-keydesc (-map #'car foo))))
     ;; (should (not (null (seq-find (lambda (x) (dei--subhydra-or-nil (car ()))) foo))))
@@ -28,8 +28,7 @@
   ;; (should (equal (dei--get-parent "s-x <print>") nil)) ;; probably not a major problem
   (should (equal (dei--get-parent "s-x <print> ") #'dei-sx/body)))
 
-
-(ert-deftest dei--normalize-components ()
+(ert-deftest components-of:dei--normalize ()
   (should (equal (dei--normalize-trim-segment "<next>") "next"))
   (should (equal (dei--normalize-trim-segment "<C-next>") "C-next"))
   (should (equal (dei--normalize-trim-segment "<") "<"))
@@ -46,19 +45,20 @@
 
 (ert-deftest keydesc-handling-2 ()
   (let ((problematic-key-descriptions
-         '(;; raw          normalized       squashed           leaf      1step?
-           ("C-x 8 RET"    "C-x 8 <RET>"    "dei-Cx8<RET>"     "<RET>"   nil                                )
-           ("<f2> 8 RET"   "<f2> 8 <RET>"   "dei-<f2>8<RET>"   "<RET>"   nil                                )
-           ("<f2> f r"     "<f2> f r"       "dei-<f2>fr"       "r"       nil                                )
-           ("<f2> <f2>"    "<f2> <f2>"      "dei-<f2><f2>"     "<f2>"    nil                              )
-           ("ESC <C-down>" "<ESC> C-<down>" "dei-<ESC>C<down>" "<down>"  nil                             )
-           ("C-x RET C-\\" "C-x <RET> C-\\" "dei-Cx<RET>C\\"   "\\"      nil                                 )
-           ("TAB"          "TAB"            "dei-TAB"          "TAB"       t                        )
-           ("A-T A-B"      "A-T A-B"        "dei-ATAB"         "B"       nil                                  )
-           ("A-T A B"      "A-T A B"        "dei-ATAB"         "B"       nil                                  )
-           ("A-TAB"        "A-TAB"          "dei-ATAB"         "TAB"       t                                  )
-           ("C-<M-return>" "C-M-<return>"   "dei-CM<return>"   "<return>"  t                                  )
-           ("<C-M-return>" "C-M-<return>"   "dei-CM<return>"   "<return>"  t                                  )
+         '(;; raw            normalized       squashed            leaf      1step?
+           ("C-x 8 RET"      "C-x 8 <RET>"    "dei-Cx8<RET>"      "<RET>"      nil                                )
+           ("<f2> 8 RET"     "<f2> 8 <RET>"   "dei-<f2>8<RET>"    "<RET>"      nil                                )
+           ("<f2> f r"       "<f2> f r"       "dei-<f2>fr"        "r"          nil                                )
+           ("<f2> <f2>"      "<f2> <f2>"      "dei-<f2><f2>"      "<f2>"       nil                              )
+           ("ESC <C-down>"   "<ESC> C-<down>" "dei-<ESC>C<down>"  "<down>"     nil                             )
+           ("C-x RET C-\\"   "C-x <RET> C-\\" "dei-Cx<RET>C\\"    "\\"         nil                                 )
+           ("TAB"            "TAB"            "dei-TAB"           "TAB"          t                        )
+           ("A-T A-B"        "A-T A-B"        "dei-ATAB"          "B"          nil                                  )
+           ("A-T A B"        "A-T A B"        "dei-ATAB"          "B"          nil                                  )
+           ("A-TAB"          "A-TAB"          "dei-ATAB"          "TAB"          t                                  )
+           ("C-<M-return>"   "C-M-<return>"   "dei-CM<return>"    "<return>"     t                                  )
+           ("<C-M-return>"   "C-M-<return>"   "dei-CM<return>"    "<return>"     t                                  )
+           ("<M-wheel-down>" "M-<wheel-down>" "dei-M<wheel-down>" "<wheel-down>" t                                  )
            ;; ("C-- - -"      "C-- - -"         "dei-C---"       "-"        nil  )
            ;; TODO: Because see  (kbd "TAB")  (kbd "<TAB>")
            ;; ("<TAB>"        "<TAB>"          "dei-<TAB>"        "<TAB>" t  )
@@ -91,22 +91,26 @@ such strings that meet the assumptions."
 
 
 (ert-deftest generate-heads ()
-  (should (equal (dei-head "C-" "f")
+  (setq dei--colwidth 30)
+  (setq dei--filler (dei--filler-recalc))
+  (should (equal (length (dei--filler-recalc)) 30))
+  (should (equal (dei--head "C-" "f")
                  '("f" (call-interactively (key-binding (kbd "C-f"))) "forward-char")))
-  (should (equal (dei-head "C-x " "f")
+  (should (equal (dei--head "C-x " "f")
                  '("f" (call-interactively (key-binding (kbd "C-x f"))) "set-fill-column")))
-  (should (equal (dei-head-invisible "C-" "f")
+  (should (equal (dei--head-invisible "C-" "f")
                  '("f" (call-interactively (key-binding (kbd "C-f"))) nil :exit nil)))
-  (should (equal (dei-head-hint "C-" "f")
+  (should (equal (dei--head-arg-hint "C-" "f")
                  (symbol-name (key-binding (kbd "C-f")))))
-  (should (equal (dei-head-hint "C-" "<f12>")
-                 " "))
+  (should (equal (dei--head-arg-hint "C-" "<f12>")
+                 dei--filler))
   ;; weird case, behaves different interactively than when called by ert
   ;; (should (equal (dei-head-hint "C-" "x") "Control-X-prefi"))
   (should (equal (dei--specify-extra-heads "C-x ")
                  '(("<backspace>" dei-control/body nil :exit t))))
   (should (equal (dei--specify-extra-heads "C-")
                  '(("<backspace>" nil nil :exit t) ("<f35>" nil nil :exit t)))))
+
 
 (provide 'deianira-tests)
 ;;; deianira-tests.el ends here
