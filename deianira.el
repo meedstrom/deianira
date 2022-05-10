@@ -1,6 +1,6 @@
 ;;; deianira.el --- Modifier-free pseudo-modal input -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2021 Martin Edström
+;; Copyright (C) 2018-2022 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
 ;; Version: 0.1.0
 ;; Keywords: convenience emulations help
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "27.1") (hydra "0.15.0") (deferred "0.5.0") (dash) (s))
+;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (deferred "0.5.0") (concurrent "0.5.0") (named-timer) (dash) (s))
 
 ;;; Commentary:
 
@@ -208,7 +208,7 @@ Assumes KEYDESC is normalized."
        (-map #'-last-item)
        (-intersection dei--all-shifted-symbols-list)))
 
-;; TODO: give more precise name
+;; TODO: give it a more precise name
 (defun dei--key-has-more-than-one-modifier (keydesc)
   "Return nil if KEYDESC has one or zero chords.
 Behave the same even if the additional chords are made with the same modifier, i.e.
@@ -225,31 +225,12 @@ Does not check for shiftsyms, for that see `dei--key-seq-involves-shiftsym'."
               (string-match-p dei--modifier-regexp-safe keydesc)))
     (string-match-p dei--modifier-regexp-safe keydesc first-modifier-pos)))
 
-;; NOTE: Assume normalized keydesc.
+;; NOTE: Assumes normalized keydesc.
 (defun dei--key-starts-with-modifier (keydesc)
   (declare (pure t) (side-effect-free t))
   (when-let ((first-modifier-pos
               (string-match-p dei--modifier-regexp-safe keydesc)))
     (= 0 first-modifier-pos)))
-
-;; unused
-(defun dei--key-seq-is-chordonce (keydesc)
-  (declare (pure t) (side-effect-free t))
-  (and (dei--key-starts-with-modifier keydesc)
-       (not (dei--key-has-more-than-one-modifier keydesc))))
-
-;; unused
-(defun dei--key-seq-is-clean (keydesc)
-  (declare (pure t) (side-effect-free t))
-  (and (dei--key-starts-with-modifier keydesc)
-       (not (dei--key-seq-mixes-modifiers keydesc))))
-
-;; (dei--key-has-more-than-one-modifier "<f1> F")
-;; (dei--key-has-more-than-one-modifier "<f1> F F")
-;; (dei--key-has-more-than-one-modifier "<f1> C-f")
-;; (dei--key-has-more-than-one-modifier "C-F")
-;; (dei--key-seq-involves-shiftsym "C-F")
-;; (dei--key-has-modifiers-beyond-1-or-0 "C-F")
 
 (defun dei--key-seq-mixes-modifiers (keydesc)
   "
@@ -283,15 +264,7 @@ those, see `dei--key-seq-involves-shiftsym'.  Does catch e.g. C-S-<RET>."
       (replace-regexp-in-string (rx (any "<>")) "" x)
     x))
 
-;; Slightly broken: M-wheel-down return ("M" "wheel-down") please.
-;; Fixed in dei--normalize-get-atoms.
-(defun dei--normalize-get-atoms* (x)
-  (declare (pure t) (side-effect-free t))
-  (if (string-match-p (rx "-" eol) x)
-      (append (split-string x "-" t) (list "-"))
-    (split-string x "-")))
-
-;; REVIEW: Is it sane to flag the function as pure? Compare source of `s-match'.
+;; REVIEW: Is it sane to flag it pure? Compare source of `s-match'.
 (defun dei--normalize-get-atoms (step)
   (declare (pure t) (side-effect-free t))
   (save-match-data
@@ -437,7 +410,7 @@ invertible function."
   (dei--hydra-from-stem (dei--parent-stem stem)))
 
 ;; Roughly the inverse of dei--dub-from-key (but that one does more than squash)
-(defun dei--squashed-to-proper-keydesc (squashed-key)
+(defun dei--from-squashed-to-proper-keydesc (squashed-key)
   "Unsquash a squashed key description back into kbd-compatible.
 SQUASHED-KEY may look like \"Cxp\", \"sxp\", \"<f12>a<RET>\".
 Does not fully handle the TAB case."
@@ -980,57 +953,7 @@ rescan.")
 (defun dei-generate-hydras-async ()
   "Regenerate hydras to match the local map."
   (interactive)
-  (setq dei--last-thread
-        (deferred:$
-          (deferred:next
-            #'dei--get-relevant-bindings)
-
-          (deferred:nextc it
-            (lambda ()
-              (run-hooks 'dei--after-scan-bindings-hook)))
-
-          (deferred:nextc it
-            #'dei--get-relevant-bindings)
-
-          (deferred:nextc it
-            #'dei--target-stems)
-
-          ;; Re-cache settings in case of changed frame parameters or user options
-          (deferred:nextc it
-            (lambda ()
-              (setq dei--colwidth (dei--colwidth-recalc))
-              (setq dei--filler (dei--filler-recalc))
-              (setq dei--hydra-keys-list (dei--hydra-keys-list-recalc))))
-
-          ;; TODO: do a deferred loop
-          (deferred:nextc it
-            #'dei--specify-dire-hydras)
-
-          (deferred:nextc it
-            (lambda ()
-              ;; REVIEW: is this condition reliable?
-              (unless (dei--hydra-active-p)
-                (cl-loop
-                 for x in dei--hydra-blueprints
-                 do (progn (dei--call-defhydra (cadr x) (cddr x))
-                           (push (car x) dei--live-stems)))
-                (setq dei--last-filtered-bindings dei--current-filtered-bindings))))
-
-          (deferred:nextc it
-            (lambda ()
-              (run-hooks 'dei--after-rebuild-hydra-hook)))
-
-          (deferred:error it
-            #'warn))))
-
-;; New variant using concurrent.el. Untested.
-;; TODO: Maybe move some code back from functions to implicit lambdas here for easier overview?
-(defun dei-generate-hydras-async ()
-  "Regenerate hydras to match the local map."
-  (interactive)
-  ;; REVIEW: are we certain this cancels the deferred:loop below fast enough
-  ;;         that it can't still be pushing to dei--hydra-blueprints after we
-  ;;         null it? Attempting a solution with timers.
+  ;; Not sure how fast it cancels.
   (deferred:cancel dei--last-thread)
   (if (null (deferred:status dei--last-thread)) ;; i think null means still running
       ;; Wait and try again.
@@ -1044,13 +967,14 @@ rescan.")
             ;; Cache settings
             (setq dei--colwidth (dei--colwidth-recalc)
                   dei--filler (dei--filler-recalc)
+                  dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
                   dei--hydra-keys-list (dei--hydra-keys-list-recalc))
             ;; idk
             (progn
               (setq dei--live-stems (-difference dei--live-stems
-                                                 dei--defunct-stems))
+                                              dei--defunct-stems))
               (setq dei--all-stems (-uniq (append dei--new-or-changed-stems
-                                                  dei--live-stems)))
+                                               dei--live-stems)))
               (setq dei--keys-that-are-hydras
                     (-difference (-map #'s-trim-right dei--all-stems)
                                  ;; subtract the root stems since they are still invalid
@@ -1061,13 +985,14 @@ rescan.")
                              (setq dei--hydra-blueprints nil))
               (lambda (stem)
                 (push (dei--specify-dire-hydra stem
-                                               (concat (dei--dub-from-key stem) "-nonum")
-                                               t)
+                                            (concat (dei--dub-from-key stem) "-nonum")
+                                            t)
                       dei--hydra-blueprints)))
+            ;; Draw more blueprints
             (deferred:loop dei--new-or-changed-stems
               (lambda (stem)
                 (push (dei--specify-dire-hydra stem
-                                               (dei--dub-from-key stem))
+                                            (dei--dub-from-key stem))
                       dei--hydra-blueprints)))
             ;; Build hydras
             ;; TODO: deferred loop maybe here too
@@ -1083,101 +1008,10 @@ rescan.")
             (run-hooks 'dei--after-rebuild-hydra-hook)))))
 
 
-;;;; Bonus functions for X11
-
-(defconst dei-xmodmap-rules
-  '(;; these are idempotent
-    "keycode 198 = F20"
-    "keycode 199 = F21"
-    "keycode 200 = F22"
-    "keycode 201 = F23"
-    "keycode 202 = F24"
-    ;; clear lshift. weeeeird!
-    ;;"remove shift = Shift_L"
-    ;;"keysym Shift_L = F30 F30 F30 F30"
-    )
-  "Rules to pass to xmodmap.
-The Linux kernel defines KEY_F24 as scancode 194 and doesn't
-define higher function keys. However, at kernel level these names
-don't mean anything and could equally as well be called
-KEY_FNORD. We only need to know them because of how they match up
-to Xorg: Xorg adds 8 to the number. So when Linux emits scancode
-194, Xorg calls that keycode 202. Depending on your xkb settings
-it may not be mapped to what Xorg calls the keysym F24 but
-something like XF86Launch7. To stay faithful, we change it
-back (and it's unlikely you're using these keysyms...).
-
-See also https://unix.stackexchange.com/questions/364641/mapping-scancodes-to-keycodes
-
-Incidentally, /usr/include/X11/keysymdef.h tells us Xorg has
-keysyms up to F35: \"We've not found a keyboard with more than 35
-function keys total.\" So if you do have actual physical function
-keys up to F24, you could migrate to F31-F35 instead for our
-purposes. The kernel codes are found here (don't forget to add 8):
-https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes")
-
-;; DEPRECATED
-;; NOTE: User may have to modify this, due to differences in keyboards.
-(defvar dei-xcape-rules
-  '(
-    "Alt_L=F34"
-    "Alt_R=F34"
-    ;; "Meta_L=F34"
-    ;; "Meta_R=F34"
-    "Control_L=F35"
-    "Control_R=F35"
-    ;; "Hyper_L=F32"
-    ;; "Hyper_R=F32"
-    "Super_L=F33"
-    "Super_R=F33"))
-
-(defun dei-xmodmap-reload (&optional output-buffer)
-  "(Re-)apply the `dei-xmodmap-rules'."
-  (interactive)
-  (let* ((shell-command-dont-erase-buffer t)
-         (rules (string-join dei-xmodmap-rules "' -e '"))
-         (cmd (concat "xmodmap -e '" rules "'")))
-    (when (executable-find "xmodmap")
-      (start-process-shell-command cmd
-                                   (or output-buffer (dei--debug-buffer) "*Messages*")
-                                   cmd))))
-
-(defvar dei-xcape-process)
-
-(defvar dei-xcape-log-cleaner)
-
-(defun dei-clean-xcape-log ()
-  (when (get-buffer "*xcape*")
-    (with-current-buffer "*xcape*"
-      (delete-region (point-min) (point-max)))))
-
-(defun dei-xcape-reload ()
-  "(Re-)start the xcape process."
-  (interactive)
-  (let ((shell-command-dont-erase-buffer t)
-        (rules (string-join dei-xcape-rules ";")))
-    (when (executable-find "xcape")
-      (and (boundp 'dei-xcape-process)
-           (process-live-p dei-xcape-process)
-           (kill-process dei-xcape-process))
-      (setq dei-xcape-process
-            (start-process "xcape" "*xcape*"
-                           "nice" "-20" "xcape" "-d" "-e" rules))
-      (named-timer-run :dei-clean-xcape-log 300 300 #'dei-clean-xcape-log))))
-
-(defun dei-xkbset-enable-sticky-keys ()
-  (interactive)
-  (when (executable-find "xkbset")
-    (start-process "xkbset" (dei--debug-buffer)
-                   "xkbset" "sticky" "-twokey" "-latchlock")
-    (start-process "xkbset" (dei--debug-buffer)
-                   "xkbset" "exp" "=sticky")))
-
-
 ;;;; Bonus functions for mass remaps
 
 (defvar dei-permachord-wins-flattening t
-  "Non-nil if reused-chord should win as opposed to chord-once.
+  "Non-nil if permachord should win as opposed to chord-once.
 This means that the behavior of C-x C-f will be kept and
 duplicated to C-x f, so they both do what the former always did
 If nil, both will instead do what C-x f always did.  This
@@ -1185,6 +1019,9 @@ variable sets the default approach, but you can override specific
 cases in `dei-flatten-winners', and if only one is bound but not
 the other, it will duplicate since there is no contest.")
 
+;; TODO: i'd prefer a format for each item being either a string or command
+;; KEY-OR-COMMAND, or the list (KEYMAP KEY-OR-COMMAND).  Keymap coming first
+;; means it's easier to get an overview in initfiles.
 (defvar dei-flattening-winners '(("C-c C-c")
                                  ("C-x a")
                                  ("C-x g")
@@ -1214,8 +1051,9 @@ Control-X-prefix or kmacro-keymap.")
   (setq dei--flatwinners (-map #'car (-remove #'cdr dei-flattening-winners)))
   (dolist (x dei--flatwinners-in-keymaps)
     (dei--flatten-binding (car x) (cdr x)))
-  ;; TODO: What to do if we bind e.g. C-x k to a single command, overriding the keymap, and then the loop tries to operate on C-x k e?
+  ;; FIXME: What to do if we bind e.g. C-x C-k to a single command, overriding the keymap, and then the loop tries to operate on C-x C-k C-e?
   ;; Sort by length first, and use a while loop rather than dolist, removing child keys from a list if necessary.
+  ;; FIXME: What to do if we attempt to copy C-x C-k C-e to C-x k e, but it turns out that C-x k is bound to something?
   ;; Q: Why use current-bindings over current-filtered-bindings?
   (dolist (x (-remove (lambda (y)
                         (or (string= "Prefix Command" (cdr y))
@@ -1242,7 +1080,8 @@ Control-X-prefix or kmacro-keymap.")
 (defconst dei--ignore-keys
   (regexp-opt '("mouse" "remap" "scroll-bar" "select" "switch" "help" "state"
                 "which-key" "corner" "divider" "edge" "header" "mode-line"
-                "tab" "vertical-line" "frame" "open" "menu" "kp-" "iso-")))
+                "tab" "vertical-line" "frame" "open" "menu" "kp-" "iso-"
+                "wheel-")))
 
 (defun dei--where-is (command &optional keymap)
   (->> (where-is-internal command (when keymap (list keymap)))
@@ -1260,6 +1099,8 @@ Control-X-prefix or kmacro-keymap.")
 ;;
 ;; TODO: Catch cases like C-c p a so they will become C-c C-p C-a.
 ;;       Don't bother to make C-c p C-a.
+;;
+;; TODO: Unbind bastard sequences like C-c C-e l o
 ;;
 ;; TODO: Make it easier to test/debug. What if it returns only a list/cons cell
 ;;       of what to do without doing it (as if dry run)? I don't want an error
