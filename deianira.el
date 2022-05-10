@@ -198,6 +198,12 @@ Assumes KEYDESC is normalized."
   (string-match-p (rx (= 2 (regexp dei--modifier-regexp)))
                   keydesc))
 
+(defun dei--contains-upcase (keydesc)
+  (declare (side-effect-free t)) ;; NOTE: can't be pure
+  (let* ((steps (dei--key-seq-split keydesc))
+         (steps-without-modifier (mapcar #'dei--get-leaf steps)))
+    (--any-p (member it dei--all-shifted-symbols-list) steps-without-modifier)))
+
 (defun dei--key-seq-involves-shiftsym (keydesc)
   (declare (side-effect-free t)) ;; NOTE: can't be pure
   (->> keydesc
@@ -207,6 +213,14 @@ Assumes KEYDESC is normalized."
        (-map #'dei--normalize-wrap-leaf-maybe)
        (-map #'-last-item)
        (-intersection dei--all-shifted-symbols-list)))
+
+(defun dei--key-seq-is-allchord (keydesc)
+  "If sequence KEYDESC has a chord on every step. return t.
+Note that it does not check if it's the same chord every time.
+For that, see `dei--key-seq-mixes-modifiers'."
+  (declare (pure t) (side-effect-free t))
+  (--all-p (string-match-p dei--modifier-regexp-safe it)
+           (dei--key-seq-split keydesc)))
 
 ;; TODO: give it a more precise name
 (defun dei--key-has-more-than-one-modifier (keydesc)
@@ -788,23 +802,52 @@ rescan.")
 (defvar dei--after-rebuild-hydra-hook nil
   "Hook run after updating hydras to match the local map.")
 
+;; TODO: rename
+;; TODO: unbind bastard sequences
 (defun dei--filter-illegal-keys (cell)
-  "Filter for keys that should be unbound."
-  (declare (pure t) (side-effect-free t))
+  "Filter for keys that should be unbound.
+CELL comes in the form returned by `dei--get-relevant-bindings'."
+  ;; (declare (pure t) (side-effect-free t))
   (let ((keydesc (car cell))
         (case-fold-search nil))
     (or
      ;; (dei--key-contains-ctl keydesc)
      (s-contains-p "S-" keydesc)
      ;;(s-matches-p (rx nonl (or "DEL" "<backspace>")) keydesc)
-     (s-matches-p (rx nonl (or "SPC" "RET" "<return>")) keydesc)
-     (s-matches-p (rx (or "SPC" "RET" "<return>") nonl) keydesc)
-     (dei--contains-upcase keydesc)
+     ;; (s-matches-p (rx nonl (or "SPC" "RET" "<return>")) keydesc)
+     ;; (s-matches-p (rx (or "SPC" "RET" "<return>") nonl) keydesc)
      (dei--key-contains-multi-chords keydesc)
-     (dei--key-seq-mixes-modifiers keydesc))))
+     (dei--key-seq-mixes-modifiers keydesc)
+
+     ;; Unbind bastard sequences
+     (and (not (dei--key-seq-is-allchord keydesc))
+          (dei--key-has-more-than-one-modifier keydesc))
+
+     ;; unbind e.g. <f1> C-f.
+     (and (not (dei--key-starts-with-modifier keydesc))
+          (string-match-p dei--modifier-regexp-safe keydesc))
+
+     ;; TODO: fuck, wrote same function twice... which is faster?
+     (dei--key-seq-involves-shiftsym keydesc)
+     (dei--contains-upcase keydesc))))
+
+(defun dei--unbind-illegal-keys ()
+  (let* ((illegal-keys (->> dei--current-bindings
+                            (-filter #'dei--filter-illegal-keys)
+                            (-map #'car)
+                            (seq-sort-by #'dei--key-seq-steps-length #'>))))
+    (dolist (key illegal-keys)
+      ;; Find the map in which to unbind it.
+      (let ((map (help--binding-locus (kbd key) nil)))
+        ;; there's a bug that leaves some keys in `describe-bindings' but not
+        ;; in the apparently active map, and they get a null map. Check
+        ;; dei--current-bindings, C-M-q and C-M-@ are in there
+        (unless (null map)
+          (define-key (eval map t) (kbd key) nil))))))
 
 (defun dei--foreign-to-keyboard (step)
-  ;; NOTE: a change to dei-all-keys-on-keyboard will NOT affect us compiled
+  ;; NOTE: A change to dei-all-keys-on-keyboard will NOT affect us compiled.
+  ;; This is fine as long as we take it as a constant anyway.
   (declare (pure t) (side-effect-free t))
   (not (member (dei--get-leaf step) dei-all-keys-on-keyboard)))
 
@@ -829,11 +872,6 @@ rescan.")
 ;;      (dei--key-seq-mixes-modifiers "s-i")
 ;; (dei--contains-upcase "s-i")
 ;; (dei--contains-upcase "s-i")
-
-(defun dei--contains-upcase (keydesc)
-  (let* ((steps (dei--key-seq-split keydesc))
-         (steps-without-modifier (mapcar #'dei--get-leaf steps)))
-    (--any-p (member it dei--all-shifted-symbols-list) steps-without-modifier)))
 
 (defun dei--get-relevant-bindings ()
   (->> (dei--current-bindings
@@ -899,16 +937,6 @@ rescan.")
 ;; (add-hook 'prog-mode-hook #'dei--mass-remap)
 ;; (add-hook 'text-mode-hook)
 ;; (add-hook 'special-mode-hook)
-
-(defun dei--unbind-illegal-keys ()
-  (let* ((illegal (seq-filter #'dei--filter-illegal-keys dei--current-bindings))
-         (illegal-keys (seq-map #'car illegal))
-         (sorted (seq-sort-by #'dei--key-seq-steps-length #'> illegal-keys)))
-    (seq-do (lambda (x)
-              (let ((map (help--binding-locus (kbd x) nil)))
-                (unless (null map) ;; there's a bug that leaves some keys in `describe-bindings' but not in the apparently active map, and they get a null map. Check dei--current-bindings, C-M-q and C-M-@ are in there
-                  (define-key (eval map t) (kbd x) nil))))
-            sorted)))
 
 ;; NOTE: Visualize a Venn diagram. The defunct and the new are the last and
 ;;      current minus their intersection (cases where the key's definition
