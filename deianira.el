@@ -483,7 +483,7 @@ functions in the library aren't really ESC-aware."
                                      "switch-" "help" "-state" "which-key-"
                                      "-corner" "-divider" "-edge" "header-"
                                      "mode-line" "tab-" "vertical-line"
-                                     "frame"))))
+                                     "frame" "wheel-"))))
         (ignore-bindings (eval-when-compile
                            (regexp-opt '("self-insert-command" "ignore"
                                          "ignore-event" "company-ignore"))))
@@ -818,9 +818,7 @@ rescan.")
 (defvar dei--after-rebuild-hydra-hook nil
   "Hook run after updating hydras to match the local map.")
 
-;; TODO: rename
-;; TODO: unbind bastard sequences
-(defun dei--filter-illegal-keys (cell)
+(defun dei--car-is-illegal-key (cell)
   "Filter for keys that should be unbound.
 CELL comes in the form returned by `dei--get-relevant-bindings'."
   ;; (declare (pure t) (side-effect-free t))
@@ -847,9 +845,14 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
      (dei--key-seq-involves-shiftsym keydesc)
      (dei--contains-upcase keydesc))))
 
+;; (dei--contains-upcase "C-x d")
+;; (dei--key-starts-with-modifier "C-x d")
+;; (dei--key-seq-is-allchord "C-x d")
+;; (dei--key-has-more-than-one-modifier "C-x d")
+
 (defun dei--unbind-illegal-keys ()
   (let* ((illegal-keys (->> dei--current-bindings
-                            (-filter #'dei--filter-illegal-keys)
+                            (-filter #'dei--car-is-illegal-key)
                             (-map #'car)
                             (seq-sort-by #'dei--key-seq-steps-length #'>))))
     (dolist (key illegal-keys)
@@ -897,11 +900,11 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
         (rx (or
              (regexp (eval-when-compile
                        (regexp-opt
-                        '("ESC" ;; critical to filter out, I think
+                        '("ESC" ;; critical to filter out, represents M-combos
                           "TAB" "DEL" "backspace" ;; one day, I will let unbind-illegal-keys handle these
                           "<key-chord>" "<compose-last-chars>" "Scroll_Lock"
                           "-margin>" "-fringe>" "iso-leftab" "iso-lefttab"
-                          "drag-n-drop" "wheel"
+                          "drag-n-drop" "wheel-"
                           ))))
              ;; "C-"
              (seq string-start
@@ -922,7 +925,7 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
                   (or (string= "Prefix Command" (cdr x))
                       (null (intern (cdr x)))
                       (keymapp (intern (cdr x))))))
-       (-remove #'dei--filter-illegal-keys)
+       (-remove #'dei--car-is-illegal-key)
        (-remove #'dei--filter-for-hydra-making)
        (setq dei--current-filtered-bindings)))
 ;; (dei--get-relevant-bindings)
@@ -991,6 +994,7 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
 (defvar dei--defunct-bindings nil)
 (defvar dei--defunct-stems nil)
 (defvar dei--live-stems nil)
+(defvar dei--all-stems nil)
 (defvar dei--changed-keymaps nil)
 (defvar dei--hydra-blueprints nil)
 
@@ -1006,7 +1010,7 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
       (named-timer-run :deianira 1 nil #'dei-generate-hydras-async)
     (setq dei--last-thread
           (cc:thread 50
-            #'dei--get-relevant-bindings
+            #'dei--get-rexclevant-bindings
             (run-hooks 'dei--after-scan-bindings-hook)
             #'dei--get-relevant-bindings
             #'dei--target-stems
@@ -1056,25 +1060,37 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
 
 ;;;; Bonus functions for mass remaps
 
-(defvar dei-permachord-wins-flattening t
-  "Non-nil if permachord should win as opposed to chord-once.
-This means that the behavior of C-x C-f will be kept and
-duplicated to C-x f, so they both do what the former always did
-If nil, both will instead do what C-x f always did.  This
-variable sets the default approach, but you can override specific
-cases in `dei-flatten-winners', and if only one is bound but not
-the other, it will duplicate since there is no contest.")
+(defcustom dei-permachord-wins-homogenizing nil
+  "Non-nil if perma-chord should win over chord-once.
+This means that the behavior of a perma-chorded sequence such as
+C-x C-k C-e will be kept as is, and cloned to the chord-once
+sequence C-x k e, overwriting any binding there, so they both do
+what the former always did.  If the setting is nil, both will
+instead do what C-x k e always did.
+
+PLEASE NOTE that any calls to `define-key' in your initfiles have
+to take this into account!  If this is t, all sequences have to
+be written in perma-chord style to be sure the choice sticks.  If
+this is nil, they have to be written in the chord-once style to
+be sure the choice sticks.  (Of course, you can always bind both
+while you experiment with this setting.)  For this reason, the setting 
+
+This variable sets the default approach, but you can override
+specific cases in `dei-flatten-winners', and if only one is bound
+but not the other, it will duplicate since there is no contest."
+  :type 'boolean
+  :group 'deianira)
 
 ;; TODO: i'd prefer a format for each item being either a string or command
-;; KEY-OR-COMMAND, or the list (KEYMAP KEY-OR-COMMAND).  Keymap coming first
+;; KEY-OR-COMMAND, or the cell (KEYMAP . KEY-OR-COMMAND).  Keymap coming first
 ;; means it's easier to get an overview in initfiles.
-(defvar dei-flattening-winners '(("C-c C-c")
+(defvar dei-homogenizing-winners '(("C-c C-c")
                                  ("C-x a")
                                  ("C-x g")
                                  ("C-x b")
                                  ("C-c C-c" . org-mode-map))
   "Alist of keys that always win.
-See `dei-permachord-wins-flattening' for explanation.
+See `dei-permachord-wins-homogenizing' for explanation.
 
 Each item has the format (KEY-OR-COMMAND . KEYMAP).
 
@@ -1089,39 +1105,15 @@ found in. Otherwise it should be a major or minor mode map. It
 will likely have no effect if it is a prefix command such as
 Control-X-prefix or kmacro-keymap.")
 
-(defvar dei--flatwinners-in-keymaps nil)
-(defvar dei--flatwinners nil)
+(defvar dei--homowinners-in-keymaps nil)
+(defvar dei--homowinners nil)
+(defvar dei--remap-actions nil)
+(defvar dei--remap-actions-view nil)
 
-(defun dei--mass-remap ()
-  (setq dei--flatwinners-in-keymaps (-filter #'cdr dei-flattening-winners))
-  (setq dei--flatwinners (-map #'car (-remove #'cdr dei-flattening-winners)))
-  (dolist (x dei--flatwinners-in-keymaps)
-    (dei--flatten-binding (car x) (cdr x)))
-  ;; FIXME: What to do if we bind e.g. C-x C-k to a single command, overriding the keymap, and then the loop tries to operate on C-x C-k C-e?
-  ;; Sort by length first, and use a while loop rather than dolist, removing child keys from a list if necessary.
-  ;; FIXME: What to do if we attempt to copy C-x C-k C-e to C-x k e, but it turns out that C-x k is bound to something?
-  ;; Q: Why use current-bindings over current-filtered-bindings?
-  (dolist (x (-remove (lambda (y)
-                        (or (string= "Prefix Command" (cdr y))
-                            (null (intern (cdr y)))
-                            (keymapp (intern (cdr y)))))
-                      dei--current-bindings))
-    (dei--flatten-binding (car x)))
-  ;; Solution
-  ;; using current-filtered-bindings for now for testing
-  (let ((keys (nreverse (-map #'car dei--current-bindings))))
-    (while (not (null keys))
-      ;; maybe flatten-binding should check for keymap and if so then return all children for us to remove from the iteration list
-      (when-let ((any-defunct (dei--flatten-binding (car keys))))
-        (dolist (x (cdr any-defunct))
-          (define-key (car any-defunct) (kbd x) nil) ;; not strictly necessary?
-          (setq keys (remove x keys))))
-      (setq keys (remove (car keys) keys)))
-  ;; When the root is unchorded, like <f1> or similar, just unchord all children.
-  ;; (dei--unbind-illegal-keys)
-  ))
-;; (dei--get-relevant-bindings)
-;; (dei--mass-remap)
+;; dev settings
+(general-auto-unbind-keys 'undo) ;; we shouldn't rely on general
+(remove-hook 'after-save-hook 'my-compile-and-drop)
+
 
 (defconst dei--ignore-keys
   (regexp-opt '("mouse" "remap" "scroll-bar" "select" "switch" "help" "state"
@@ -1129,99 +1121,308 @@ Control-X-prefix or kmacro-keymap.")
                 "tab" "vertical-line" "frame" "open" "menu" "kp-" "iso-"
                 "wheel-")))
 
+
 (defun dei--where-is (command &optional keymap)
   (->> (where-is-internal command (when keymap (list keymap)))
        (-map #'key-description)
        (--remove (string-match-p dei--ignore-keys it))
        (-map #'dei--normalize)))
 
+;; Weird function, but named after string-match...
 (defun dei--chord-match (keydesc)
-  (declare (pure t) (side-effect-free t))
   (cl-assert (dei--key-seq-steps=1 keydesc))
   (string-match (rx bol nonl "-") keydesc))
 
-;; TODO: Ok, this is a big function. Before doing the other TODOs, write some
-;;       tests? NOTE: see wip.el.
+
+
+;; to debug, eval each in turn, btw after-scan-bindings-hook won't run
+;; (dei--get-relevant-bindings)
+;; (dei--unbind-illegal-keys)
+;; (dei--get-relevant-bindings)
+;; (dei--mass-remap)
 ;;
-;; TODO: Catch cases like C-c p a so they will become C-c C-p C-a.
-;;       Don't bother to make C-c p C-a.
 ;;
-;; TODO: Unbind bastard sequences like C-c C-e l o
+;; BUG: we clone C-x v (find-alternate-file) to C-x C-v, but we are also trying
+;; to clone C-x v x to C-x C-v C-x.
+;; How to respond?
+;; Case 1: C-x v is a winner, and none of the nested keys are. C-x v wins.
+;; Case 2: Some of the nested keys are winners, and C-x v isn't. The keymap wins.
+;; Case 3: Neither are winners. Follow the permachord-wins-flattening setting.
+
+;; The basic problem is that we don't even include "keymaps as commands" in the
+;; loop (too many issues), so the fn has no idea about a conflict. It doesn't
+;; help to include them anyway, we need to figure out some check out on a per
+;; key basis.
+
+;; I guess the check is that if the sibling-keydesc is unbound BUT has
+;; children (unexpected!), i.e. sibling-keydesc is a successful search pattern
+;; for some of the others in current-bindings ...
+;; Wait. We can just see that sibling-keydesc is bound to a keymap.
+
+(defun dei--mass-remap ()
+  (setq dei--remap-actions nil)
+  (setq dei--homowinners-in-keymaps (-filter #'cdr dei-homogenizing-winners))
+  (setq dei--homowinners (-map #'car (-remove #'cdr dei-homogenizing-winners)))
+  ;; FIXME: What to do if we bind e.g. C-x C-k to a single command, overriding
+  ;; the keymap, and then the loop tries to operate on C-x C-k C-e?  Sort by
+  ;; length first, and that's not possible. But check on each iteration whether
+  ;; there are children, and skip if so.
+
+  ;; FIXME: What to do if we attempt to copy C-x C-k C-e to C-x k e, but it
+  ;; turns out that C-x k is bound to something?  Q: Why use current-bindings
+  ;; over current-filtered-bindings?
+  (dolist (x (-remove (lambda (y)
+                        (or (not (dei--key-starts-with-modifier (car y)))
+                            (string= "Prefix Command" (cdr y))
+                            (null (intern (cdr y)))
+                            (keymapp (intern (cdr y)))))
+                      dei--current-bindings))
+    ;; Observe that this loop only operates on keys known to have a binding.
+    ;; Suppose the user has specifications in the dei-homogenizing-winners without
+    ;; any binding.  We'll never consider those, and that's good.
+    ;; In fact, we only need to specially run dei--homogenize-binding on those
+    ;; winners that also specify keymap, since the normal invocations will
+    ;; notice if a key is a member of the winners anyway.
+    (when-let (winner (assoc (car x) dei--homowinners-in-keymaps))
+      (dei--homogenize-binding (car winner) (cdr winner)))
+    (when-let (winner (assoc (intern (cdr x)) dei--homowinners-in-keymaps))
+      (dei--homogenize-binding (car winner) (cdr winner)))
+    (dei--homogenize-binding (car x)))
+  (dei--execute-remap-actions dei--remap-actions)
+  )
+;; (dei--homogenize-binding "C-c C-c" 'org-mode-map)
+;; (dei--get-relevant-bindings)
+;; (dei--mass-remap)
+
+(defun dei--as-raw-keymap (keymap-or-keymapsym)
+  "If KEYMAP-OR-KEYMAPSYM is a symbol, return its global value.
+Otherwise return it as it was input.
+
+This can be an useful wrapper when you pass keymap variables,
+because some keymaps are named symbols (meeting `symbolp') and
+some aren't (meeting `keymapp')."
+  (if (symbolp keymap-or-keymapsym)
+      (symbol-value keymap-or-keymapsym)
+    keymap-or-keymapsym))
+
+;; TODO: split into separate function for handling specified keymap case, to
+;; make it simpler. Probably the two functions will wind up sharing code, and
+;; this guides us to what to refactor out.  No more (if keymap ...) clauses.
 ;;
-;; TODO: Make it easier to test/debug. What if it returns only a list/cons cell
-;;       of what to do without doing it (as if dry run)? I don't want an error
-;;       regarding a single key to break the package for all the other keys
-;;       that should work fine. Build a list of actions to take, then execute
-;;       them while collecting errors into a simple message.
-(defun dei--flatten-binding (keydesc &optional keymap)
-  "Duplicate KEYDESC binding to or from its sibling.
+;; TODO: operate multiple times if multiple keymaps found by
+;; help--binding-locus or multiple keys by where-is-internal
+;; FIXME: what happens if user specifies a command in a keymap as a winner?
+(defun dei--homogenize-binding (key-or-cmd &optional keymap)
+  "Duplicate THIS-KEYDESC binding to or from its \"sibling\".
+Actually just populates `dei--remap-actions', which you can peep
+on during debugging with \\[dei--preview-remap-actions].  To carry
+out the remaps, call `dei--execute-remap-actions'.
+
 Assumes that the command to be bound is not itself a keymap,
 because those will be implied by binding their children anyway.
 You can use `dei--get-relevant-bindings' to filter out keymaps,
 and run this function on the results."
-  (let ((command (key-binding (kbd keydesc)))
-        (steps (dei--key-seq-split keydesc)))
-    (and (commandp command)
-         (/= 1 (length steps))
-         (when (dei--chord-match (car steps))
-           (let* ((root-modifier (match-string 0 (car steps)))
-                  (most-steps (butlast steps)) ;; often one step
-                  (last-step (-last-item steps))
-                  (first-step (car steps))
-                  (butfirst-steps (cdr steps))
-                  (second-step (cadr steps))
-                  (leaf (dei--get-leaf keydesc)) ;; may be same as last-step
-                  (map (or keymap
-                           ;; hopefully same map as (key-binding)'s origin
-                           (symbol-value
-                            (help--binding-locus (kbd keydesc) nil))))
-                  ;; Let second step determine this, cuz I think it will let
-                  ;; flattening-winners work more reliably.
-                  (this-is-permachord-p (not (null (dei--chord-match second-step))))
-                  (permachord-keydesc* (if this-is-permachord-p
-                                         keydesc
-                                       (s-join " " (-snoc most-steps
-                                                          (concat root-modifier
-                                                                  leaf)))))
-                  (permachord-keydesc (if this-is-permachord-p
-                                       keydesc
-                                     (s-join " " (cons first-step
-                                                       (--map (unless (dei--chord-match it)
-                                                                (concat root-modifier it))
-                                                              butfirst-steps)))))
-                  (permachord-command (key-binding (kbd permachord-keydesc)))
-                  (chordonce-keydesc (if this-is-permachord-p
-                                         (s-join " " (-snoc most-steps leaf))
-                                       keydesc))
-                  (chordonce-command (key-binding (kbd chordonce-keydesc)))
-                  (sibling-keydesc (if this-is-permachord-p
-                                       chordonce-keydesc
-                                     permachord-keydesc))
-                  (sibling-command (key-binding (kbd sibling-keydesc)))
-                  ;; TODO: name this better
-                  (winner-map (cdr (assoc keydesc dei--flatwinners-in-keymaps))))
-             ;; why don't we want to execute in this case?
-             (prog1
-                 (unless (equal winner-map map)
-                   (if (commandp sibling-command)
-                       (cond ((member sibling-keydesc dei--flatwinners)
-                              (dei--define map (kbd keydesc) sibling-command))
-                             ((member keydesc dei--flatwinners)
-                              (dei--define map (kbd sibling-keydesc) command))
-                             (dei-permachord-wins-flattening
-                              (dei--define map (kbd chordonce-keydesc) permachord-command))
-                             (t
-                              (dei--define map (kbd permachord-keydesc) chordonce-command)))
-                     ;; If one of the two is not bound, just duplicate the other.  We
-                     ;; don't need to do it both directions since this whole function will
-                     ;; probably be on the other keydesc later if it hasn't already.
-                     (dei--define map (kbd sibling-keydesc) command)))
-               (when keymap (dei--define keymap
-                                         (kbd sibling-keydesc)
-                                         (lookup-key keymap (kbd keydesc)))))
-             )))))
+  (let* ((this-command
+          (if (functionp key-or-cmd)
+              key-or-cmd
+            (if keymap
+                (lookup-key (symbol-value keymap) (kbd key-or-cmd))
+              (key-binding (kbd key-or-cmd)))))
+         (this-keydesc
+          (if (stringp key-or-cmd)
+              key-or-cmd
+            (if keymap
+                (dei--where-is key-or-cmd (symbol-value keymap))
+              ;; NOTE: only takes first key found
+              (dei--normalize (key-description
+                            (where-is-internal key-or-cmd nil t))))))
+         (steps (dei--key-seq-split this-keydesc)))
+    ;; REVIEW: is this-command ever... a keymap? I think not, bc we filter them
+    ;; out in dei--mass-remap.
+    (when (and this-command
+               this-keydesc
+               (/= 1 (length steps)) ;; nothing to homogenize if length 1
+               (dei--chord-match (car steps)) ;; only proceed if seq starts w a chord
+               (functionp this-command))
+      (let* ((root-modifier (match-string 0 (car steps)))
+             (most-steps (butlast steps)) ;; often one step
+             ;; (last-step (-last-item steps))
+             (first-step (car steps))
+             (butfirst-steps (cdr steps))
+             (second-step (cadr steps))
+             (leaf (dei--get-leaf this-keydesc)) ;; can be same as last-step
+             (in-map (or keymap
+                         ;; hopefully same map as (key-binding)'s origin
+                         (help--binding-locus (kbd this-keydesc) nil)))
+             ;; "Let second step determine this, cuz I think it will let
+             ;; dei-homogenizing-winners work more reliably." wat?
+             ;;
+             ;; NOTE: we are assuming there exist no "bastard sequences",
+             ;; they've been filtered out by `dei--unbind-illegal-keys'. In
+             ;; addition, if it's an unchorded seq we're not here.  So we only
+             ;; have chord-once and perma-chord.
+             (this-is-permachord-p (not (null (dei--chord-match second-step))))
+             (permachord-keydesc
+              (if this-is-permachord-p
+                  this-keydesc
+                (s-join " " (cons first-step
+                                  (--map (if (dei--chord-match it)
+                                             (progn (warn "Bastard sequence found")
+                                                    it)
+                                           (concat root-modifier it))
+                                         butfirst-steps)))))
+             (permachord-command
+              (if keymap
+                  (lookup-key (symbol-value keymap) (kbd permachord-keydesc))
+                (key-binding (kbd permachord-keydesc))))
+             (chordonce-keydesc (if this-is-permachord-p
+                                    (s-join " " (-snoc most-steps leaf))
+                                  this-keydesc))
+             (chordonce-command
+              (if keymap
+                  (lookup-key (symbol-value keymap) (kbd chordonce-keydesc))
+                (key-binding (kbd chordonce-keydesc))))
+             (sibling-keydesc (if this-is-permachord-p
+                                  chordonce-keydesc
+                                permachord-keydesc))
+             (sibling-command (if this-is-permachord-p
+                                  chordonce-command
+                                permachord-command))
+             ;; TODO: name this better
+             (winner-map (cdr (assoc this-keydesc
+                                     dei--homowinners-in-keymaps))))
+
+        ;; If the user specified a special rule for this map+key (see
+        ;; `dei-homogenizing-winners'), then we'll do a special thing.  That
+        ;; doesn't all happen within this function, please see
+        ;; `dei--mass-remap'.  Anyway, then we skip the rest of this body.
+        ;; TODO: move that functionality into this function
+        (unless (equal (dei--as-raw-keymap winner-map)
+                       (dei--as-raw-keymap in-map)) ;; wat?
+          (when (and (null keymap) ;; not sure it's needed
+                     (functionp sibling-command))
+            ;; Complex case #1: both keys have a command, which do we choose?
+            ;; Eeny meny miny moe...? no, let's start by checking if one of
+            ;; them is a specified winner.
+            (cond ((> 1 (length (-non-nil
+                                 (list (member sibling-keydesc dei--homowinners)
+                                       (member sibling-command dei--homowinners)
+                                       (member this-keydesc dei--homowinners)
+                                       (member this-command dei--homowinners)))))
+                   ;; Leave it on the user to fix this type of mess.
+                   (warn "Found a contradiction in dei-homogenizing-winners."))
+                  ((or (member sibling-keydesc dei--homowinners)
+                       (member sibling-command dei--homowinners))
+                   (push (list (kbd this-keydesc)
+                               sibling-command
+                               in-map
+                               "Clone winner sibling to overwrite this key")
+                         dei--remap-actions))
+                  ((or (member this-keydesc dei--homowinners)
+                       (member this-command dei--homowinners))
+                   (push (list (kbd sibling-keydesc)
+                               this-command
+                               in-map
+                               "Clone this winner to overwrite sibling key")
+                         dei--remap-actions))
+                  ;; Neither key and neither command is rigged to win, so fall
+                  ;; back on some simple rule.
+                  ;;
+                  ;; NOTE that here is the only place where this user option
+                  ;; comes into play!  You'd think it'd affect more code, but
+                  ;; this monster defun would be necessary even without the
+                  ;; user option.
+                  (dei-permachord-wins-homogenizing
+                   (push (list (kbd chordonce-keydesc)
+                               permachord-command
+                               in-map
+                               "Clone perma-chord to chord-once           ")
+                         dei--remap-actions))
+                  (t
+                   (push (list (kbd permachord-keydesc)
+                               chordonce-command
+                               in-map
+                               "Clone chord-once to perma-chord           ")
+                         dei--remap-actions))))
+          ;; Complex case #2: turns out the other is a keymap, despite our
+          ;; efforts!  We ended up here due to this type of situation: there
+          ;; exists a key C-x v x and others under the C-x v prefix, and there
+          ;; exists a key C-x C-v which is just a command. If we try to just
+          ;; clone the latter to C-x v, we may succeed, because `dei--define' has
+          ;; code for that.  But if we then clone C-x v x to C-x C-v
+          ;; C-x... BAM!
+          ;; FIXME: we could try to be smarter, maybe by double-checking the
+          ;; dei--remap-actions for conflicts before executing.
+          (when (keymapp sibling-command)
+            (warn "Sibling-keydesc binds to a keymap: %s" sibling-keydesc)
+            )
+          ;; Simple case: only one of the two is bound, so just duplicate.  We
+          ;; don't need to do it both directions b/c this invocation is
+          ;; operating on this-keydesc which is the one known to have a
+          ;; command.
+          (when (null sibling-command)
+            (push (list (kbd sibling-keydesc)
+                        this-command
+                        in-map
+                        "Clone to overwrite unbound sibling       ")
+                  dei--remap-actions)))
+        (when keymap
+          (push (list (kbd sibling-keydesc)
+                      (lookup-key (symbol-value keymap) (kbd this-keydesc))
+                      keymap
+                      "Clone winner to overwrite sibling, in map ")
+                dei--remap-actions))))))
+
+;; (dei--homogenize-binding "C-c C-c" 'org-mode-map)
+
+(defun dei--execute-remap-actions (actions)
+  (dolist (action actions)
+    (seq-let (event cmd map _) action
+      (dei--define (if (keymapp map)
+                    map
+                  (symbol-value map))
+                event
+                cmd)))
+  (setq dei--remap-actions nil))
+
+(defun dei--preview-remap-actions ()
+  "For convenience while debugging."
+  (interactive)
+  (with-current-buffer (dei--debug-buffer)
+    (goto-char (point-min))
+    (newline)
+    (insert "Remap actions planned as of " (current-time-string))
+    (newline 2)
+    (dolist (item dei--remap-actions)
+      (seq-let (event cmd map hint) item
+        (insert hint
+                " Bind " (key-description event)
+                "\tto " (if (symbolp cmd)
+                         (symbol-name cmd)
+                       cmd)
+                (if (symbolp map)
+                    (concat "\tin ")(symbol-name map)
+                    "")))
+      (newline))
+    (goto-char (point-min)))
+  (display-buffer (dei--debug-buffer))
+  (when-let ((window (get-buffer-window (dei--debug-buffer))))
+    (with-selected-window window
+      (recenter 0))))
+
+(defun dei--wipe-remap-actions ()
+  "For convenience while debugging."
+  (interactive)
+  (setq dei--remap-actions nil)
+  (message "remap actions wiped"))
 
 (defun dei--keymap-children-keys (keymap)
+  "Return a list of key descriptions of keys in KEYMAP.
+Check for yourself:
+  (setq foo (dei--keymap-children-keys ctl-x-map))  \\[eval-last-sexp]
+  \\[describe-variable] foo RET
+
+Note that these strings omit whatever prefix key led up to KEYMAP."
   (let ((lst nil))
     (map-keymap (lambda (ev def)
                   (if (keymapp def)
@@ -1232,23 +1433,33 @@ and run this function on the results."
                     (push (key-description (vector ev)) lst)))
                 keymap)
     lst))
-;; (setq foo (dei--keymap-children-keys ctl-x-map))
 
-(defun dei--define (map key new-def)
+(defun dei--define (map event new-def)
   ;; for debug
   (dei--echo (list "Will call `define-key' with args:"
-                   'map ;; too damn big expression
-                   key
+                   "MAP"
+                   event
                    new-def))
-  (prog1 (let ((old-def (key-binding key)))
-           (when (keymapp old-def)
-             ;; return all children, for caller to unbind
-             (cons old-def
-                   (--map (concat (key-description key) " " it)
-                          (dei--keymap-children-keys old-def)))))
-    (define-key map key new-def)))
+  (progn
+    (cl-assert (keymapp map))
+    (let ((old-def (lookup-key map event)))
+      ;; NOTE: Here be a destructive action.
+      ;;
+      ;; If this key was previously bound to a keymap, we want to unbind
+      ;; them all first.  If we don't, we can't rebind the key with define-key.
+      ;; Note that you may have general-auto-unbind-keys on, which advises define-key.
+      (when (keymapp old-def)
+        (let ((children-w-full-keydesc
+               (--map (concat (key-description event) " " it)
+                      (dei--keymap-children-keys old-def))))
+          (dolist (child children-w-full-keydesc)
+            (define-key map (kbd child) nil)))))
+      (define-key map event new-def)))
+
+;; (dei--define global-map (kbd "M-s") nil)
+
 ;; (setq dei-debug "*Deianira debug*")
-;; (dei--flatten-binding "C-x d")
+  ;; (dei--homogenize-binding "C-x d")
 
 
 
