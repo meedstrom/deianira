@@ -251,7 +251,8 @@ Does not check for shiftsyms, for that see `dei--key-seq-involves-shiftsym'."
   (declare (pure t) (side-effect-free t))
   (when-let ((first-modifier-pos
               (string-match-p dei--modifier-regexp-safe keydesc)))
-    (string-match-p dei--modifier-regexp-safe keydesc first-modifier-pos)))
+    ;; we use +1 b/c of the peculiarities of this regexp, but gets the job done
+    (string-match-p dei--modifier-regexp-safe keydesc (+ 1 first-modifier-pos))))
 
 ;; NOTE: Assumes normalized keydesc.
 (defun dei--key-starts-with-modifier (keydesc)
@@ -437,13 +438,14 @@ invertible function."
   (declare (pure t) (side-effect-free t))
   (dei--hydra-from-stem (dei--parent-stem stem)))
 
+;; unused
 ;; Roughly the inverse of dei--dub-from-key (but that one does more than squash)
 (defun dei--from-squashed-to-proper-keydesc (squashed-key)
   "Unsquash a squashed key description back into kbd-compatible.
 SQUASHED-KEY may look like \"Cxp\", \"sxp\", \"<f12>a<RET>\".
 Does not fully handle the TAB case."
   (declare (pure t) (side-effect-free t))
-  (let* ((foo "C<f12>x<insert>")
+  (let* ((foo squashed-key)
          (foo (s-split "<" foo t))
          (foo (--mapcat (s-split ">" it t) foo))
          (foo (--map (if (and (> (length it) 1)
@@ -874,9 +876,11 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
      (-any-p #'dei--foreign-to-keyboard
              (dei--key-seq-split keydesc))
      ;; Attempt to find iso-transl-ctl-x-8-map, usually C-x 8 but user could
-     ;; have relocated it (which is prolly smart). TODO: save in external variable for perf
+     ;; have relocated it (which is prolly smart). TODO: save in external
+     ;; variable for perf
      (member keydesc
              (-map #'dei--parent-key
+                   ;; necessary to get intended effec from `dei--parent-key'
                    (-remove #'dei--key-has-more-than-one-modifier
                             (dei--where-is #'insert-char)))))))
 
