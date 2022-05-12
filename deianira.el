@@ -46,27 +46,35 @@
 ;;;; User settings
 
 (defcustom dei-hydra-keys "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
-  "Keys to show in hydra hint.  Length should be divisible by `dei-columns'."
-  :type 'string)
+  "Keys to show in hydra hint.  Length should be divisible by `dei-columns'.
+In other words, if you have 10 columns this can be 30
+characters (or 40)\; if you want 11 columns this can be 33
+characters (or 44), and so on ..."
+  :type 'string
+  :group 'deianira)
 
 (defcustom dei-all-shifted-symbols "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
-  "Characters that imply Shift being pressed; the default reflects an US keyboard."
-  :type 'string)
+  "Characters that imply Shift being pressed\; the default reflects an US keyboard."
+  :type 'string
+  :group 'deianira)
 
 (defcustom dei-colwidth-override nil
   "Character width of hydra hint. If nil, determine from frame."
-  :type 'number)
+  :type 'number
+  :group 'deianira)
 
 (defcustom dei-columns 10
   "Amount of columns to display in the hydra hint."
-  :type 'number)
+  :type 'number
+  :group 'deianira)
 
 ;; TODO: use it
 (defcustom dei-pseudo-quitter-keys
   '("C-c c")
   "Keys that send you to the root hydra.
 Unused for now."
-  :type '(repeat string))
+  :type '(repeat string)
+  :group 'deianira)
 
 ;; TODO: use it
 (defcustom dei-pseudo-quitter-commands
@@ -74,19 +82,23 @@ Unused for now."
     rectangle-mark-mode)
   "Commands that send you to the root hydra.
 Unused for now."
-  :type '(repeat symbol))
+  :type '(repeat symbol)
+  :group 'deianira)
 
 (defcustom dei-quitter-keys
   '("<menu>"
     "C-g")
   "Keys that kill the hydra."
-  :type '(repeat string))
+  :type '(repeat string)
+  :group 'deianira)
 
 (defcustom dei-quitter-commands
   '(keyboard-quit
     minibuffer-keyboard-quit
     keyboard-escape-quit
-    secretary-keyboard-quit
+    doom/escape
+    doom/restart
+    doom/restart-and-restore
     abort-recursive-edit
     execute-extended-command
     counsel-M-x
@@ -109,14 +121,16 @@ Unused for now."
 Note that you don't need to add commands that focus the
 minibuffer, as we slay the hydra automatically when minibuffer
 gets focus."
-  :type '(repeat symbol))
+  :type '(repeat symbol)
+  :group 'deianira)
 
 (defcustom dei-extra-heads
   '(("<print>" dei-universal-argument nil :exit t)
     ("-" dei-negative-argument nil :exit t)
     ("<f5>" hydra-repeat nil))
   "Heads to add to every hydra."
-  :type '(repeat sexp))
+  :type '(repeat sexp)
+  :group 'deianira)
 
 
 ;;;; Background facts
@@ -1290,6 +1304,7 @@ and run this function on the results."
   "Bind root hydras."
   :global t
   :lighter " Δ"
+  :group 'deianira
   :keymap `((,(kbd "<katakana>") . dei-C/body)
             (,(kbd "<muhenkan>") . dei-M/body)
             (,(kbd "<henkan>") . dei-s/body)
