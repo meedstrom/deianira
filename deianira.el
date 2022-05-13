@@ -22,7 +22,7 @@
 ;; Version: 0.1.0
 ;; Keywords: convenience emulations help
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (deferred "0.5.0") (concurrent "0.5.0") (named-timer) (dash) (s))
+;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (deferred "0.5.0") (concurrent "0.5.0") (named-timer "0.1") (dash) (s))
 
 ;;; Commentary:
 
@@ -53,8 +53,9 @@ characters (or 44), and so on ..."
   :type 'string
   :group 'deianira)
 
-(defcustom dei-all-shifted-symbols "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
-  "Characters that imply Shift being pressed\; the default reflects an US keyboard."
+(defcustom dei-all-shifted-symbols
+  "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
+  "Characters that imply Shift pressed\; default reflects an US keyboard."
   :type 'string
   :group 'deianira)
 
@@ -86,7 +87,7 @@ Unused for now."
   :group 'deianira)
 
 (defcustom dei-quitter-keys
-  '("<menu>"
+ '("<menu>"
     "C-g")
   "Keys that kill the hydra."
   :type '(repeat string)
@@ -645,12 +646,14 @@ an example ALIST transformation may look like this:
 ;;;; Hydra blueprinting
 
 (defun dei--head-arg-cmd (stem leaf)
+  "See `dei--head'."
   (cond ((member (concat stem leaf) dei--keys-that-are-hydras)
          (dei--corresponding-hydra stem leaf))
         (t
          `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
 
 (defun dei--head-arg-hint (stem leaf)
+  "See `dei--head'."
   (let* ((sym (if (member (concat stem leaf) dei--keys-that-are-hydras)
                   (dei--corresponding-hydra stem leaf)
                 (key-binding (kbd (concat stem leaf)))))
@@ -664,12 +667,14 @@ an example ALIST transformation may look like this:
         name))))
 
 (defun dei--head-arg-exit (stem leaf)
+  "See `dei--head'."
   (when (or (member (concat stem leaf) dei--keys-that-are-hydras)
             (member (concat stem leaf) dei-quitter-keys)
             (member (key-binding (kbd (concat stem leaf))) dei-quitter-commands))
     '(:exit t)))
 
 (defun dei--head (stem leaf)
+  "Return a hydra head specification (sexp), see `defhydra'."
   `( ,leaf
      ,(dei--head-arg-cmd stem leaf)
      ,(dei--head-arg-hint stem leaf)
@@ -702,6 +707,12 @@ an example ALIST transformation may look like this:
                    :exit t))))
 
 (defun dei--specify-visible-heads (stem &optional verboten-leafs)
+    "Return a list of heads that will be shown in the hydra hint.
+These are for the hydra imaged by STEM, which is combined with
+various leafs, see function body.
+
+Optional argument VERBOTEN-LEAFS, a list of strings such as
+'(\"1\" \"z\"), prevents including heads for these leafs."
   (let ((leaf-list (-difference dei--hydra-keys-list
                                 verboten-leafs)))
     (cl-loop for leaf in leaf-list
@@ -711,6 +722,12 @@ an example ALIST transformation may look like this:
                        ,@(dei--head-arg-exit stem leaf)))))
 
 (defun dei--specify-invisible-heads (stem &optional verboten-leafs)
+  "Return a list of heads not to be shown in the hydra hint.
+These are for the hydra imaged by STEM, which is combined with
+various leafs, see function body.
+
+Optional argument VERBOTEN-LEAFS, a list of strings such as
+'(\"1\" \"z\"), prevents including heads for these leafs."
   (let ((x (append
             ;; TODO: Use all-keys-on-keyboard ... But not the function keys
             (cl-loop for leaf in  '("<left>" "<right>" "<up>" "<down>"
@@ -721,10 +738,12 @@ an example ALIST transformation may look like this:
                      collect (dei--head-invisible-self-inserting-stemless stem leaf))
             (cl-loop for leaf in '("<menu>" "C-g") ;; use dei-quitter-keys
                      collect (dei--head-invisible-exiting-stemless stem leaf)))))
-    (-remove (lambda (head) (member (car head) verboten-leafs)) x)))
+    (-remove (lambda (head)
+               (member (car head) verboten-leafs))
+             x)))
 
 (defun dei--convert-head-for-nonum (head)
-  "If HEAD is a keyboard prefix command, fix it for nonum hydra.
+  "If hydra head HEAD involves a keyboard prefix command, fix it for use in a nonum hydra.
 Basically, change `dei-universal-argument' to
 `hydra--universal-argument' and drop any :exit keyword."
   (cond ((eq (cadr head) 'dei-universal-argument)
@@ -735,11 +754,15 @@ Basically, change `dei-universal-argument' to
           head)))
 
 (defun dei--specify-extra-heads (stem &optional nonum-p)
-  (let ((self-poppers '(cond ((string= "C-" stem) '("<katakana>" "C-<katakana>"))
-                             ((string= "M-" stem) '("<muhenkan>" "M-<muhenkan>"))
-                             ((string= "s-" stem) '("<henkan>" "s-<henkan>"))
-                             ((string= "H-" stem) '("<f32>" "H-<f32>"))
-                             ((string= "A-" stem) '("<f31>" "A-<f31>"))))
+  "For a hydra imaged by STEM, return some bonus heads for it.
+These are mostly the kinds of heads shared by all of Deianira's
+hydras."
+  (let ((self-poppers
+         '(cond ((string= "C-" stem) '("<katakana>" "C-<katakana>"))
+                ((string= "M-" stem) '("<muhenkan>" "M-<muhenkan>"))
+                ((string= "s-" stem) '("<henkan>" "s-<henkan>"))
+                ((string= "H-" stem) '("<f32>" "H-<f32>"))
+                ((string= "A-" stem) '("<f31>" "A-<f31>"))))
         (extras (if nonum-p
                     (mapcar #'dei--convert-head-for-nonum dei-extra-heads)
                   dei-extra-heads)))
@@ -794,7 +817,9 @@ Basically, change `dei-universal-argument' to
 
 ;; Final boss
 (defun dei--call-defhydra (name list-of-heads)
-  "Create a hydra named after STEM with LIST-OF-HEADS."
+  "Create a hydra named after STEM with LIST-OF-HEADS.
+This will probably be called by `dei--generate-hydras-async',
+which see."
   (eval `(defhydra ,(intern name)
            (:columns ,dei-columns
             :exit nil
@@ -818,6 +843,7 @@ rescan.")
 (defvar dei--after-rebuild-hydra-hook nil
   "Hook run after updating hydras to match the local map.")
 
+;; TODO: refactor to not operate on car, makes weird name
 (defun dei--car-is-illegal-key (cell)
   "Filter for keys that should be unbound.
 CELL comes in the form returned by `dei--get-relevant-bindings'."
@@ -845,12 +871,8 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
      (dei--key-seq-involves-shiftsym keydesc)
      (dei--contains-upcase keydesc))))
 
-;; (dei--contains-upcase "C-x d")
-;; (dei--key-starts-with-modifier "C-x d")
-;; (dei--key-seq-is-allchord "C-x d")
-;; (dei--key-has-more-than-one-modifier "C-x d")
-
 (defun dei--unbind-illegal-keys ()
+  "Unbind keys that match `dei--car-is-illegal-key'."
   (let* ((illegal-keys (->> dei--current-bindings
                             (-filter #'dei--car-is-illegal-key)
                             (-map #'car)
@@ -865,6 +887,7 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
           (define-key (eval map t) (kbd key) nil))))))
 
 (defun dei--foreign-to-keyboard (step)
+  "Return t if STEP is not among `all-keys-on-keyboard'."
   ;; NOTE: A change to dei-all-keys-on-keyboard will NOT affect us compiled.
   ;; This is fine as long as we take it as a constant anyway.
   (declare (pure t) (side-effect-free t))
@@ -886,13 +909,6 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
                    ;; necessary to get intended effec from `dei--parent-key'
                    (-remove #'dei--key-has-more-than-one-modifier
                             (dei--where-is #'insert-char)))))))
-
-;; (dei--key-has-more-than-one-modifier "s-i")
-;;      (dei--contains-upcase keydesc)
-;;      (dei--key-contains-multi-chords "s-i")
-;;      (dei--key-seq-mixes-modifiers "s-i")
-;; (dei--contains-upcase "s-i")
-;; (dei--contains-upcase "s-i")
 
 (defun dei--get-relevant-bindings ()
   (->> (dei--current-bindings
@@ -928,7 +944,9 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
        (-remove #'dei--car-is-illegal-key)
        (-remove #'dei--filter-for-hydra-making)
        (setq dei--current-filtered-bindings)))
-;; (dei--get-relevant-bindings)
+
+
+;; Dafuq was I doing here?
 
 ;; (advice-add #'read-key-sequence :around #'dei--kill-ctl)
 ;; (advice-add #'read-event :override #'dei--kill-ctl)
@@ -954,10 +972,6 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
 
 (add-hook 'dei--after-scan-bindings-hook #'dei--unbind-illegal-keys -5)
 (add-hook 'dei--after-scan-bindings-hook #'dei--mass-remap 5)
-
-;; (add-hook 'prog-mode-hook #'dei--mass-remap)
-;; (add-hook 'text-mode-hook)
-;; (add-hook 'special-mode-hook)
 
 ;; NOTE: Visualize a Venn diagram. The defunct and the new are the last and
 ;;      current minus their intersection (cases where the key's definition
@@ -1435,6 +1449,7 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
     lst))
 
 (defun dei--define (map event new-def)
+  "Like `define-key'."
   ;; for debug
   (dei--echo (list "Will call `define-key' with args:"
                    "MAP"
@@ -1478,9 +1493,11 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
 ;; Things that summon and slay the hydras we've made.
 
 (defun dei--hydra-active-p ()
+  "Return t if a hydra is active and awaiting input."
   (not (null hydra-curr-map)))
 
 (defun dei--slay (&rest args)
+  "Slay active hydra and return ARGS."
   (when (dei--hydra-active-p)
     (setq hydra-deactivate t)
     (call-interactively #'hydra-keyboard-quit))
@@ -1489,6 +1506,7 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
 ;; (advice-remove #'selectrum-read #'dei--slay)
 
 (defun dei--slay-if-minibuffer (&rest args)
+  "Slay any hydra if the minibuffer is active."
   (when (or (minibufferp)
             (string-match-p "magit:" (buffer-name))) ;; doesnt work i think
     (dei--slay))
@@ -1510,13 +1528,17 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
                 (push (car x) dei--live-stems)))
   (setq dei--last-filtered-bindings dei--current-filtered-bindings))
 
-(defvar dei--old-hydra-cell-format nil)
+(defvar dei--old-hydra-cell-format nil
+  "Backup for `hydra-cell-format'.")
 
-(defvar dei--old-hydra-base-map-C-u nil)
+(defvar dei--old-hydra-base-map-C-u nil
+  "Backup for key-binding of \"C-u\" in `hydra-base-map'.")
 
 ;;;###autoload
 (define-minor-mode deianira-mode
-  "Bind root hydras."
+  "Bind root hydras.
+In addition, configure window change hooks and certain hydra.el
+settings."
   :global t
   :lighter " Δ"
   :group 'deianira
