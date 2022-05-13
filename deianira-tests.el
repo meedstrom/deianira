@@ -12,31 +12,71 @@
     ))
 
 (ert-deftest keydesc-handling-1 ()
+
+  ;; (dei--contains-upcase "C-x d")
+  ;; (dei--key-starts-with-modifier "C-x d")
+  ;; (dei--key-seq-is-allchord "C-x d")
+  ;; (dei--key-has-more-than-one-modifier "C-x d")
+
+  ;; (dei--key-has-more-than-one-modifier "s-i")
+  ;;      (dei--contains-upcase keydesc)
+  ;;      (dei--key-contains-multi-chords "s-i")
+  ;;      (dei--key-seq-mixes-modifiers "s-i")
+  ;; (dei--contains-upcase "s-i")
+  ;; (dei--contains-upcase "s-i")
+
+  (should-not (dei--key-seq-has-non-prefix-in-prefix "C-x v x"))
+  (should-not (dei--key-seq-has-non-prefix-in-prefix "C-x C-v"))
+  (should (dei--key-seq-has-non-prefix-in-prefix "C-x C-v C-x"))
+
   (should (dei--key-seq-mixes-modifiers "C-h M-o"))
   (should-not (dei--key-seq-mixes-modifiers "C-h C-o"))
   (should-not (dei--key-seq-mixes-modifiers "C-h o"))
+
   (should (dei--key-contains-multi-chords "C-M-f"))
   (should-not (dei--key-contains-multi-chords "C-f M-f"))
   ;; (should (dei--key-contains-multi-chords "C-<M-return>")) ;; fail ok b/c we assume normalized input
+
   (should (dei--key-has-more-than-one-modifier "C-x C-h"))
+  (should (dei--key-has-more-than-one-modifier "C-M-x h"))
   (should-not (dei--key-has-more-than-one-modifier "<f1> F F"))
-  (should-not (dei--key-has-more-than-one-modifier "C-x H"))
+  (should-not (dei--key-has-more-than-one-modifier "C-x C"))
+  (should-not (dei--key-has-more-than-one-modifier "C-x d"))
+
   (should (dei--key-seq-involves-shiftsym "C-x H"))
   (should (dei--key-seq-involves-shiftsym "C-F"))
   (should-not (dei--key-seq-involves-shiftsym "C-x h"))
   (should-not (dei--key-seq-involves-shiftsym "<RET>"))
   (should-not (dei--key-seq-involves-shiftsym "TAB"))
+
   (should (dei--key-starts-with-modifier "C-x"))
   (should (dei--key-starts-with-modifier "C-x c f b"))
   (should (dei--key-starts-with-modifier "C-<f1> f"))
   (should-not (dei--key-starts-with-modifier "<f1> C-f"))
-  (should (equal (dei--get-parent "C-x ") #'dei-control/body))
-  (should (equal (dei--get-parent "M-x ") #'dei-meta/body))
-  (should (equal (dei--get-parent "s-x ") #'dei-super/body))
-  (should (equal (dei--get-parent "s-x a") nil))
-  (should (equal (dei--get-parent "s-x a ") #'dei-sx/body))
-  ;; (should (equal (dei--get-parent "s-x <print>") nil)) ;; probably not a major problem
-  (should (equal (dei--get-parent "s-x <print> ") #'dei-sx/body)))
+
+  ;; (should (equal (dei--get-parent "C-x ") #'dei-control/body))
+  ;; (should (equal (dei--get-parent "M-x ") #'dei-meta/body))
+  ;; (should (equal (dei--get-parent "s-x ") #'dei-super/body))
+  ;; (should (equal (dei--get-parent "s-x a") nil))
+  ;; (should (equal (dei--get-parent "s-x a ") #'dei-sx/body))
+  ;; ;; (should (equal (dei--get-parent "s-x <print>") nil)) ;; probably not a major problem
+  ;; (should (equal (dei--get-parent "s-x <print> ") #'dei-sx/body))
+
+  (should (equal "C-x k e" (dei--ensure-chordonce "C-x C-k C-e")))
+  (should (equal "x k e" (dei--ensure-chordonce "x C-k C-M-e")))
+
+  (should (equal "C-x C-k C-e" (dei--ensure-permachord "C-x k C-e")))
+  (should (equal "C-x C-k C-e" (dei--ensure-permachord "C-x k C-e")))
+  (should (equal "C-x C-k C-e" (dei--ensure-permachord "C-x k e")))
+  (should (equal "C-x C-k C-e" (dei--ensure-permachord "x k e")))
+  (should (equal "C-x C-k C-e" (dei--ensure-permachord "C-x C-k C-e")))
+
+  (should (dei--key-is-permachord "C-x C-k C-n"))
+  (should-not (dei--key-is-permachord "C-x C-k n"))
+  (should-not (dei--key-is-permachord "C-M-x C-k C-M-n"))
+  (should-not (dei--key-is-permachord "<f3> C-k C-M-n"))
+
+  )
 
 (ert-deftest components-of:dei--normalize ()
   (should (equal (dei--normalize-trim-segment "<next>") "next"))
@@ -45,13 +85,16 @@
   (should (equal (dei--normalize-trim-segment "C-<") "C-<"))
   (should (equal (dei--normalize-trim-segment "C->") "C->"))
   (should (equal (dei--normalize-trim-segment ">") ">"))
+
   (should (equal (dei--normalize-get-atoms "C--") '("C" "-")))
   (should (equal (dei--normalize-get-atoms "C-f") '("C" "f")))
   (should (equal (dei--normalize-get-atoms "M-wheel-down") '("M" "wheel-down")))
   (should (equal (dei--normalize-get-atoms "C-M-f") '("C" "M" "f")))
+
   (should (equal (dei--normalize-wrap-leaf-maybe '("C" "M" "next")) '("C" "M" "<next>")))
   (should (equal (dei--normalize-wrap-leaf-maybe '("C" "M" ">")) '("C" "M" ">")))
   (should-not (equal (dei--normalize-wrap-leaf-maybe '("C" "M" "f")) '("C" "M" "<f>")))
+
   (should (equal (dei--normalize-build-segments '("C" "M" "-")) "C-M--")))
 
 (ert-deftest keydesc-handling-2 ()
@@ -78,13 +121,12 @@
     (dolist (case problematic-key-descriptions)
       (seq-let (raw normalized squashed leaf 1step?) case
         (should (string= normalized (dei--normalize raw)))
-        (should (string= squashed (dei-dub-from-key normalized)))
+        (should (string= squashed (dei--dub-from-key normalized)))
         (should (string= leaf (dei--get-leaf normalized)))
         (should (eq 1step? (dei--key-seq-steps=1 normalized)))))))
 
 (ert-deftest keydesc-handling-limited ()
-  "Functions that have strong assumptions on input, only on
-such strings that meet the assumptions."
+  "Test the functions that have strong assumptions on input."
   (let ((example-key-descriptions
          '(;; normalized        parent
            ("C-x 8 <RET>"   "C-x 8")
@@ -121,6 +163,22 @@ such strings that meet the assumptions."
                  '(("<backspace>" dei-control/body nil :exit t))))
   (should (equal (dei--specify-extra-heads "C-")
                  '(("<backspace>" nil nil :exit t) ("<f35>" nil nil :exit t)))))
+
+
+(ert-deftest homogenizing ()
+  (setq dei-homogenizing-winners '(("C-c C-c")
+                                ("C-x a")
+                                ("C-x g")
+                                ("C-x b")
+                                ("C-c C-c" . org-mode-map)))
+
+  ;; (dei--homogenize-binding-in-keymap "C-c C-c" 'org-mode-map)
+  ;; (dei--homogenize-binding-in-keymap "C-c c" 'org-mode-map)
+  ;; (dei--homogenize-binding "C-x f")
+  ;; (dei--homogenize-binding "")
+  ;; (dei--homogenize-binding "C-c c")
+  ;; (dei--homogenize-binding "")
+  )
 
 
 (provide 'deianira-tests)
