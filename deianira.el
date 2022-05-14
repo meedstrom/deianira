@@ -327,23 +327,26 @@ those, see `dei--key-seq-involves-shiftsym'.  Does catch e.g. C-S-<RET>."
 
 (defun dei--normalize (keydesc)
   (declare (pure t) (side-effect-free t))
-  (->> keydesc
-       (s-split (rx space))
-       (-map #'dei--normalize-trim-segment)
-       (-map #'dei--normalize-get-atoms)
-       (-map #'dei--normalize-wrap-leaf-maybe)
-       (-map #'dei--normalize-build-segments)
-       (s-join " ")))
+  (if (dei--dangling-stem-p keydesc)
+      (error "Dangling stem passed to `dei--normalize'")
+    (->> keydesc
+         (s-split " ")
+         (-map #'dei--normalize-trim-segment)
+         (-map #'dei--normalize-get-atoms)
+         (-map #'dei--normalize-wrap-leaf-maybe)
+         (-map #'dei--normalize-build-segments)
+         (s-join " "))))
 
-(defun dei--not-a-dangling-stem (keydesc)
-  "Check that KEYDESC is not a dangling stem.
-I.e. it's something you'd pass to `kbd'. If true, return KEYDESC
-unmodified, else return nil."
+(defun dei--dangling-stem-p (keydesc)
+  "Check if KEYDESC is actually a dangling stem, not a keydesc.
+A proper key description is something you'd pass to `kbd', and a
+stem is not.  Return t if true, else nil."
   (declare (pure t) (side-effect-free t))
-  (when (or (string-match-p (rx "--" eol) keydesc)
-            (string-match-p (rx " -" eol) keydesc)
-            (string-match-p (rx (not (or "-" " ")) eol) keydesc))
-    keydesc))
+  (if (or (string-match-p (rx "--" eol) keydesc)
+          (string-match-p (rx " -" eol) keydesc)
+          (string-match-p (rx (not (or "-" " ")) eol) keydesc))
+      nil
+    t))
 
 (defun dei--dub-from-key (keydesc)
   "Example: If KEY is the string \"C-x a\", return \"dei-Cxa\"."
