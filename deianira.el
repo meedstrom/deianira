@@ -404,7 +404,18 @@ stem is not.  Return t if true, else nil."
   (declare (pure t) (side-effect-free t))
   (length (dei--key-seq-split keydesc)))
 
-(defun dei--stem-to-keydesc (stem)
+(defun dei--stem-to-parent-keydesc (stem)
+  (declare (pure t) (side-effect-free t))
+  (if (s-ends-with-p " " stem)
+      (substring stem 0 -1)
+    (if (s-matches-p (concat dei--modifier-regexp "$") stem)
+        (s-replace-regexp (rx " " (+ (regexp dei--modifier-regexp)) eol)
+                          ""
+                          stem)
+      (error "Non-stem passed to `dei--stem-to-keydesc': %s" stem))))
+
+;; DEPRECATED
+(defun dei--space-off-spaced-stem (stem)
   "Trim a space off STEM.
 Would be engineered to cover stems like C-c C-, but we assume
 those will never be passed.  Otherwise this could not be an
@@ -414,8 +425,8 @@ invertible function."
   (substring stem 0 -1))
 
 ;; unused
-(defun dei--keydesc-to-stem (keydesc)
-  "Inverse of `dei--stem-to-keydesc'."
+(defun dei--keydesc-to-spacestem (keydesc)
+  "Inverse of `dei--space-off-spaced-stem'."
   (declare (pure t) (side-effect-free t))
   (concat keydesc " "))
 
@@ -436,12 +447,12 @@ invertible function."
   (if (or (= 2 (length stem))
           (dei--key-seq-steps=1 stem))
       nil
-    (dei--drop-leaf (dei--stem-to-keydesc stem))))
+    (dei--drop-leaf (dei--stem-to-parent-keydesc stem))))
 
 ;; unused
 (defun dei--parent-key* (keydesc)
   (declare (pure t) (side-effect-free t))
-  (dei--stem-to-keydesc (dei--drop-leaf keydesc)))
+  (dei--space-off-spaced-stem (dei--drop-leaf keydesc)))
 
 (defun dei--parent-key (keydesc)
   (declare (pure t) (side-effect-free t))
@@ -1081,8 +1092,6 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
 ;; TODO: Since cc:thread wraps each form in an implicit lambda with an argument
 ;; x (passed from the last form), the compiler cries about its disuse.  Can I
 ;; contrive a way to use it?
-;;
-;; FIXME: Deosnt' work
 (defun dei-generate-hydras-async ()
   "Regenerate hydras to match the local map."
   (interactive)
