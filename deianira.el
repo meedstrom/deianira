@@ -934,7 +934,7 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
     (or
      ;; (dei--key-contains-ctl keydesc)
      (s-contains-p "S-" keydesc)
-     ;;(s-matches-p (rx nonl (or "DEL" "<backspace>")) keydesc)
+     ;; (s-matches-p (rx nonl (or "DEL" "<backspace>")) keydesc)
      ;; (s-matches-p (rx nonl (or "SPC" "RET" "<return>")) keydesc)
      ;; (s-matches-p (rx (or "SPC" "RET" "<return>") nonl) keydesc)
      (dei--key-contains-multi-chords keydesc)
@@ -981,14 +981,14 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
   (let ((keydesc (car cell))
         (case-fold-search nil))
     (or
-     ;; (equal "Keyboard Macro" (cdr cell))
+     (equal "Keyboard Macro" (cdr cell))
      ;; (-any-p #'dei--foreign-to-keyboard (dei--key-seq-split keydesc))
 
      ;; Attempt to find iso-transl-ctl-x-8-map, usually C-x 8 but user could
      ;; have relocated it (prolly smart).
      ;; HACK For some reason, the actual C-x 8 does not identify as bound to
      ;; iso-transl-ctl-x-8-map, so we hardcode it.
-     (string-match-p (rx bol "C-x 8") (dei--get-parent keydesc))
+     (string-match-p (rx bol "C-x 8") (dei--parent-key keydesc))
      ;; HACK Disgusting.  Since there are key-sequences within that map, such
      ;; as C-x 8 1 / 4, we have to do a string-match on the keydesc instead of
      ;; simply consulting dei--parent-key.  In addition, since that map may be
@@ -1012,8 +1012,14 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
       ;; (null (intern (cdr cell)))
       (keymapp (intern (cdr cell)))))
 
+;; TODO: Remove side effect
 (defun dei--get-relevant-bindings ()
-  (let* ((bindings
+  "Get list of current bindings and sort it.
+Includes those bindings we may want to directly un-bind, but
+excludes those we're just gonna pretend don't exist (such as ESC
+combinations).  To get only the bindings worth giving to hydra,
+run the output through `dei--filter-bindings-for-hydra'."
+  (let ((bindings
          (dei--scan-current-bindings
           nil
           (rx (or
@@ -1031,22 +1037,26 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
                         "C-h"  ;; user should fix this keymap emself
                         ;; TODO: make hydras still, without unbinding violators
                         (literal doom-leader-alt-key) ;; fulla Shift
-                        (literal doom-localleader-alt-key)))))))
-         (sorted-bindings
-          (seq-sort-by #'dei--binding-key-seq-steps-length #'> bindings)))
-
-    (->> (setq dei--current-bindings sorted-bindings)
-         ;; Remove submaps, we infer their existence later by cutting the leafs
-         ;; off every actual key via (-uniq (-map #'dei--drop-leaf KEYS)).
-         (-remove #'dei--filter-for-submap)
-         (-remove #'dei--filter-for-illegal-key)
-         (-remove #'dei--filter-for-irrelevant-to-hydra)
-         (setq dei--current-filtered-bindings))))
+                        (literal doom-localleader-alt-key))))))))
+    (setq dei--current-bindings
+          (seq-sort-by #'dei--binding-key-seq-steps-length #'> bindings))))
 ;; (dei--get-relevant-bindings)
 
-(defun dei--binding-key-seq-steps-length (x)
+;; TODO: Remove side effect
+(defun dei--filter-bindings-for-hydra (&optional bindings)
+  (->> (or bindings dei--current-bindings)
+       ;; Remove submaps, we infer their existence later by cutting the leafs
+       ;; off every actual key via (-uniq (-map #'dei--drop-leaf KEYS)).
+       (-remove #'dei--filter-for-submap)
+       (-remove #'dei--filter-for-illegal-key)
+       (-remove #'dei--filter-for-irrelevant-to-hydra)
+       (setq dei--current-filtered-bindings)))
+
+(defun dei--binding-key-seq-steps-length (cell)
+  "Like `dei--key-seq-steps-length', but run on car of input.
+CELL comes in the form returned by `dei--scan-current-bindings'."
   (declare (pure t) (side-effect-free t))
-  (dei--key-seq-steps-length (car x)))
+  (dei--key-seq-steps-length (car cell)))
 
 (add-hook 'dei--after-scan-bindings-hook #'dei--unbind-illegal-keys -5)
 (add-hook 'dei--after-scan-bindings-hook #'dei--mass-remap 5)
@@ -1086,6 +1096,7 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
             #'dei--get-relevant-bindings
             (run-hooks 'dei--after-scan-bindings-hook)
             #'dei--get-relevant-bindings
+            #'dei--filter-bindings-for-hydra
             ;; Target hydras
             ;; ;; NOTE: Visualize a Venn diagram. The defunct and the new are the last and
             ;;      current minus their intersection (cases where the key's definition
@@ -1652,6 +1663,7 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
   (dei--mass-remap)
   (dei--unbind-illegal-keys)
   (dei--get-relevant-bindings)
+  (dei--filter-bindings-for-hydra)
   (dei--target-stems)
   (dei--specify-dire-hydras)
   (cl-loop for x in dei--hydra-blueprints
