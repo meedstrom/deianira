@@ -439,9 +439,16 @@ invertible function."
     (dei--drop-leaf (dei--stem-to-keydesc stem))))
 
 ;; unused
-(defun dei--parent-key (keydesc)
+(defun dei--parent-key* (keydesc)
   (declare (pure t) (side-effect-free t))
   (dei--stem-to-keydesc (dei--drop-leaf keydesc)))
+
+(defun dei--parent-key (keydesc)
+  (declare (pure t) (side-effect-free t))
+  (let ((steps (dei--key-seq-split keydesc)))
+    (if (= 1 (length steps))
+        keydesc
+      (s-join " " (butlast steps)))))
 
 (defun dei--parent-hydra (stem)
   (declare (pure t) (side-effect-free t))
