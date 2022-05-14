@@ -824,11 +824,11 @@ Basically, change `dei-universal-argument' to
 These are mostly the kinds of heads shared by all of Deianira's
 hydras."
   (let ((self-poppers
-         '(cond ((string= "C-" stem) '("<katakana>" "C-<katakana>"))
-                ((string= "M-" stem) '("<muhenkan>" "M-<muhenkan>"))
-                ((string= "s-" stem) '("<henkan>" "s-<henkan>"))
-                ((string= "H-" stem) '("<f32>" "H-<f32>"))
-                ((string= "A-" stem) '("<f31>" "A-<f31>"))))
+         (cond ((string= "C-" stem) '("<katakana>" "C-<katakana>"))
+               ((string= "M-" stem) '("<muhenkan>" "M-<muhenkan>"))
+               ((string= "s-" stem) '("<henkan>" "s-<henkan>"))
+               ((string= "H-" stem) '("<f32>" "H-<f32>"))
+               ((string= "A-" stem) '("<f31>" "A-<f31>"))))
         (extras (if nonum-p
                     (mapcar #'dei--convert-head-for-nonum dei-extra-heads)
                   dei-extra-heads)))
