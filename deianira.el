@@ -45,7 +45,7 @@
 
 ;;;; User settings
 
-(defgroup deianira
+(defgroup deianira nil
   "Modifier-free pseudo-modal input."
   :link '(info-link "(deianira)"))
 
@@ -130,7 +130,7 @@ gets focus."
   :group 'deianira)
 
 (defcustom dei-extra-heads
-  '(("<print>" dei-universal-argument nil :exit t)
+  '(("=" dei-universal-argument nil :exit t)
     ("-" dei-negative-argument nil :exit t)
     ("<f5>" hydra-repeat nil))
   "Heads to add to every hydra."
@@ -527,7 +527,6 @@ Allows only one chord, such as C- or M- but not C-M-."
                                  (not (string-match-p dei--modifier-regexp-safe
                                                       rest))))))))))
 
-
 
 ;;;; Keyboard scanning
 
@@ -535,7 +534,7 @@ Allows only one chord, such as C- or M- but not C-M-."
 ;; function `describe-buffer-bindings' seems the only builtin way to get this
 ;; information efficiently.  Inspired by `which-key--get-current-bindings' (as
 ;; it was in 2020, they use a different mechanism as of 2022).  Thanks!
-(defun dei--current-bindings (&optional keep flush)
+(defun dei--scan-current-bindings (&optional keep flush test)
   "Get the list of all currently active bindings.
 This ignores those masked by other keymaps, returning only the
 binding in the winning keymap.
@@ -544,9 +543,13 @@ Optional argument KEEP is a regexp describing keys to keep. Can
 be left at nil to keep everything.
 
 Optional argument FLUSH is a regexp describing keys to discard
-after the above filter has been applied (even if KEEP was nil).
+after the above filter has been applied (even if it was nil).
 You should pass a regexp that will catch \"ESC\" because a lot of
-functions in the library aren't really ESC-aware."
+functions in the library aren't really ESC-aware.
+
+Optional argument TEST, if non-nil, tells us to print the result
+of our regexps to a buffer named \*Deianira Scan Bindings\* for
+developer inspection."
   (let ((result nil)
         (ignore-keys (eval-when-compile
                        (regexp-opt '("mouse-" "remap" "scroll-bar" "select-"
@@ -567,8 +570,7 @@ functions in the library aren't really ESC-aware."
       (describe-buffer-bindings that-buffer)
       (goto-char (point-min))
       (flush-lines ignore-bindings)
-      (flush-lines (rx (regexp ignore-sections)
-                       (* (not ""))))
+      (flush-lines (rx (regexp ignore-sections) (* (not ""))))
       (flush-lines (rx "---"))
       (flush-lines (rx bol "key" (* nonl) "binding"))
       (flush-lines (rx bol (* nonl) ":" eol))
@@ -584,11 +586,18 @@ functions in the library aren't really ESC-aware."
       (flush-lines (rx (regexp ignore-keys) (* nonl) "	"))
       (when keep (keep-lines keep))
       (when flush (flush-lines flush))
+      (when test
+        (kill-buffer "*Deianira Scan Bindings*")
+        (append-to-buffer (get-buffer-create "*Deianira Scan Bindings*")
+                          (point-min)
+                          (point-max)))
       (while (re-search-forward (rx (group (+? nonl)) (+ "	") (group (+ nonl)))
                                 nil t)
-        (push (cons (match-string 1) (match-string 2)) result)))
+        (push (cons (dei--normalize (match-string 1))
+                    (match-string 2))
+              result)))
     result))
-
+;; (setq foo (dei--scan-current-bindings nil nil 'test))
 
 
 ;;;; Library
@@ -860,6 +869,7 @@ hydras."
                  (dei--specify-invisible-heads stem verboten-leafs))))
     (-cons* stem name heads)))
 
+;; DEPRECATED
 (defun dei--specify-dire-hydras ()
   "Call `dei--specify-dire-hydra' lots of times."
   (setq dei--live-stems (-difference dei--live-stems
@@ -908,10 +918,9 @@ rescan.")
 (defvar dei--after-rebuild-hydra-hook nil
   "Hook run after updating hydras to match the local map.")
 
-;; TODO: refactor to not operate on car, makes weird name
-(defun dei--car-is-illegal-key (cell)
+(defun dei--filter-for-illegal-key (cell)
   "Filter for keys that should be unbound.
-CELL comes in the form returned by `dei--get-relevant-bindings'."
+CELL comes in the form returned by `dei--scan-current-bindings'."
   ;; (declare (pure t) (side-effect-free t))
   (let ((keydesc (car cell))
         (case-fold-search nil))
@@ -925,7 +934,7 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
      (dei--key-seq-mixes-modifiers keydesc)
 
      ;; Unbind bastard sequences
-     (and (not (dei--key-seq-is-allchord keydesc))
+     (and (not (dei--key-is-permachord keydesc))
           (dei--key-has-more-than-one-modifier keydesc))
 
      ;; unbind e.g. <f1> C-f.
@@ -937,9 +946,9 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
      (dei--contains-upcase keydesc))))
 
 (defun dei--unbind-illegal-keys ()
-  "Unbind keys that match `dei--car-is-illegal-key'."
+  "Unbind keys that match `dei--filter-for-illegal-key'."
   (let* ((illegal-keys (->> dei--current-bindings
-                            (-filter #'dei--car-is-illegal-key)
+                            (-filter #'dei--filter-for-illegal-key)
                             (-map #'car)
                             (seq-sort-by #'dei--key-seq-steps-length #'>))))
     (dolist (key illegal-keys)
@@ -951,6 +960,7 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
         (unless (null map)
           (define-key (eval map t) (kbd key) nil))))))
 
+;; unused
 (defun dei--foreign-to-keyboard (step)
   "Return t if STEP is not among `all-keys-on-keyboard'."
   ;; NOTE: A change to dei-all-keys-on-keyboard will NOT affect us compiled.
@@ -958,78 +968,74 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
   (declare (pure t) (side-effect-free t))
   (not (member (dei--get-leaf step) dei-all-keys-on-keyboard)))
 
-(defun dei--filter-for-hydra-making (cell)
-  "Filter for keys that are irrelevant when we make a hydra."
+(defun dei--filter-for-irrelevant-to-hydra (cell)
+  "Filter for keys that are irrelevant when we make a hydra.
+CELL comes in the form returned by `dei--scan-current-bindings'."
   (let ((keydesc (car cell))
         (case-fold-search nil))
     (or
-     (dei--key-has-more-than-one-modifier keydesc)
-     (-any-p #'dei--foreign-to-keyboard
-             (dei--key-seq-split keydesc))
+     ;; (equal "Keyboard Macro" (cdr cell))
+     ;; (-any-p #'dei--foreign-to-keyboard (dei--key-seq-split keydesc))
+
      ;; Attempt to find iso-transl-ctl-x-8-map, usually C-x 8 but user could
-     ;; have relocated it (which is prolly smart). TODO: save in external
-     ;; variable for perf
-     (member keydesc
-             (-map #'dei--parent-key
-                   ;; necessary to get intended effec from `dei--parent-key'
-                   (-remove #'dei--key-has-more-than-one-modifier
-                            (dei--where-is #'insert-char)))))))
+     ;; have relocated it (prolly smart).
+     ;; HACK For some reason, the actual C-x 8 does not identify as bound to
+     ;; iso-transl-ctl-x-8-map, so we hardcode it.
+     (string-match-p (rx bol "C-x 8") (dei--get-parent keydesc))
+     ;; HACK Disgusting.  Since there are key-sequences within that map, such
+     ;; as C-x 8 1 / 4, we have to do a string-match on the keydesc instead of
+     ;; simply consulting dei--parent-key.  In addition, since that map may be
+     ;; bound several places, we have to check against all of those possible
+     ;; places.  We can't even content ourselves with looking for the "Keyboard
+     ;; Macro" binding since there is one actual non-keyboard macro bound
+     ;; within it (insert-char).  We also can't just look at where that command
+     ;; is bound, because user may have mapped only that command somewhere,
+     ;; e.g. Doom Emacs has it on <leader> i u, witout iso-transl-ctl-x-8-map.
+     (when-let ((places (dei--where-is #'iso-transl-ctl-x-8-map)))
+       (not (null (-non-nil
+                   (cl-loop for place in places
+                            collect (when (string-match-p (concat "^" place)
+                                                          keydesc)
+                                      keydesc)))))))))
+
+(defun dei--filter-for-submap (cell)
+  "Filter for bindings to sub-keymaps.
+CELL comes in the form returned by `dei--scan-current-bindings'."
+  (or (equal "Prefix Command" (cdr cell))
+      ;; (null (intern (cdr cell)))
+      (keymapp (intern (cdr cell)))))
 
 (defun dei--get-relevant-bindings ()
-  (->> (dei--current-bindings
-        nil
-        (rx (or
-             (regexp (eval-when-compile
-                       (regexp-opt
-                        '("ESC" ;; critical to filter out, represents M-combos
-                          "TAB" "DEL" "backspace" ;; one day, I will let unbind-illegal-keys handle these
-                          "<key-chord>" "<compose-last-chars>" "Scroll_Lock"
-                          "-margin>" "-fringe>" "iso-leftab" "iso-lefttab"
-                          "drag-n-drop" "wheel-"
-                          ))))
-             ;; "C-"
-             (seq string-start
-                  (or "<f1>"
-                      "C-h"  ;; user should fix this keymap emself
-                      ;; TODO: make hydras still, without unbinding violators
-                      (literal doom-leader-alt-key) ;; fulla Shift
-                      (literal doom-localleader-alt-key))))))
-       (-map (lambda (x)
-               (cons (dei--normalize (car x))
-                     (cdr x))))
-       (seq-sort-by #'car #'string-lessp)
-       (seq-sort-by #'dei--binding-key-seq-steps-length #'>)
-       (setq dei--current-bindings)
-       ;; Remove submaps, we infer their existence later by cutting the leafs
-       ;; off every actual key via (-uniq (-map #'dei--drop-leaf KEYS)).
-       (-remove (lambda (x)
-                  (or (string= "Prefix Command" (cdr x))
-                      (null (intern (cdr x)))
-                      (keymapp (intern (cdr x))))))
-       (-remove #'dei--car-is-illegal-key)
-       (-remove #'dei--filter-for-hydra-making)
-       (setq dei--current-filtered-bindings)))
+  (let* ((bindings
+         (dei--scan-current-bindings
+          nil
+          (rx (or
+               (regexp (eval-when-compile
+                         (regexp-opt
+                          '("ESC" ;; critical to filter out, represents M-combos
+                            "TAB" "DEL" "backspace" ;; one day, I will let unbind-illegal-keys handle these
+                            "<key-chord>" "<compose-last-chars>" "Scroll_Lock"
+                            "-margin>" "-fringe>" "iso-leftab" "iso-lefttab"
+                            "drag-n-drop" "wheel-"
+                            ))))
+               ;; "C-"
+               (seq string-start
+                    (or "<f1>"
+                        "C-h"  ;; user should fix this keymap emself
+                        ;; TODO: make hydras still, without unbinding violators
+                        (literal doom-leader-alt-key) ;; fulla Shift
+                        (literal doom-localleader-alt-key)))))))
+         (sorted-bindings
+          (seq-sort-by #'dei--binding-key-seq-steps-length #'> bindings)))
 
-
-;; Dafuq was I doing here?
-
-;; (advice-add #'read-key-sequence :around #'dei--kill-ctl)
-;; (advice-add #'read-event :override #'dei--kill-ctl)
-;; (advice-remove #'read-event #'dei--kill-ctl)
-;; (advice-add #'read-key-sequence :after #'dei--restore-ctl)
-
-;; (defun my-kill-ctl (&rest _)
-;;   (define-key input-decode-map (kbd "C-p") (kbd "p"))
-;;   _)
-
-;; (defun my-restore-ctl (&rest _)
-;;   (define-key input-decode-map (kbd "C-p") nil)
-;;   _)
-
-;; (defun dei--sort-bindings (bindings)
-;;   (declare (pure t) (side-effect-free t))
-;;   (seq-sort-by #'dei--binding-key-seq-steps-length #'<
-;;                (seq-sort-by #'car #'string-lessp bindings)))
+    (->> (setq dei--current-bindings sorted-bindings)
+         ;; Remove submaps, we infer their existence later by cutting the leafs
+         ;; off every actual key via (-uniq (-map #'dei--drop-leaf KEYS)).
+         (-remove #'dei--filter-for-submap)
+         (-remove #'dei--filter-for-illegal-key)
+         (-remove #'dei--filter-for-irrelevant-to-hydra)
+         (setq dei--current-filtered-bindings))))
+;; (dei--get-relevant-bindings)
 
 (defun dei--binding-key-seq-steps-length (x)
   (declare (pure t) (side-effect-free t))
@@ -1037,31 +1043,6 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
 
 (add-hook 'dei--after-scan-bindings-hook #'dei--unbind-illegal-keys -5)
 (add-hook 'dei--after-scan-bindings-hook #'dei--mass-remap 5)
-
-;; NOTE: Visualize a Venn diagram. The defunct and the new are the last and
-;;      current minus their intersection (cases where the key's definition
-;;      didn't change), which should never be relevant to look at.
-(defun dei--target-stems ()
-  (setq dei--defunct-bindings (-difference dei--last-filtered-bindings
-                                           dei--current-filtered-bindings))
-  (setq dei--new-or-changed-bindings (-difference dei--current-filtered-bindings
-                                                  dei--last-filtered-bindings))
-  (setq dei--defunct-stems
-        (->> dei--defunct-bindings
-             (-map #'car)
-             (-map #'dei--drop-leaf)
-             (-remove #'string-empty-p) ;; keys like <insertchar> have "" stem
-             (-uniq)))
-  (setq dei--new-or-changed-stems
-        (->> dei--new-or-changed-bindings
-             (-map #'car)
-             ;; Sort to avail the most relevant hydras to the user soonest.
-             ;; Only matters if we run defhydra from an async loop.
-             ;; REVIEW: Is the direction correct, considering we'll use push?
-             (seq-sort-by #'dei--key-seq-steps-length #'>)
-             (-map #'dei--drop-leaf)
-             (-remove #'string-empty-p) ;; keys like <insertchar> have "" stem
-             (-uniq))))
 
 ;; Persistent variables helpful for debugging
 (defvar dei--keys-that-are-hydras nil)
@@ -1080,65 +1061,84 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
 
 (defvar dei--last-thread (cc:thread 0 nil))
 
-;; TODO: the cc:thread sets an input variable x which the compiler then cries
-;; about for unuse. can I contrive a way to use it?
+;; TODO: Since cc:thread wraps each form in an implicit lambda with an argument
+;; x (passed from the last form), the compiler cries about its disuse.  Can I
+;; contrive a way to use it?
+;;
 ;; FIXME: Deosnt' work
 (defun dei-generate-hydras-async ()
   "Regenerate hydras to match the local map."
   (interactive)
-  ;; Not sure if the cancellation is instant, so we'll safety-wrap with a timer.
+  ;; Not sure it cancels instantly, so we'll safety-wrap with a timer.
   (deferred:cancel dei--last-thread)
   (if (null (deferred:status dei--last-thread)) ;; i think null means still running
       ;; Wait and try again.
       (named-timer-run :deianira 1 nil #'dei-generate-hydras-async)
     (setq dei--last-thread
           (cc:thread 50
-            #'dei--get-rexclevant-bindings
+            #'dei--get-relevant-bindings
             (run-hooks 'dei--after-scan-bindings-hook)
             #'dei--get-relevant-bindings
-            #'dei--target-stems
+            ;; Target hydras
+            ;; ;; NOTE: Visualize a Venn diagram. The defunct and the new are the last and
+            ;;      current minus their intersection (cases where the key's definition
+            ;;      didn't change), which should never be relevant to look at.
+            (setq  dei--defunct-bindings (-difference dei--last-filtered-bindings
+                                                   dei--current-filtered-bindings)
+                   dei--new-or-changed-bindings (-difference dei--current-filtered-bindings
+                                                          dei--last-filtered-bindings)
+                   dei--defunct-stems
+                   (->> dei--defunct-bindings
+                        (-map #'car)
+                        (-map #'dei--drop-leaf)
+                        (-remove #'string-empty-p) ;; keys like <insertchar> have "" stem
+                        (-uniq))
+                   dei--new-or-changed-stems
+                   (->> dei--new-or-changed-bindings
+                        (-map #'car)
+                        ;; Sort to avail the most relevant hydras to the user soonest.
+                        ;; Only matters if we run defhydra from an async loop.
+                        ;; REVIEW: Is the direction correct, considering we'll use push?
+                        (seq-sort-by #'dei--key-seq-steps-length #'>)
+                        (-map #'dei--drop-leaf)
+                        (-remove #'string-empty-p) ;; keys like <insertchar> have "" stem
+                        (-uniq)))
             ;; Cache settings
-            (setq dei--colwidth (dei--colwidth-recalc)
-                  dei--filler (dei--filler-recalc)
-                  dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
-                  dei--hydra-keys-list (dei--hydra-keys-list-recalc))
-            ;; idk
-            (progn
-              (setq dei--live-stems (-difference dei--live-stems
-                                              dei--defunct-stems))
-              (setq dei--all-stems (-uniq (append dei--new-or-changed-stems
-                                               dei--live-stems)))
-              (setq dei--keys-that-are-hydras
-                    (-difference (-map #'s-trim-right dei--all-stems)
-                                 ;; subtract the root stems since they are still invalid
-                                 ;; keydescs, which is ok bc no hydra refers to them
-                                 '("C-" "M-" "s-" "H-" "A-"))))
-            ;; Draw blueprints
-            (deferred:loop (prog1 dei--new-or-changed-stems
-                             (setq dei--hydra-blueprints nil))
-              (lambda (stem)
+            (setq dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
+                  dei--hydra-keys-list (dei--hydra-keys-list-recalc)
+                  dei--colwidth (dei--colwidth-recalc)
+                  dei--filler (dei--filler-recalc)) ;; NOTE: must come after colwidth
+            ;; idk what to describe this step as
+            (setq dei--live-stems (-difference dei--live-stems
+                                            dei--defunct-stems)
+                  dei--all-stems (-uniq (append dei--new-or-changed-stems
+                                             dei--live-stems))
+                  dei--keys-that-are-hydras
+                  (-difference (-map #'s-trim-right dei--all-stems)
+                               ;; subtract the root stems since they are still invalid
+                               ;; keydescs, which is ok bc no hydra refers to them
+                               '("C-" "M-" "s-" "H-" "A-"))
+                  dei--hydra-blueprints nil)
+            ;; Draw blueprints (compute all the arguments we'll pass to defhydra)
+            (while dei--new-or-changed-stems
+              (let ((stem (pop dei--new-or-changed-stems)))
                 (push (dei--specify-dire-hydra stem
                                             (concat (dei--dub-from-key stem) "-nonum")
                                             t)
-                      dei--hydra-blueprints)))
-            ;; Draw more blueprints
-            (deferred:loop dei--new-or-changed-stems
-              (lambda (stem)
-                (push (dei--specify-dire-hydra stem
-                                            (dei--dub-from-key stem))
+                      dei--hydra-blueprints)
+                (push (dei--specify-dire-hydra stem (dei--dub-from-key stem))
                       dei--hydra-blueprints)))
             ;; Build hydras
-            ;; TODO: deferred loop maybe here too
             ;; REVIEW: is this condition reliable?
+            ;; TODO: deferred loop maybe here too
             ;; TODO: bake the condition into call-defhydra so it refuses only to
             ;;       redefine the very hydra that's active
             (unless (dei--hydra-active-p)
-              (cl-loop
-               for x in dei--hydra-blueprints
-               do (progn (dei--call-defhydra (cadr x) (cddr x))
-                         (push (car x) dei--live-stems)))
-              (setq dei--last-filtered-bindings dei--current-filtered-bindings))
-            (run-hooks 'dei--after-rebuild-hydra-hook)))))
+              (cl-loop for x in dei--hydra-blueprints
+                       do (progn (dei--call-defhydra (cadr x) (cddr x))
+                                 (push (car x) dei--live-stems)))
+              (setq dei--last-filtered-bindings dei--current-filtered-bindings)
+              (run-hooks 'dei--after-rebuild-hydra-hook))))))
 
 
 ;;;; Bonus functions for mass remaps
@@ -1256,11 +1256,7 @@ Optional argument KEYMAP means look only in that keymap."
       ;; (when-let (winner (assoc (intern (cdr x)) winners-with-keymaps))
       ;;  (dei--homogenize-binding-in-keymap (car winner) (cdr winner)))
       (dei--homogenize-binding (car x))))
-  (dei--execute-remap-actions dei--remap-actions)
-  )
-;; (dei--homogenize-binding "C-c C-c" 'org-mode-map)
-;; (dei--get-relevant-bindings)
-;; (dei--mass-remap)
+  (dei--execute-remap-actions dei--remap-actions))
 
 (defun dei--as-raw-keymap (keymap-or-keymapsym)
   "If KEYMAP-OR-KEYMAPSYM is a symbol, return its global value.
@@ -1647,7 +1643,7 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
   (setq dei--last-filtered-bindings nil)
   (dei--get-relevant-bindings)
   (dei--mass-remap)
-  ;; (dei--unbind-illegal-keys)
+  (dei--unbind-illegal-keys)
   (dei--get-relevant-bindings)
   (dei--target-stems)
   (dei--specify-dire-hydras)
