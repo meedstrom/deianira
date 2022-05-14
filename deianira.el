@@ -45,6 +45,10 @@
 
 ;;;; User settings
 
+(defgroup deianira
+  "Modifier-free pseudo-modal input."
+  :link '(info-link "(deianira)"))
+
 (defcustom dei-hydra-keys "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
   "Keys to show in hydra hint.  Length should be divisible by `dei-columns'.
 In other words, if you have 10 columns this can be 30
@@ -61,7 +65,7 @@ characters (or 44), and so on ..."
 
 (defcustom dei-colwidth-override nil
   "Character width of hydra hint. If nil, determine from frame."
-  :type 'number
+  :type 'sexp
   :group 'deianira)
 
 (defcustom dei-columns 10
@@ -89,7 +93,7 @@ Unused for now."
 (defcustom dei-quitter-keys
  '("<menu>"
     "C-g")
-  "Keys that kill the hydra."
+  "Keys guaranteed to kill the hydra."
   :type '(repeat string)
   :group 'deianira)
 
@@ -118,7 +122,7 @@ Unused for now."
     org-agenda
     org-roam-capture
     org-capture)
-  "Commands that kill the hydra.
+  "Commands guaranteed to kill the hydra.
 Note that you don't need to add commands that focus the
 minibuffer, as we slay the hydra automatically when minibuffer
 gets focus."
@@ -229,6 +233,7 @@ Assumes KEYDESC is normalized."
        (-map #'-last-item)
        (-intersection dei--all-shifted-symbols-list)))
 
+;; May be faster than `dei--key-is-permachord'
 (defun dei--key-seq-is-allchord (keydesc)
   "If sequence KEYDESC has a chord on every step. return t.
 Note that it does not check if it's the same chord every time.
@@ -497,7 +502,7 @@ Leaves alone the first step of the key sequence."
               keydesc)
         keydesc))))
 
-;; could be written simpler/more idiomatic
+;; could be written simpler (I just banged it out)
 (defun dei--key-is-permachord (keydesc)
   "Return t if KEYDESC looks like a permachord.
 Allows only one chord, such as C- or M- but not C-M-."
@@ -1073,13 +1078,17 @@ CELL comes in the form returned by `dei--get-relevant-bindings'."
 (defvar dei--all-stems nil)
 (defvar dei--changed-keymaps nil)
 (defvar dei--hydra-blueprints nil)
+;; (setq dei--hydra-blueprints nil)
 
 (defvar dei--last-thread (cc:thread 0 nil))
 
+;; TODO: the cc:thread sets an input variable x which the compiler then cries
+;; about for unuse. can I contrive a way to use it?
+;; FIXME: Deosnt' work
 (defun dei-generate-hydras-async ()
   "Regenerate hydras to match the local map."
   (interactive)
-  ;; Not sure how fast it cancels.
+  ;; Not sure if the cancellation is instant, so we'll safety-wrap with a timer.
   (deferred:cancel dei--last-thread)
   (if (null (deferred:status dei--last-thread)) ;; i think null means still running
       ;; Wait and try again.
@@ -1158,14 +1167,20 @@ matter the direction since there is no contest."
   :type 'boolean
   :group 'deianira)
 
-;; TODO: i'd prefer a format for each item being either a string or command
-;; KEY-OR-COMMAND, or the cell (KEYMAP . KEY-OR-COMMAND).  Keymap coming first
-;; means it's easier to get an overview in initfiles.
-(defcustom dei-homogenizing-winners '(("C-c C-c")
-                                 ("C-x a")
-                                 ("C-x g")
-                                 ("C-x b")
-                                 ("C-c C-c" . org-mode-map))
+(defcustom dei-homogenizing-winners
+  '(("C-c C-c")
+    ("C-x C-f")
+    ("C-x C-s")
+    ("C-x C-;")
+    ("C-x a")
+    ("C-x g")
+    ("C-x b")
+    ("C-x n")
+    ("C-x p")
+    ;; ("C-x r")
+    ;; ("C-x v")
+    ("M-g")
+    ("C-c C-c" . org-mode-map))
   "Alist of keys that always win the homogenizing battle.
 See `dei-permachord-wins-homogenizing' for explanation.
 
@@ -1177,15 +1192,16 @@ In the event that you add e.g. both (\"C-x C-f\") and
 (set-fill-column), normally a binding of C-x f, the first item
 wins, so C-x f will be bound to find-file regardless.
 
-If KEYMAP is nil, apply the winner in whichever keymap it is
-found in. Otherwise it should be a major or minor mode map. It
-will likely have no effect if it is a prefix command such as
-Control-X-prefix or kmacro-keymap."
+If KEYMAP is nil, apply the winner in whichever keymap where it
+or its (perma-chord or chord-once) sibling is found.  If non-nil,
+it should be a major or minor mode map.  It will likely have no
+effect if it is a named so-called prefix command such as
+Control-X-prefix or kmacro-keymap (you can find these with
+describe-function, whereas you can't find org-mode-map, as that's
+a proper mode map)."
   :type '(repeat sexp)
   :group 'deianira)
 
-(defvar winners-with-keymaps nil)
-(defvar dei--homowinners nil)
 (defvar dei--remap-actions nil
   "List of actions to pass to `define-key'.")
 
@@ -1218,43 +1234,13 @@ Optional argument KEYMAP means look only in that keymap."
 ;; (dei--get-relevant-bindings)
 ;; (dei--unbind-illegal-keys)
 ;; (dei--get-relevant-bindings)
-
-;;
-;;
-;; BUG: we clone C-x v (find-alternate-file) to C-x C-v, but we are also trying
-;; to clone C-x v x to C-x C-v C-x.
-;; How to respond?
-;; Case 1: C-x v is a winner, and none of the nested keys are. C-x v wins.
-;; Case 2: Some of the nested keys are winners, and C-x v isn't. The keymap wins.
-;; Case 3: Neither are winners. Follow the permachord-wins-flattening setting.
-
-;; The basic problem is that we don't even include "keymaps as commands" in the
-;; loop (too many issues), so the fn has no idea about a conflict. It doesn't
-;; help to include them anyway, we need to figure out some check out on a per
-;; key basis.
-
-;; I guess the check is that if the sibling-keydesc is unbound BUT has
-;; children (unexpected!), i.e. sibling-keydesc is a successful search pattern
-;; for some of the others in current-bindings ...
-;; Wait. We can just see that sibling-keydesc is bound to a keymap.
-
-
-;; (dei--get-relevant-bindings)
-;; (dei--unbind-illegal-keys)
-;; (dei--get-relevant-bindings)
 ;; (dei--mass-remap)
+;; (dei-reset)
 (defun dei--mass-remap ()
   (setq dei--remap-actions nil)
   (setq dei--remap-record nil)
-  (let ((winners-with-keymaps (-filter #'cdr dei-homogenizing-winners)))
-    ;; FIXME: What to do if we bind e.g. C-x C-k to a single command, overriding
-    ;; the keymap, and then the loop tries to operate on C-x C-k C-e?  Sort by
-    ;; length first, and that's not possible. But check on each iteration whether
-    ;; there are children, and skip if so.
-
-    ;; FIXME: What to do if we attempt to copy C-x C-k C-e to C-x k e, but it
-    ;; turns out that C-x k is bound to something?  Q: Why use current-bindings
-    ;; over current-filtered-bindings?
+  (let ((winners-sin-keymaps (-remove #'cdr dei-homogenizing-winners))
+        (winners-with-keymaps (-filter #'cdr dei-homogenizing-winners)))
     (dolist (x (-remove (lambda (y)
                           (or (not (dei--key-starts-with-modifier (car y)))
                               (string= "Prefix Command" (cdr y))
