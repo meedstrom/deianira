@@ -841,14 +841,9 @@ hydras."
                     collect `(,key nil :exit t)))
        ,@extras))))
 
-;; Tests
-;; (dei--specify-extra-heads "M-s ")
-;; (dei--specify-extra-heads "M-s M-")
-;; (dei--specify-extra-heads "M-")
-;; (dei--specify-extra-heads "M-" t)
-;; (setq foo (dei--specify-dire-hydra "M-s "))
-;; (dei--specify-invisible-heads "C-")
-;; (append nil (-map #'car (dei--specify-extra-heads "C-")))
+;; Test
+;; (dei--specify-extra-heads "C-x ")
+;; (dei--specify-dire-hydra "C-x " (dei--dub-from-key "C-x "))
 
 (defun dei--specify-dire-hydra (stem name &optional nonum-p)
   "The real magic kinda happens here."
@@ -877,10 +872,10 @@ hydras."
         (cl-loop
          for stem in dei--new-or-changed-stems
          append (list (dei--specify-dire-hydra stem
-                                               (dei--dub-from-key stem))
+                                            (dei--dub-from-key stem))
                       (dei--specify-dire-hydra stem
-                                               (concat (dei--dub-from-key stem) "-nonum")
-                                               t)))))
+                                            (concat (dei--dub-from-key stem) "-nonum")
+                                            t)))))
 
 ;; Final boss
 (defun dei--call-defhydra (name list-of-heads)
@@ -1346,26 +1341,22 @@ remappings.")
              (action nil))
 
         (cond
-         ;; We ended up here due to this type of situation: there exists
-         ;; a key C-x v x, and there exists a key C-x C-v. The failure
-         ;; strikes when we try to do this cloning:
-         ;;
-         ;; C-x C-v (this) to C-x v (sibling)
+         ;; We ended up here due to this type of situation: there exists a key
+         ;; C-x v x, and there exists a key C-x C-v (this-keydesc).  Meet
+         ;; failure if cloning to the sibling C-x v.
          ((or (keymapp sibling-command)
               (and (symbolp sibling-command)
                    (boundp sibling-command)
                    (keymapp (dei--as-raw-keymap sibling-command))))
           (warn "Sibling key %s binds to a keymap" sibling-keydesc))
 
-         ;; We ended up here due to this type of situation: there exists a
-         ;; key C-x v x we're taking as this-keydesc, and there exists key
-         ;; C-x C-v that is not a prefix key.  Attempting this cloning
-         ;; will fail:
-         ;;
-         ;; C-x v x (this) to C-x C-v C-x  (sibling)
+         ;; We ended up here due to this type of situation: there exists a key
+         ;; C-x v x (this-keydesc), and there exists key C-x C-v that is not a
+         ;; prefix key.  Meet failure if cloning to the sibling C-x C-v C-x.
          ((dei--key-seq-has-non-prefix-in-prefix sibling-keydesc)
           (warn "Sibling key %s is unbindable" sibling-keydesc))
 
+         ;; No problem, proceed.
          ((null sibling-command)
           (setq action (list (kbd sibling-keydesc)
                              this-command
