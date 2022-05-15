@@ -54,13 +54,22 @@
   (should (dei--key-starts-with-modifier "C-<f1> f"))
   (should-not (dei--key-starts-with-modifier "<f1> C-f"))
 
-  ;; (should (equal (dei--get-parent "C-x ") #'dei-control/body))
-  ;; (should (equal (dei--get-parent "M-x ") #'dei-meta/body))
-  ;; (should (equal (dei--get-parent "s-x ") #'dei-super/body))
-  ;; (should (equal (dei--get-parent "s-x a") nil))
-  ;; (should (equal (dei--get-parent "s-x a ") #'dei-sx/body))
-  ;; ;; (should (equal (dei--get-parent "s-x <print>") nil)) ;; probably not a major problem
-  ;; (should (equal (dei--get-parent "s-x <print> ") #'dei-sx/body))
+  (should (equal (dei--dub-hydra-from-key "C-x ") "dei-Cx"))
+  (should (equal (dei--hydra-from-stem "C-x ") #'dei-Cx/body))
+
+  (should (equal (dei--parent-hydra "C-x ") #'dei-C/body))
+  (should (equal (dei--parent-hydra "M-x ") #'dei-M/body))
+  (should (equal (dei--parent-hydra "s-x ") #'dei-s/body))
+  (should (equal (dei--parent-hydra "s-x a ") #'dei-sx/body))
+  (should-error (dei--parent-hydra "s-x a") nil)
+
+  (should (equal (dei--parent-stem "C-x ") "C-"))
+  (should (equal (dei--stem-to-parent-keydesc "C-x ") "C-x"))
+
+  ;; debatable if it should have these effects or be named this way
+  (should (equal (dei--parent-key "C-x ") "C-x"))
+  (should (equal (dei--parent-key "C-x C-") "C-x"))
+  (should (equal (dei--parent-key "C-x C-x") "C-x"))
 
   (should (equal "C-x k e" (dei--ensure-chordonce "C-x C-k C-e")))
   (should (equal "x k e" (dei--ensure-chordonce "x C-k C-M-e")))
@@ -162,7 +171,18 @@
   (should (equal (dei--specify-extra-heads "C-x ")
                  '(("<backspace>" dei-control/body nil :exit t))))
   (should (equal (dei--specify-extra-heads "C-")
-                 '(("<backspace>" nil nil :exit t) ("<f35>" nil nil :exit t)))))
+                 '(("<backspace>" nil nil :exit t) ("<f35>" nil nil :exit t))))
+
+  ;; Tests
+;; (dei--specify-extra-heads "M-s ")
+;; (dei--specify-extra-heads "M-s M-")
+;; (dei--specify-extra-heads "M-")
+;; (dei--specify-extra-heads "M-" t)
+;; (setq foo (dei--specify-dire-hydra "M-s "))
+;; (dei--specify-invisible-heads "C-")
+;; (append nil (-map #'car (dei--specify-extra-heads "C-")))
+
+  )
 
 
 (ert-deftest homogenizing ()
