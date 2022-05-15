@@ -125,7 +125,7 @@ Unused for now."
   "Commands guaranteed to kill the hydra.
 Note that you don't need to add commands that focus the
 minibuffer, as we slay the hydra automatically when minibuffer
-gets focus."
+gets focus. (2022-05-15: no)"
   :type '(repeat symbol)
   :group 'deianira)
 
@@ -1573,9 +1573,12 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
     (setq hydra-deactivate t)
     (call-interactively #'hydra-keyboard-quit))
   args)
-;; (advice-add #'selectrum-read :before #'dei--slay)
-;; (advice-remove #'selectrum-read #'dei--slay)
 
+;; unused
+;; I meant to put this on window-buffer-change-functions, but it will run even
+;; when you do nothing but call a hydra. and the result is you can never run
+;; hydra in minibuffer.  I just want it slain when entering the minibuffer, but
+;; not the whole time it's active.
 (defun dei--slay-if-minibuffer (&rest args)
   "Slay any hydra if the minibuffer is active."
   (when (or (minibufferp)
@@ -1618,17 +1621,23 @@ settings."
       (progn
         ;; Does not work for the consult-* functions with selectrum-mode.
         ;; It's ok because they ignore the hydra and let you type, but why?
-        (add-hook 'window-buffer-change-functions #'dei--slay-if-minibuffer)
+        ;; (add-hook 'window-buffer-change-functions #'dei--slay-if-minibuffer)
         (setq dei--old-hydra-cell-format hydra-cell-format)
         (setq dei--old-hydra-base-map-C-u (lookup-key hydra-base-map (kbd "C-u")))
         (setq hydra-cell-format "% -20s %% -11`%s")
         (define-key hydra-base-map (kbd "C-u") nil)
+        (advice-add #'completing-read :before #'dei--slay)
+        ;; Untested
+        ;; (advice-add #'ivy-read :before #'dei--slay)
+        ;; (advice-add #'helm :before #'dei--slay)
+
         (when (null dei--live-stems)
-          (dei-reset)))
+          (dei-generate-hydras-async)))
 
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") dei--old-hydra-base-map-C-u)
-    (remove-hook 'window-buffer-change-functions #'dei--slay-if-minibuffer)))
+    (advice-remove #'completing-read #'dei--slay)
+    ))
 
 (provide 'deianira)
 ;;; deianira.el ends here
