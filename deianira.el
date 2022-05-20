@@ -432,12 +432,12 @@ Leaves alone the first step of the key sequence."
                  (butfirst-steps (cdr steps))
                  (butfirst-steps-corrected
                   (-map (lambda (step)
-                         (if (dei--chord-match step)
-                             (progn
-                               (setq chord-found t)
-                               step)
-                           (concat root-modifier step)))
-                       butfirst-steps)))
+                          (if (dei--chord-match step)
+                              (progn
+                                (setq chord-found t)
+                                step)
+                            (concat root-modifier step)))
+                        butfirst-steps)))
             (and chord-found
                  (not (dei--key-seq-is-strict-permachord keydesc))
                  (warn "Maybe found bastard sequence: %s" keydesc))
@@ -456,7 +456,7 @@ For that, see `dei--key-mixes-modifiers'."
   (--all-p (string-match-p dei--modifier-regexp-safe it)
            (dei--key-seq-split keydesc)))
 
-;; could be written simpler (I just banged it out)
+;; could probs be simpler (I just banged it out)
 (defun dei--key-seq-is-strict-permachord (keydesc)
   "Return t if KEYDESC looks like a permachord.
 Allows only one chord, such as C- or M- but not C-M-."
@@ -485,6 +485,7 @@ Allows only one chord, such as C- or M- but not C-M-."
 ;; function `describe-buffer-bindings' seems the only builtin way to get this
 ;; information efficiently.  Inspired by `which-key--get-current-bindings' (as
 ;; it was in 2020, they use a different mechanism as of 2022).  Thanks!
+;; TODO: Maybe use which-key--get-bindings, which is faster
 (defun dei--scan-current-bindings (&optional keep flush test)
   "Get the list of all currently active bindings.
 This ignores those masked by other keymaps, returning only the
@@ -548,7 +549,7 @@ developer inspection."
                     (match-string 2))
               result)))
     result))
-;; (setq foo (dei--scan-current-bindings nil nil 'test))
+;; (setq foo (dei--scan-current-bindings nil))
 
 
 ;;;; Library
@@ -597,7 +598,7 @@ It does not fail if CMD is a keymap, check that separately."
             "-nonum/body")))
   (hydra--negative-argument arg))
 
-;; unused
+;; untested
 (defun dei--call-and-return-to-root (keydesc)
   "Nice in some cases, like C-c C-c for which it's often
 desirable to end up in the Control root hydra rather than exit
@@ -637,17 +638,6 @@ you want to be able to type nccnccnccncc."
   (if-let ((parent (dei--parent-hydra (dei--drop-leaf keydesc))))
       (funcall parent)
     (hydra-keyboard-quit)))
-
-;; unused
-(defun dei-cmd (stem leaf)
-  (key-binding (kbd (concat stem leaf))))
-
-;; unused
-(defun dei--is-unbound (stem leaf)
-  (null (dei-cmd stem leaf)))
-
-;; unused
-(defalias #'dei--is-bound #'dei-cmd)
 
 
 ;;;; Hydra blueprinting
@@ -689,7 +679,11 @@ you want to be able to type nccnccnccncc."
 ;; Different types of full heads
 
 (defun dei--head (stem leaf)
-  "Return a hydra head specification (sexp), see `defhydra'."
+  "Return a hydra head specification (sexp), see `defhydra'.
+Strings STEM and LEAF concatenate to form a key description
+satisfying `key-valid-p' (Emacs 29 function), and string LEAF is
+a single unchorded key, typically one character but can also be a
+named event such as <return>."
   `( ,leaf
      ,(dei--head-arg-cmd stem leaf)
      ,(dei--head-arg-hint stem leaf)
@@ -722,7 +716,7 @@ you want to be able to type nccnccnccncc."
                    :exit t))))
 
 (defun dei--specify-visible-heads (stem &optional verboten-leafs)
-    "Return a list of heads that will be shown in the hydra hint.
+  "Return a list of heads that will be shown in the hydra hint.
 These are for the hydra imaged by STEM, which is combined with
 various leafs, see function body.
 
@@ -748,12 +742,21 @@ Optional argument VERBOTEN-LEAFS, a list of strings such as
             (cl-loop for leaf in  '("<left>" "<right>" "<up>" "<down>"
                                     "=" "\\" "'" "`")
                      collect (dei--head-invisible stem leaf))
-            ;; TODO: let simple un-binding take care of this? Makes the
-            ;; blueprints smaller. Although not everyone wants to un-bind.
+            ;; For these keys, we want the hydra to exit, so we need to add
+            ;; heads so that we can set :exit t. (We design hydras with default
+            ;; :exit nil for foreign keys, because otherwise we'd need a lot
+            ;; more heads in order to set :exit nil for them.)  As for the
+            ;; command within these heads, the naive approach is bind to nil,
+            ;; but we prefer to self-insert at the same time otherwise user has
+            ;; to press twice.  So we bind directly to self-insert-command.  An
+            ;; alternative, our usual head-arg-cmd, is not necessary if we've
+            ;; anyway decided to self-insert --- although if all shiftsyms were
+            ;; unbound in all keymaps, it'd work the same.
             (cl-loop for leaf in (append dei--all-shifted-symbols-list
                                          '("<SPC>" "<RET>"))
                      collect (dei--head-invisible-self-inserting-stemless stem leaf))
-            (cl-loop for leaf in '("<menu>" "C-g") ;; use dei-quitter-keys
+            ;; TODO: maybe eliminate this now that we have dei-quitter-keys
+            (cl-loop for leaf in '("<menu>" "C-g")
                      collect (dei--head-invisible-exiting-stemless stem leaf)))))
     (-remove (lambda (head)
                (member (car head) verboten-leafs))
@@ -767,8 +770,8 @@ Basically, change `dei-universal-argument' to
          (list (car head) 'hydra--universal-argument))
         ((eq (cadr head) 'dei-negative-argument)
          (list (car head) 'hydra--negative-argument))
-         (t
-          head)))
+        (t
+         head)))
 
 (defun dei--specify-extra-heads (stem &optional nonum-p)
   "For a hydra imaged by STEM, return some bonus heads for it.
@@ -858,12 +861,8 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
 
      ;; Detect e.g. <f1> C-f.
      (and (not (dei--key-starts-with-modifier keydesc))
-          (string-match-p dei--modifier-regexp-safe keydesc))
-     )))
+          (string-match-p dei--modifier-regexp-safe keydesc)))))
 
-;; TODO: do not unbind C-M- keys (just don't bother to make hydra; for thata
-;; clone C-M- to s- and then make hydra)
-;; TODO: remove unbound binding from current-bindings
 (defun dei--unbind-illegal-keys ()
   "Unbind keys that match `dei--filter-for-illegal-key'."
   (let* ((illegal-keys (->> dei--current-bindings
@@ -1894,7 +1893,8 @@ settings."
 
 ;; User config
 (add-hook 'keymap-found-hook #'dei--define-super-like-ctlmeta)
-(push '((" .-." . nil) . t) which-key-replacement-alist)
+(after! which-key
+  (push '((" .-." . nil) . t) which-key-replacement-alist))
 
 (provide 'deianira)
 ;;; deianira.el ends here
