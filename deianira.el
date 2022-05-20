@@ -73,27 +73,31 @@ characters (or 44), and so on ..."
   :type 'number
   :group 'deianira)
 
-;; TODO: use it
 (defcustom dei-pseudo-quitter-keys
   '("C-c c")
   "Keys that send you to the root hydra.
-Unused for now."
+
+Note that if you use the mass remapper, the hydras are generated
+afterwards, consulting this list then.  So it is safe to only
+refer to e.g. \"C-c c\" even if it's a clone of \"C-c C-c\"."
   :type '(repeat string)
   :group 'deianira)
 
-;; TODO: use it
 (defcustom dei-pseudo-quitter-commands
   '(set-mark-command
     rectangle-mark-mode)
-  "Commands that send you to the root hydra.
-Unused for now."
+  "Commands that send you to the root hydra."
   :type '(repeat symbol)
   :group 'deianira)
 
 (defcustom dei-quitter-keys
- '("<menu>"
+  '("<menu>"
     "C-g")
-  "Keys guaranteed to kill the hydra."
+  "Keys guaranteed to slay the hydra.
+
+Note that if you use the mass remapper, the hydras are generated
+afterwards, consulting this list then.  So it is safe to only
+refer to e.g. \"C-c c\" even if it's a clone of \"C-c C-c\"."
   :type '(repeat string)
   :group 'deianira)
 
@@ -101,6 +105,8 @@ Unused for now."
   '(keyboard-quit
     minibuffer-keyboard-quit
     keyboard-escape-quit
+    dei--call-and-return-to-root
+    dei--call-and-return-to-parent
     doom/escape
     doom/restart
     doom/restart-and-restore
@@ -122,10 +128,10 @@ Unused for now."
     org-agenda
     org-roam-capture
     org-capture)
-  "Commands guaranteed to kill the hydra.
+  "Commands guaranteed to slay the hydra.
 Note that you don't need to add commands that focus the
 minibuffer, as we slay the hydra automatically when minibuffer
-gets focus. (2022-05-15: no)"
+gets focus."
   :type '(repeat symbol)
   :group 'deianira)
 
@@ -133,7 +139,7 @@ gets focus. (2022-05-15: no)"
   '(("=" dei-universal-argument nil :exit t)
     ("-" dei-negative-argument nil :exit t)
     ("<f5>" hydra-repeat nil))
-  "Heads to add to every hydra."
+  "Heads to add to every hydra.  See `defhydra' for the format."
   :type '(repeat sexp)
   :group 'deianira)
 
@@ -179,14 +185,23 @@ string and start a new search on the cut string.")
 (defun dei--filler-recalc ()
   (make-string dei--colwidth (string-to-char " ")))
 
-(defvar dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc))
-(defvar dei--hydra-keys-list (dei--hydra-keys-list-recalc))
-(defvar dei--colwidth (dei--colwidth-recalc))
-(defvar dei--filler (dei--filler-recalc))
+(defvar dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
+  "Cache variable, not to be modified directly.
+Customize `dei-all-shifted-symbols' instead.")
+
+(defvar dei--hydra-keys-list (dei--hydra-keys-list-recalc)
+  "Cache variable, not to be modified directly.
+Customize `dei-hydra-keys' instead.")
+
+(defvar dei--colwidth (dei--colwidth-recalc)
+  "Cache variable, not to be modified directly.
+Customize `dei-colwidth-override' instead.")
+
+(defvar dei--filler (dei--filler-recalc)
+  "Cache variable, not to be modified directly.")
 
 
 ;;;; Handlers for key descriptions
-;; If it's not a pure function, it probably doesn't belong in this section.
 
 (defun dei--key-contains-multi-chords (keydesc)
   "Check if KEYDESC has C-M- or such simultaneous chords.
@@ -1077,7 +1092,7 @@ matter the direction since there is no contest."
 
 (defcustom dei-homogenizing-winners
   '(("C-c C-c")
-    ("C-x C-f")
+    ("C-x C-f") ;; FIXME: does not apply .. ??
     ("C-x C-s")
     ("C-x C-;")
     ("C-x a")
@@ -1113,35 +1128,128 @@ a proper mode map)."
 (defvar dei--remap-actions nil
   "List of actions to pass to `define-key'.")
 
-;; unused
-(defvar dei--known-keymaps nil
-  "List of maps we've seen since the mode's been active.")
+(defvar dei--reflect-actions nil
+  "List of actions to pass to `define-key'.")
 
-;; WIP POC.  What becomes obvious: need to scan each keymap for ctrl keys.
-;; Thankfully maybe don't need to bother to filter out, nor cooperate with,
-;; mixed modifiers.  Just regexp catch "C-", sub for "s-", and blindly bind.
-(defun dei-update-super-reflection ()
-;; (cl-loop for map in (current-active-maps)
-;;          do (dei--define map  CTL-KEY  SUPER-KEY))
-)
+(defvar dei--known-keymaps '(global-map)
+  "List of named keymaps seen while `deianira-mode' was active.")
+
+(defvar dei--super-reflected-keymaps nil
+  "List of keymaps worked on by `dei-reflect-ctl-in-super'.")
+
+(defvar dei--ctlmeta-reflected-keymaps nil
+  "List of keymaps worked on by `dei-reflect-ctlmeta-in-super'.")
+
+(defvar dei-keymap-found-hook nil
+  "What to do after adding keymaps to `dei--known-keymaps'.
+You may be interested in `dei-reflect-ctl-in-super' or
+`dei-reflect-ctlmeta-in-super' (but not both!).")
+
+(defun dei--record-new-keymap-maybe (&rest _)
+  (require 'help-fns)
+  (when-let* ((current-named-maps (-keep #'help-fns-find-keymap-name
+                                         (current-active-maps)))
+              (new-maps (-difference current-named-maps dei--known-keymaps)))
+    (setq dei--known-keymaps (append new-maps dei--known-keymaps))
+    (run-hooks 'dei-keymap-found-hook)))
+
+(defun dei-reflect-ctl-in-super ()
+  (cl-loop for map in (-difference dei--known-keymaps
+                                   dei--super-reflected-keymaps)
+           do (progn
+                (dei--define-super-like-ctl map)
+                (dei--execute-reflect-actions)
+                (push map dei--super-reflected-keymaps))))
+
+(defun dei-reflect-ctlmeta-in-super ()
+  (cl-loop for map in (-difference dei--known-keymaps
+                                   dei--ctlmeta-reflected-keymaps)
+           do (progn
+                (dei--define-super-like-ctlmeta map)
+                (dei--execute-reflect-actions)
+                (push map dei--ctlmeta-reflected-keymaps))))
+
+;; NOTE: Below function creates many superfluous mixed bindings like
+;; C-x s-k C-t
+;; C-x s-k s-t
+;; s-x s-k C-t
+;; s-x C-k C-t
+;; s-x C-k s-t
+;;
+;; The reason: it's because s-x is bound simply to Control-X-prefix, a keymap.
+;; In addition, C-x is also bound to that keymap. Inside that keymap you can
+;; find the key C-k and now also s-k...
+;;
+;; The way keymaps are designed, it's not possible to bind only C-x C-k C-t and
+;; s-x s-k s-t, at least when the prefixes within these key descriptions
+;; involve named keymaps.  Binding both of these keys means binding every
+;; possible combination.  It's annoying in describe-keymap output, but it is
+;; possible to hide the strange combinations from the which-key popup, see
+;; README.
+(defun dei--define-super-like-ctl (map)
+  (map-keymap
+   (lambda (event definition)
+     (let ((keydesc (key-description (vector event))))
+       (when (s-contains? "C-" keydesc)
+         (unless (s-contains? "s-" keydesc)
+           (push (list map (s-replace "C-" "s-" keydesc) definition)
+                 dei--reflect-actions)
+           (when (keymapp definition)
+             ;; Recurse!
+             (dei--define-super-like-ctl definition))))))
+   (if (keymapp map)
+       map
+     (symbol-value map))))
+
+(defun dei--define-super-like-ctlmeta (map)
+  (map-keymap
+   (lambda (event definition)
+     (let ((keydesc (key-description (vector event))))
+       (when (s-contains? "C-M-" keydesc)
+         (unless (s-contains? "s-" keydesc)
+           (push (list map (s-replace "C-M-" "s-" keydesc) definition)
+                 dei--reflect-actions)
+           (when (keymapp definition)
+             ;; Recurse!
+             (dei--define-super-like-ctlmeta definition))))))
+   (if (keymapp map)
+       map
+     (symbol-value map))))
+
+(defun dei--execute-reflect-actions ()
+  (cl-loop for arglist in dei--reflect-actions
+           do (seq-let (map key def) arglist
+                (define-key (if (keymapp map)
+                                map
+                              (symbol-value map))
+                  (kbd key)
+                  def))
+           finally (setq dei--reflect-actions nil)))
+
+;; (dei-reflect-ctl-in-super)
+;; (dei--update-super-reflection-2)
+;; (dei--record-new-keymap-maybe nil)
 
 ;; dev settings
 (general-auto-unbind-keys 'undo) ;; we shouldn't rely on general
 (remove-hook 'after-save-hook 'my-compile-and-drop)
 
-(defconst dei--ignore-keys
-  (regexp-opt '("mouse" "remap" "scroll-bar" "select" "switch" "help" "state"
+(defconst dei--ignore-keys-regexp
+  (regexp-opt '(;; declutter a bit (unlikely someone wants)
+                "help" "key-chord" "kp-"  "iso-" "wheel-" "menu"
+                ;; not interesting
+                "ESC" "compose" "Scroll_Lock" "drag-n-drop"
+                "mouse" "remap" "scroll-bar" "select" "switch" "state"
                 "which-key" "corner" "divider" "edge" "header" "mode-line"
-                "tab" "vertical-line" "frame" "open" "menu" "kp-" "iso-"
-                "wheel-"))
+                "vertical-line" "frame" "open"))
   "Regexp for some key bindings that don't interest us.")
 
 (defun dei--where-is (command &optional keymap)
-  "Find to which key COMMAND is bound.
+  "Find to which keys COMMAND is bound.
 Optional argument KEYMAP means look only in that keymap."
   (->> (where-is-internal command (when keymap (list keymap)))
        (-map #'key-description)
-       (--remove (string-match-p dei--ignore-keys it))
+       (--remove (string-match-p dei--ignore-keys-regexp it))
        (-map #'dei--normalize)))
 
 ;; to debug, eval each in turn, btw after-scan-bindings-hook won't run
@@ -1226,7 +1334,7 @@ remappings.")
             (dei--where-is key-or-cmd (symbol-value keymap))))
          (steps (dei--key-seq-split this-keydesc)))
     ;; REVIEW: what do if this-command is another keymap? This really can
-    ;; happen b/c this function is run taking user input as is.
+    ;; happen b/c this function takes user input as is.
     (when (and this-command
                this-keydesc
                (/= 1 (length steps)) ;; nothing to homogenize if length 1
@@ -1341,8 +1449,8 @@ and run this function on the results."
                                   chordonce-command
                                 permachord-command))
              (winners (->> dei-homogenizing-winners
-                               (-remove #'cdr) ;; drop items with a keymap
-                               (-map #'car)))
+                           (-remove #'cdr) ;; drop items with a keymap
+                           (-map #'car)))
              (action nil))
 
         (cond
@@ -1518,9 +1626,9 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
   "Like `define-key'."
   ;; for debug
   (dei--echo (list "Will call `define-key' with args:"
-                   "MAP"
-                   event
-                   new-def))
+                "MAP"
+                event
+                new-def))
   (progn
     (cl-assert (keymapp map))
     (let ((old-def (lookup-key map event)))
@@ -1535,7 +1643,7 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
                       (dei--keymap-children-keys old-def))))
           (dolist (child children-w-full-keydesc)
             (define-key map (kbd child) nil)))))
-      (define-key map event new-def)))
+    (define-key map event new-def)))
 
 
 ;;;; Main
@@ -1570,13 +1678,19 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
 (defvar dei--old-hydra-base-map-C-u nil
   "Backup for key-binding of \"C-u\" in `hydra-base-map'.")
 
+(declare-function #'dei-A/body "deianira" nil t)
+(declare-function #'dei-C/body "deianira" nil t)
+(declare-function #'dei-H/body "deianira" nil t)
+(declare-function #'dei-M/body "deianira" nil t)
+(declare-function #'dei-s/body "deianira" nil t)
+
 ;;;###autoload
 (define-minor-mode deianira-mode
   "Bind root hydras.
 In addition, configure window change hooks and certain hydra.el
 settings."
   :global t
-  :lighter " Δ"
+  :lighter " dei"
   :group 'deianira
   :keymap `((,(kbd "<katakana>") . dei-C/body)
             (,(kbd "<muhenkan>") . dei-M/body)
@@ -1608,14 +1722,20 @@ settings."
         ;; Untested
         ;; (advice-add #'ivy-read :before #'dei--slay)
         ;; (advice-add #'helm :before #'dei--slay)
-
+        ;; I want a hook that runs  when any minor mode is enabled
+        (add-hook 'window-buffer-change-functions #'dei--record-new-keymap-maybe)
         (when (null dei--live-stems)
           (dei-generate-hydras-async)))
 
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") dei--old-hydra-base-map-C-u)
+    (remove-hook 'window-buffer-change-functions #'dei--record-new-keymap-maybe)
     (advice-remove #'completing-read #'dei--slay)
     ))
+
+;; User config
+(add-hook 'keymap-found-hook #'dei--define-super-like-ctlmeta)
+(push '((" .-." . nil) . t) which-key-replacement-alist)
 
 (provide 'deianira)
 ;;; deianira.el ends here
