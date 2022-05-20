@@ -628,7 +628,7 @@ you want to be able to type nccnccnccncc."
   (call-interactively (key-binding (kbd keydesc)))
   (string-match (rx bol (regexp dei--modifier-regexp)) keydesc)
   (when-let ((root-modifier (match-string 0 keydesc)))
-    (intern (concat (dei--dub-hydra-from-key root-modifier) "/body"))))
+    (call-interactively (intern (concat (dei--dub-hydra-from-key-or-stem root-modifier) "/body")))))
 
 ;; unused
 (defun dei--call-and-return-to-parent (keydesc)
