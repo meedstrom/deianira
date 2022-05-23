@@ -35,12 +35,19 @@
 (require 'help)
 
 ;; external dependencies
+(require 'which-key)
 (require 'deferred)
-(require 'concurrent)
 (require 'dash)
 (require 's)
 (require 'hydra)
 (require 'named-timer)
+
+;; muffle the compiler
+(declare-function #'dei-A/body "deianira" nil t)
+(declare-function #'dei-C/body "deianira" nil t)
+(declare-function #'dei-H/body "deianira" nil t)
+(declare-function #'dei-M/body "deianira" nil t)
+(declare-function #'dei-s/body "deianira" nil t)
 
 
 ;;;; User settings
@@ -298,14 +305,16 @@ those, see `dei--key-contains-some'.  Does catch e.g. C-S-<RET>."
 (defun dei--normalize-wrap-leaf-maybe (x)
   (declare (pure t) (side-effect-free t))
   (let* ((leaf (car (last x)))
-         ;; REVIEW: `key-valid-p' names NUL, RET, TAB, LFD, ESC, SPC, DEL;
-         ;; should we allow all these or wrap them anyway?  I've only seen TAB
-         ;; behave different from <tab>.
-         (corrected-leaf (if (string= "TAB" leaf)
-                             leaf
-                           (if (< 1 (length leaf))
-                               (concat "<" leaf ">")
-                             leaf))))
+         (corrected-leaf
+          ;; See (info "(emacs) Named Ascii Chars"), or docstring of
+          ;; `key-valid-p' (Emacs 29).
+          (if (member leaf '("NUL" "RET" "TAB" "LFD" "ESC" "SPC" "DEL"))
+              leaf
+            (if (> (length leaf) 1)
+                ;; Fortunately, (length "\\") is 1, don't need a clause for
+                ;; that.  That leaves function keys as the only possibility.
+                (concat "<" leaf ">")
+              leaf))))
     (-snoc (butlast x) corrected-leaf)))
 
 (defun dei--normalize-build-segments (x)
@@ -372,7 +381,7 @@ stem is not.  Return t if true, else nil."
         (s-replace-regexp (rx " " (+ (regexp dei--modifier-regexp)) eol)
                           ""
                           stem)
-      (error "Non-stem passed to `dei--stem-to-keydesc': %s" stem))))
+      (error "Non-stem passed to `dei--stem-to-parent-keydesc': %s" stem))))
 
 (defun dei--drop-leaf (keydesc)
   "Chop the leaf off KEYDESC and return the resulting stem."
@@ -876,7 +885,7 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
         ;; in the apparently active map, and they get a null map. Check
         ;; dei--current-bindings, C-M-q and C-M-@ are in there
         (unless (null map)
-          (define-key (eval map t) (kbd keydesc) nil))))))
+          (define-key (eval map t) (kbd keydesc) nil t))))))
 
 (defun dei--filter-for-irrelevant-to-hydra (cell)
   "Filter for keys that are irrelevant when we make a hydra.
@@ -1800,7 +1809,7 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
                (--map (concat (key-description event) " " it)
                       (dei--keymap-children-keys old-def))))
           (dolist (child children-w-full-keydesc)
-            (define-key map (kbd child) nil)))))
+            (define-key map (kbd child) nil t)))))
     (define-key map event new-def)))
 
 
