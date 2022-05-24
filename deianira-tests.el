@@ -85,6 +85,12 @@
   (should-not (dei--key-is-permachord "C-M-x C-k C-M-n"))
   (should-not (dei--key-is-permachord "<f3> C-k C-M-n"))
 
+  (should (dei--immediate-child-p "C-x " "C-x f"))
+  (should (dei--immediate-child-p "C-x C-" "C-x C-f"))
+  ;; (should-not (dei--immediate-child-p "C-x C-" "C-x C-M-f"))
+  (should-not (dei--immediate-child-p "C-x C-" "C-x f"))
+  (should-not (dei--immediate-child-p "C-x C-" "C-x C-f f"))
+
   )
 
 (ert-deftest components-of:dei--normalize ()
