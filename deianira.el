@@ -22,7 +22,7 @@
 ;; Version: 0.1.0
 ;; Keywords: convenience emulations help
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (deferred "0.5.0") (concurrent "0.5.0") (named-timer "0.1") (dash) (s))
+;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (named-timer "0.1") (dash) (s))
 
 ;;; Commentary:
 
@@ -36,7 +36,6 @@
 
 ;; external dependencies
 (require 'which-key)
-(require 'deferred)
 (require 'dash)
 (require 's)
 (require 'hydra)
@@ -981,187 +980,189 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
 (defvar dei--hydra-blueprints nil)
 
 (defvar dei-lazy-p nil)
-(defvar dei--last-thread
-  ;; Initialize a stillborn thread so deferred:status returns OK.
-  (let ((foo (deferred:new)))
-    (deferred:nextc foo (lambda ()))
-    (deferred:callback foo)))
+(defvar dei--async-thread nil)
 
-;; FIXME: hydras now have horrific performance
-;; FIXME: sometimes just nothing happens for seemingly no reason
-;; TODO: maube use the try/catch/finally pattern
-;;       https://emacs-deferred.readthedocs.io/en/latest/deferred.html
+(defun dei--stage-1 ()
+  ;; What are the current buffer's bindings?
+  (setq dei--current-bindings (dei--get-relevant-bindings)))
+
+(defun dei--stage-2 ()
+  ;; Run hooks (typically containing mass remaps)
+  (when dei--after-scan-bindings-hook
+    (run-hooks 'dei--after-scan-bindings-hook)
+    ;; Scan again to stay up to date.
+    (setq dei--current-bindings (dei--get-relevant-bindings))))
+
+(defun dei--stage-3 ()
+  ;; Which bindings shall we make hydras with?
+  (setq dei--current-hydrable-bindings
+        (dei--filter-bindings-for-hydra dei--current-bindings))
+  (or dei--current-hydrable-bindings
+      (error "dei--current-hydrable-bindings empty")))
+
+(defun dei--stage-4-model-the-world ()
+  ;; TODO: test resizing frame
+  (when (and (or (not (equal dei--all-shifted-symbols-list
+                             (dei--all-shifted-symbols-list-recalc)))
+                 (not (equal dei--hydra-keys-list
+                             (dei--hydra-keys-list-recalc)))
+                 (not (equal dei--colwidth
+                             (dei--colwidth-recalc))))
+             (not dei-lazy-p))
+    ;; Force full regeneration of all hydras, to keep them consistent.
+    ;; Most common case is resizing frame, which leads to hydra hints
+    ;; that poorly fit the frame unless we update them all. NOTE:
+    ;; You're in for a bad time if you have frames of different widths
+    ;; at the same time... User should set `dei-colwidth-override'.
+    (setq dei--last-hydrable-bindings nil)
+    (setq dei--live-stems nil))
+
+  ;; Cache settings
+  (setq
+   dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
+   dei--hydra-keys-list (dei--hydra-keys-list-recalc)
+   dei--colwidth (dei--colwidth-recalc)
+   dei--filler (dei--filler-recalc) ;; NOTE: must after colwidth
+   ;; dei--invisible-keys-list (dei--invisible-keys-list-recalc)
+   )
+
+  ;; Figure out what stems exist, and which to target for hydra making.
+  ;;
+  ;; Visualize a Venn diagram, with two circles for the LAST and CURRENT
+  ;; bindings. The defunct are somewhere in LAST, the new somewhere in CURRENT,
+  ;; but neither are in the circles' intersection (overlapping area), which
+  ;; should never be relevant to update, as they represent cases where the
+  ;; key's definition didn't change.
+  (setq
+   dei--defunct-bindings
+   (-difference dei--last-hydrable-bindings
+                dei--current-hydrable-bindings)
+   dei--new-or-changed-bindings
+   (-difference dei--current-hydrable-bindings
+                dei--last-hydrable-bindings))
+
+  (when (-any-p #'null dei--defunct-bindings)
+    (error "Nils found in `dei--defunct-bindings'"))
+
+  ;; BUG: did not proceed past this point on one iteration. That's a
+  ;; weird point to stop.
+  ;;
+  ;; To my knowledge, I haven't typed keyboard-quit all the times the
+  ;; chain quit unexpectedly, maybe deferred chains are just fragile
+  ;; and should bake in more automatic re-tries.  If that is true,
+  ;; re-calling this function should normally do the trick, but it
+  ;; doesn't tend to.
+  (setq
+   dei--defunct-stems
+   (->> dei--defunct-bindings
+        (-map #'car)
+        (-map #'dei--drop-leaf)
+        (-remove #'string-empty-p) ;; keys like <insert> have stem ""
+        (-uniq))
+   dei--new-or-changed-stems
+   (->> dei--new-or-changed-bindings
+        (-map #'car)
+        ;; Sort to avail the most relevant hydras to the user soonest.
+        (seq-sort-by #'dei--key-seq-steps-length #'>)
+        (-map #'dei--drop-leaf)
+        (-remove #'string-empty-p) ;; keys like <insert> have stem ""
+        (-uniq)))
+
+  (when (and (null dei--new-or-changed-stems)
+             (null dei--defunct-stems))
+    ;; Nothing new, we could explicitly stop here, but fortunately the rest of
+    ;; the thread will pass very quickly in this case.
+    (dei--echo (concat (current-time-string) ": No changed bindings")))
+
+  ;; Figure out dei--hydrable-prefix-keys, important in several
+  ;; functions indirectly called from the next stage.
+  (setq
+   dei--live-stems (-difference dei--live-stems
+                             dei--defunct-stems)
+   dei--all-stems (-uniq (append dei--new-or-changed-stems
+                              dei--live-stems))
+   dei--hydrable-prefix-keys
+   (-difference (-map #'dei--stem-to-parent-keydesc dei--all-stems)
+                ;; Subtract the root stems since they are still
+                ;; invalid keydescs, which is ok bc no hydra
+                ;; refers to them.
+                '("C-" "M-" "s-" "H-" "A-")))
+
+       ;; Wipe any blueprints from a previous done or half-done iteration.
+       (setq dei--hydra-blueprints nil)
+
+       ;; this is definitely an error condition
+       (when (and (null dei--new-or-changed-stems)
+                  (null dei--live-stems))
+         (error "Something is fucky")))
+
+;; Draw blueprints (compute all the arguments we'll pass to defhydra)
+;; I.e, transmute dei--new-or-changed-stems into dei--hydra-blueprints.
+(defun dei--stage-5-draw-blueprint ()
+  (when dei--new-or-changed-stems
+    (let ((stem (pop dei--new-or-changed-stems)))
+      (push (dei--specify-dire-hydra
+             stem
+             (concat (dei--dub-hydra-from-key-or-stem stem) "-nonum")
+             t)
+            dei--hydra-blueprints)
+      (push (dei--specify-dire-hydra
+             stem (dei--dub-hydra-from-key-or-stem stem))
+            dei--hydra-blueprints)))
+  (when dei--new-or-changed-stems ;; run again if more to do
+    (push #'dei--stage-5-draw-blueprint dei--async-thread)))
+
+;; TODO: use unwind-protect in case of keyboard-quit?
+(defun dei--stage-6-birth-dire-hydra ()
+  (when dei--hydra-blueprints
+    (let ((blueprint (pop dei--hydra-blueprints)))
+      (or blueprint
+          (error "Should not be null"))
+      (when (dei--try-birth-dire-hydra (cadr blueprint) (cddr blueprint))
+        ;; The lists of truth need to stay up to date while we work
+        ;; through the blueprints, because the work thread may be
+        ;; interrupted.  Even if it wasn't a deferred loop, god forbid
+        ;; it's interrupted by an error or a keyboard-quit.
+        (push (car blueprint) dei--live-stems)
+        (setq dei--last-hydrable-bindings
+              (--remove (dei--immediate-child-p (car blueprint) (car it))
+                        dei--last-hydrable-bindings))
+        (setq dei--last-hydrable-bindings
+              (append dei--last-hydrable-bindings
+                      (--filter (dei--immediate-child-p (car blueprint) (car it))
+                                dei--current-hydrable-bindings))))))
+  (when dei--hydra-blueprints
+    (push #'dei--stage-6-birth-dire-hydra dei--async-thread)))
+
+(defun dei--stage-7 ()
+  (setq dei--last-hydrable-bindings dei--current-hydrable-bindings) ;; prob unnecessary
+  (run-hooks 'dei--after-rebuild-hydra-hook))
+
+(defvar dei--async-thread-master-copy  #'(dei--stage-1
+                                       dei--stage-2
+                                       dei--stage-3
+                                       dei--stage-4-model-the-world
+                                       dei--stage-5-draw-blueprint
+                                       dei--stage-6-birth-dire-hydra
+                                       dei--stage-7))
+
 (defun dei-generate-hydras-async ()
-  "Regenerate hydras to match the local map."
+  "(Re)generate hydras to match the buffer bindings."
   (interactive)
-  (deferred:cancel dei--last-thread) ;; not sure it cancels instantly
-  (if (null (deferred:status dei--last-thread))
-      ;; Still runnning?  Wait and try again.
-      (named-timer-run :deianira 1 nil #'dei-generate-hydras-async)
-    (setq
-     dei--last-thread
-     (deferred:$
-       (deferred:next
-         (lambda ()
-           ;; What are the current buffer's bindings?
-           (setq dei--current-bindings (dei--get-relevant-bindings))))
-       (deferred:error it (lambda (message) (error "Stage 1 fail: %s" message)))
-       (deferred:nextc it
-         (lambda ()
-           ;; Run hooks (typically containing mass remaps)
-           (when dei--after-scan-bindings-hook
-             (run-hooks 'dei--after-scan-bindings-hook)
-             ;; Scan again to stay up to date.
-             (setq dei--current-bindings (dei--get-relevant-bindings)))))
-       (deferred:error it (lambda (message) (error "Stage 2 fail: %s" message)))
-       (deferred:nextc it
-         (lambda ()
-           ;; Which bindings shall we make hydras with?
-           (setq dei--current-hydrable-bindings
-                 (dei--filter-bindings-for-hydra dei--current-bindings))))
-       (deferred:error it (lambda (message) (error "Stage 3 fail: %s" message)))
-       (deferred:nextc it
-         (lambda ()
-           ;; TODO: test resizing frame
-           (when (and (or (not (equal dei--all-shifted-symbols-list
-                                      (dei--all-shifted-symbols-list-recalc)))
-                          (not (equal dei--hydra-keys-list
-                                      (dei--hydra-keys-list-recalc)))
-                          (not (equal dei--colwidth
-                                      (dei--colwidth-recalc))))
-                      (not dei-lazy-p))
-             ;; Force full regeneration of all hydras, to keep them consistent.
-             ;; Most common case is resizing frame, which leads to hydra hints
-             ;; that poorly fit the frame unless we update them all. NOTE:
-             ;; You're in for a bad time if you have frames of different widths
-             ;; at the same time... User should set `dei-colwidth-override'.
-             (setq dei--last-hydrable-bindings nil)
-             (setq dei--live-stems nil))
-
-           ;; Cache settings
-           (setq
-             dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
-             dei--hydra-keys-list (dei--hydra-keys-list-recalc)
-             dei--colwidth (dei--colwidth-recalc)
-             dei--filler (dei--filler-recalc) ;; NOTE: must after colwidth
-             ;; dei--invisible-keys-list (dei--invisible-keys-list-recalc)
-             )
-
-            ;; Figure out stems to target for hydra making.
-            ;;
-            ;; Visualize a Venn diagram. The defunct and the new are somewhere
-            ;; in the LAST or CURRENT circles but not in their intersection
-            ;; (cases where the key's definition didn't change), which should
-            ;; never be relevant to look at.
-           (setq
-            dei--defunct-bindings
-            (-difference dei--last-hydrable-bindings
-                         dei--current-hydrable-bindings)
-            dei--new-or-changed-bindings
-            (-difference dei--current-hydrable-bindings
-                         dei--last-hydrable-bindings))
-
-           (when (-any-p #'null dei--defunct-bindings)
-             (error "Nils found in `dei--defunct-bindings'"))
-
-           ;; BUG: did not proceed past this point on one iteration. That's a
-           ;; weird point to stop.
-           ;;
-           ;; To my knowledge, I haven't typed keyboard-quit all the times the
-           ;; chain quit unexpectedly, maybe deferred chains are just fragile
-           ;; as hell and should bake in more automatic re-tries.
-           (setq
-            dei--defunct-stems
-            (->> dei--defunct-bindings
-                 ;; Workaround a bug that made this '(nil nil nil nil), which
-                 ;; is probably fixed by now.
-                 (-non-nil)
-                 (-map #'car)
-                 (-map #'dei--drop-leaf)
-                 (-remove #'string-empty-p) ;; keys like <insert> have stem ""
-                 (-uniq))
-            dei--new-or-changed-stems
-            (->> dei--new-or-changed-bindings
-                 (-map #'car)
-                 ;; Sort to avail the most relevant hydras to the user soonest.
-                 (seq-sort-by #'dei--key-seq-steps-length #'>)
-                 (-map #'dei--drop-leaf)
-                 (-remove #'string-empty-p) ;; keys like <insert> have stem ""
-                 (-uniq)))
-
-            ;; Figure out dei--hydrable-prefix-keys, important in several
-            ;; functions indirectly called from the next stage.
-           (setq
-            dei--live-stems (-difference dei--live-stems
-                                         dei--defunct-stems)
-            dei--all-stems (-uniq (append dei--new-or-changed-stems
-                                          dei--live-stems))
-            dei--hydrable-prefix-keys
-            (-difference (-map #'dei--stem-to-parent-keydesc dei--all-stems)
-                         ;; Subtract the root stems since they are still
-                         ;; invalid keydescs, which is ok bc no hydra
-                         ;; refers to them.
-                         '("C-" "M-" "s-" "H-" "A-")))
-
-           ;; Wipe any blueprints from a previous done or half-done iteration.
-           (setq dei--hydra-blueprints nil)
-
-           ;; this is definitely an error condition
-           (when (and (null dei--new-or-changed-stems)
-                      (null dei--live-stems))
-             (error "Something is fucky"))))
-
-       (deferred:error it (lambda (message) (error "Stage 4 fail: %s" message)))
-
-       ;; NOTE: deferred:loop actually works too.  Something else is causing us
-       ;; to rarely get past this point.
-
-       ;; Draw blueprints (compute all the arguments we'll pass to defhydra)
-       (deferred:nextc it
-         (deferred:lambda (_)
-           (if dei--new-or-changed-stems
-               (deferred:nextc
-                 (let ((stem (pop dei--new-or-changed-stems)))
-                   (push (dei--specify-dire-hydra
-                          stem
-                          (concat (dei--dub-hydra-from-key-or-stem stem) "-nonum")
-                          t)
-                         dei--hydra-blueprints)
-                   (push (dei--specify-dire-hydra
-                          stem (dei--dub-hydra-from-key-or-stem stem))
-                         dei--hydra-blueprints)
-                   (deferred:wait 50))
-                 ;; a magic word known to `deferred:lambda'
-                 self))))
-       (deferred:error it (lambda (message) (error "Stage 5 fail: %s" message)))
-       
-       ;; Build hydras
-       ;; NOTE: untested
-       ;; (push (dei--specify-dire-hydra "C-x " (dei--dub-hydra-from-key-or-stem "C-x ")) dei--hydra-blueprints)
-       ;; (push (dei--specify-dire-hydra "C-" (dei--dub-hydra-from-key-or-stem "C-")) dei--hydra-blueprints)
-       ;; (dei--try-birth-dire-hydra (cadr (car dei--hydra-blueprints)) (cddr (car dei--hydra-blueprints)))
-       (deferred:loop dei--hydra-blueprints
-         (lambda (blueprint)
-           ;; TODO: use unwind-protect in case of keyboard-quit?
-           (when (dei--try-birth-dire-hydra (cadr blueprint) (cddr blueprint))
-             ;; The lists of truth need to stay up to date while we work
-             ;; through the blueprints, because the work thread may be
-             ;; interrupted.  Even if it wasn't a deferred loop, god forbid
-             ;; it's interrupted by an error or a keyboard-quit.
-             (push (car blueprint) dei--live-stems)
-             (setq dei--last-hydrable-bindings
-                   (--remove (dei--immediate-child-p (car blueprint) (car it))
-                             dei--last-hydrable-bindings))
-             (setq dei--last-hydrable-bindings
-                   (append dei--last-hydrable-bindings
-                           (--filter (dei--immediate-child-p (car blueprint) (car it))
-                                     dei--current-hydrable-bindings))))))
-       (deferred:error it (lambda (message) (error "Stage 6 fail: %s" message)))
-       (deferred:nextc it
-         (lambda ()
-           (setq dei--last-hydrable-bindings dei--current-hydrable-bindings) ;; prob unnecessary
-           (run-hooks 'dei--after-rebuild-hydra-hook)))
-       (deferred:error it (lambda (message) (error "Stage 7 fail: %s" message)))))))
+  (if (null dei--async-thread)
+      ;; No next steps in chain.  Reset for the next time this function is
+      ;; called, and stop here this time so we don't re-run endlessly.
+      (setq dei--async-thread dei--async-thread-master-copy)
+    (condition-case err
+        (progn
+          (funcall (pop dei--async-thread))
+          (named-timer-idle-run 'deianira-chain .5 nil #'dei-generate-hydras-async))
+      ((error quit)
+       ;; If chain interrupted, reset to start from the beginning next time.
+       (setq dei--async-thread dei--async-thread-master-copy)
+       (named-timer-cancel 'deianira-chain)
+       ;; Now go ahead and signal the error as if we hadn't wrapped it.
+       (signal (car err) (cdr err))))))
 
 (defun dei--immediate-child-p (stem keydesc)
   (declare (pure t) (side-effect-free t))
@@ -1174,6 +1175,7 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
   (interactive)
   (setq dei--last-hydrable-bindings nil)
   (setq dei--live-stems nil)
+  (setq dei--async-thread dei--async-thread-master-copy)
   (dei-generate-hydras-async))
 
 ;; (dei-generate-hydras-async)
@@ -1722,19 +1724,21 @@ settings."
 
   (if deianira-mode
       (progn
+        (setq dei--async-thread dei--async-thread-master-copy)
         (setq dei--old-hydra-cell-format hydra-cell-format)
         (setq dei--old-hydra-C-u (lookup-key hydra-base-map (kbd "C-u")))
         (setq hydra-cell-format "% -20s %% -11`%s")
         (define-key hydra-base-map (kbd "C-u") nil t)
         (advice-add #'completing-read :before #'dei--slay)
+        (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
-
         ;; Want a hook for when any major/minormode is enabled or maybe when a
         ;; non-temp buffer is created; this will have to do
         (add-hook 'window-buffer-change-functions #'dei--record-keymap-maybe)
         (dei-generate-hydras-async))
 
+    (named-timer-cancel 'deianira-chain)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") dei--old-hydra-C-u)
     (remove-hook 'window-buffer-change-functions #'dei--record-keymap-maybe)
