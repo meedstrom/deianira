@@ -1401,11 +1401,15 @@ unbindable."
   "Record of work done.")
 
 (defun dei--homogenize-key-in-keymap (keydesc keymap)
-  (let ((this-keydesc
+  "In KEYMAP, homogenize KEYDESC."
+  (let* ((this-keydesc
          (if (stringp keydesc)
              keydesc
            (error "String not passed: %s" keydesc)))
-        (this-cmd (lookup-key (symbol-value keymap) (kbd keydesc))))
+        (keymap (if (keymapp keymap)
+                    keymap
+                  (symbol-value keymap)))
+        (this-cmd (lookup-key keymap (kbd keydesc))))
     ;; REVIEW: what do if this-cmd is another keymap?
     (when (and this-cmd
                (functionp this-cmd)
@@ -1423,14 +1427,14 @@ unbindable."
              (permachord-cmd
               (if this-is-permachord-p
                   this-cmd
-                (lookup-key (symbol-value keymap) (kbd permachord-keydesc))))
+                (lookup-key keymap (kbd permachord-keydesc))))
              (chordonce-keydesc
               (if this-is-permachord-p
                   (dei--ensure-chordonce this-keydesc)
                 this-keydesc))
              (chordonce-cmd
               (if this-is-permachord-p
-                  (lookup-key (symbol-value keymap) (kbd chordonce-keydesc))
+                  (lookup-key keymap (kbd chordonce-keydesc))
                 this-cmd))
              (sibling-keydesc (if this-is-permachord-p
                                   chordonce-keydesc
@@ -1444,7 +1448,7 @@ unbindable."
              (winners-for-this-keymap (->> dei-homogenizing-winners
                                            (-filter #'cdr)
                                            (--filter (equal keymap (cdr it)))
-                                           (map #'car)))
+                                           (-map #'car)))
              (action nil))
 
         (cond
@@ -1559,16 +1563,17 @@ unbindable."
           (push action dei--remap-record))))))
 
 (defun dei--homogenize-keymap (map)
-  (map-keymap
-   (lambda (event definition)
-     (let ((keydesc (key-description (vector event))))
-       (dei--homogenize-key-in-keymap keydesc map)
-       (when (keymapp definition)
-         ;; Recurse!
-         (dei--homogenize-keymap definition))))
-   (if (keymapp map)
-       map
-     (symbol-value map))))
+  (let ((true-map (if (keymapp map)
+                      map
+                    (symbol-value map))))
+    (map-keymap
+     (lambda (event definition)
+       (let ((keydesc (key-description (vector event))))
+         (dei--homogenize-key-in-keymap keydesc true-map)
+         (when (keymapp definition)
+           ;; Recurse!
+           (dei--homogenize-keymap definition))))
+     true-map)))
 
 (defvar dei--homogenized-keymaps nil)
 
