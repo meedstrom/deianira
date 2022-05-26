@@ -185,7 +185,7 @@ stem is not.  Return t if true, else nil."
          (-map #'dei--normalize-build-segments)
          (s-join " "))))
 
-(defcustom dei-pseudo-quitter-keys
+(defcustom dei-quasiquitter-keys
   '("C-c c"
     "C-x l" ;; for testing
     )
@@ -199,7 +199,7 @@ refer to e.g. \"c-c c\" even if it's a clone of \"c-c c-c\"."
   :set (lambda (var new)
          (set-default var (-map #'dei--normalize new))))
 
-(defcustom dei-pseudo-quitter-commands
+(defcustom dei-quasiquitter-commands
   '(set-mark-command
     rectangle-mark-mode)
   "commands that send you to the root hydra."
@@ -633,8 +633,8 @@ you want to be able to type nccnccnccncc."
   "See `dei--head'."
   (cond ((member (concat stem leaf) dei--hydrable-prefix-keys)
          (dei--corresponding-hydra stem leaf))
-        ((or (member (key-binding (kbd (concat stem leaf))) dei-pseudo-quitter-commands)
-             (member (concat stem leaf) dei-pseudo-quitter-keys))
+        ((or (member (key-binding (kbd (concat stem leaf))) dei-quasiquitter-commands)
+             (member (concat stem leaf) dei-quasiquitter-keys))
          `(dei--call-and-return-to-root ,(concat stem leaf)))
         (t
          `(call-interactively (key-binding (kbd ,(concat stem leaf)))))))
@@ -661,9 +661,9 @@ you want to be able to type nccnccnccncc."
 
 (defun dei--head-arg-exit (stem leaf)
   "See `dei--head'."
-  (when (or (member (key-binding (kbd (concat stem leaf))) dei-pseudo-quitter-commands)
+  (when (or (member (key-binding (kbd (concat stem leaf))) dei-quasiquitter-commands)
             (member (key-binding (kbd (concat stem leaf))) dei-quitter-commands)
-            (member (concat stem leaf) dei-pseudo-quitter-keys)
+            (member (concat stem leaf) dei-quasiquitter-keys)
             (member (concat stem leaf) dei-quitter-keys)
             (member (concat stem leaf) dei--hydrable-prefix-keys)
             ;; Extra safety measure which could be upstreamed to Hydra
@@ -1679,18 +1679,6 @@ Note that these strings omit whatever prefix key led up to KEYMAP."
   (when (dei--hydra-active-p)
     (setq hydra-deactivate t)
     (call-interactively #'hydra-keyboard-quit))
-  args)
-
-;; unused
-;; I meant to put this on window-buffer-change-functions, but it will run even
-;; when you do nothing but call a hydra. and the result is you can never run
-;; hydra in minibuffer.  I just want it slain when entering the minibuffer, but
-;; not the whole time it's active.
-(defun dei--slay-if-minibuffer (&rest args)
-  "Slay any hydra if the minibuffer is active."
-  (when (or (minibufferp)
-            (string-match-p "magit:" (buffer-name))) ;; doesnt work i think
-    (dei--slay))
   args)
 
 (defvar dei--old-hydra-cell-format nil
