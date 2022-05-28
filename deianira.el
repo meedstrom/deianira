@@ -815,7 +815,7 @@ instead of anything else they may have been bound to."
 
 (defun dei--try-birth-dire-hydra (name list-of-heads)
   "Create a hydra named NAME with LIST-OF-HEADS.
-This will probably be called by `dei-generate-hydras-async',
+This will probably be called by `dei-generate-hydras',
 which see."
   ;; TODO: test running generate-hydras-async while in open hydra
   (if (eq hydra-curr-body-fn (intern name))
@@ -826,8 +826,7 @@ which see."
              (:columns ,dei-columns
               :exit nil
               :hint nil
-              :foreign-keys run
-              :body-pre (dei-generate-hydras-async))
+              :foreign-keys run)
              ,name
              ,@list-of-heads)
           t)))
@@ -984,28 +983,24 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
 (defvar dei--hydra-blueprints nil)
 
 (defvar dei-lazy-p nil)
-(defvar dei--async-thread nil)
+(defvar dei--async-chain nil)
 
-(defun dei--stage-1 ()
-  ;; What are the current buffer's bindings?
-  (setq dei--current-bindings (dei--get-relevant-bindings)))
+(defun dei--stage-1 (&optional _caller)
+  "What are the current buffer's bindings?"
+  (setq dei--current-bindings (dei--get-relevant-bindings))
+  (when (null dei--current-bindings)
+    (error "Variable empty: `dei--current-bindings'")))
 
-(defun dei--stage-2 ()
-  ;; Run hooks (typically containing mass remaps)
-  (when dei--after-scan-bindings-hook
-    (run-hooks 'dei--after-scan-bindings-hook)
-    ;; Scan again to stay up to date.
-    (setq dei--current-bindings (dei--get-relevant-bindings))))
-
-(defun dei--stage-3 ()
-  ;; Which bindings shall we make hydras with?
+(defun dei--stage-3 (&optional _caller)
+  "Which bindings shall we make hydras with?"
   (setq dei--current-hydrable-bindings
         (dei--filter-bindings-for-hydra dei--current-bindings))
-  (or dei--current-hydrable-bindings
-      (error "dei--current-hydrable-bindings empty")))
+  (when (null dei--current-hydrable-bindings)
+    (error "Variable empty: `dei--current-hydrable-bindings'")))
 
-(defun dei--stage-4-model-the-world ()
-  ;; TODO: test resizing frame
+(defun dei--stage-4-model-the-world (&optional _caller)
+  "Calculate things."
+  ;; TODO: test if resizing frame has desired effect
   (when (and (or (not (equal dei--all-shifted-symbols-list
                              (dei--all-shifted-symbols-list-recalc)))
                  (not (equal dei--hydra-keys-list
@@ -1022,13 +1017,10 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
     (setq dei--live-stems nil))
 
   ;; Cache settings
-  (setq
-   dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
-   dei--hydra-keys-list (dei--hydra-keys-list-recalc)
-   dei--colwidth (dei--colwidth-recalc)
-   dei--filler (dei--filler-recalc) ;; NOTE: must after colwidth
-   ;; dei--invisible-keys-list (dei--invisible-keys-list-recalc)
-   )
+  (setq dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
+        dei--hydra-keys-list (dei--hydra-keys-list-recalc)
+        dei--colwidth (dei--colwidth-recalc)
+        dei--filler (dei--filler-recalc))
 
   ;; Figure out what stems exist, and which to target for hydra making.
   ;;
@@ -1037,13 +1029,12 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
   ;; but neither are in the circles' intersection (overlapping area), which
   ;; should never be relevant to update, as they represent cases where the
   ;; key's definition didn't change.
-  (setq
-   dei--defunct-bindings
-   (-difference dei--last-hydrable-bindings
-                dei--current-hydrable-bindings)
-   dei--new-or-changed-bindings
-   (-difference dei--current-hydrable-bindings
-                dei--last-hydrable-bindings))
+  (setq dei--defunct-bindings
+        (-difference dei--last-hydrable-bindings
+                     dei--current-hydrable-bindings)
+        dei--new-or-changed-bindings
+        (-difference dei--current-hydrable-bindings
+                     dei--last-hydrable-bindings))
 
   (when (-any-p #'null dei--defunct-bindings)
     (error "Nils found in `dei--defunct-bindings'"))
@@ -1056,53 +1047,53 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
   ;; and should bake in more automatic re-tries.  If that is true,
   ;; re-calling this function should normally do the trick, but it
   ;; doesn't tend to.
-  (setq
-   dei--defunct-stems
-   (->> dei--defunct-bindings
-        (-map #'car)
-        (-map #'dei--drop-leaf)
-        (-remove #'string-empty-p) ;; keys like <insert> have stem ""
-        (-uniq))
-   dei--new-or-changed-stems
-   (->> dei--new-or-changed-bindings
-        (-map #'car)
-        ;; Sort to avail the most relevant hydras to the user soonest.
-        (seq-sort-by #'dei--key-seq-steps-length #'>)
-        (-map #'dei--drop-leaf)
-        (-remove #'string-empty-p) ;; keys like <insert> have stem ""
-        (-uniq)))
+  (setq dei--defunct-stems
+        (->> dei--defunct-bindings
+             (-map #'car)
+             (-map #'dei--drop-leaf)
+             (-remove #'string-empty-p) ;; keys like <insert> have stem ""
+             (-uniq))
+        dei--new-or-changed-stems
+        (->> dei--new-or-changed-bindings
+             (-map #'car)
+             ;; Sort to avail the most relevant hydras to the user soonest.
+             (seq-sort-by #'dei--key-seq-steps-length #'>)
+             (-map #'dei--drop-leaf)
+             (-remove #'string-empty-p) ;; keys like <insert> have stem ""
+             (-uniq)))
 
   (when (and (null dei--new-or-changed-stems)
              (null dei--defunct-stems))
-    ;; Nothing new, we could explicitly stop here, but fortunately the rest of
-    ;; the thread will pass very quickly in this case.
+    ;; Nothing new.  We could explicitly stop here, but the rest of
+    ;; the chain will pass very quickly in this case anyway.
     (dei--echo (concat (current-time-string) ": No changed bindings")))
 
   ;; Figure out dei--hydrable-prefix-keys, important in several
   ;; functions indirectly called from the next stage.
-  (setq
-   dei--live-stems (-difference dei--live-stems
-                             dei--defunct-stems)
-   dei--all-stems (-uniq (append dei--new-or-changed-stems
-                              dei--live-stems))
-   dei--hydrable-prefix-keys
-   (-difference (-map #'dei--stem-to-parent-keydesc dei--all-stems)
-                ;; Subtract the root stems since they are still
-                ;; invalid keydescs, which is ok bc no hydra
-                ;; refers to them.
-                '("C-" "M-" "s-" "H-" "A-")))
+  (setq dei--live-stems (-difference dei--live-stems
+                                     dei--defunct-stems)
+        dei--all-stems (-uniq (append dei--new-or-changed-stems
+                                      dei--live-stems))
+        dei--hydrable-prefix-keys
+        (-difference (-map #'dei--stem-to-parent-keydesc dei--all-stems)
+                     ;; Subtract the root stems since they are still
+                     ;; invalid keydescs, which is ok bc no hydra
+                     ;; refers to them.
+                     '("C-" "M-" "s-" "H-" "A-")))
 
-       ;; Wipe any blueprints from a previous done or half-done iteration.
-       (setq dei--hydra-blueprints nil)
+  ;; Clear the workbench from a previous done or half-done iteration.
+  (setq dei--hydra-blueprints nil)
 
-       ;; this is definitely an error condition
-       (when (and (null dei--new-or-changed-stems)
-                  (null dei--live-stems))
-         (error "Something is fucky")))
+  (when (and (null dei--new-or-changed-stems)
+             (null dei--live-stems))
+    (error "Something is fucky")))
 
-;; Draw blueprints (compute all the arguments we'll pass to defhydra)
-;; I.e, transmute dei--new-or-changed-stems into dei--hydra-blueprints.
-(defun dei--stage-5-draw-blueprint ()
+(defun dei--stage-5-draw-blueprint (&optional chainp)
+  "Draw blueprint for one of `dei--new-or-changed-stems'.
+In other words, we compute all the arguments we'll later pass to
+defhydra.  Pop a stem off the list `dei--new-or-changed-stems',
+transmute it into a blueprint, and push that onto the list
+`dei--hydra-blueprints'."
   (when dei--new-or-changed-stems
     (let ((stem (pop dei--new-or-changed-stems)))
       (push (dei--specify-dire-hydra
@@ -1113,20 +1104,23 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
       (push (dei--specify-dire-hydra
              stem (dei--dub-hydra-from-key-or-stem stem))
             dei--hydra-blueprints)))
-  (when dei--new-or-changed-stems ;; run again if more to do
-    (push #'dei--stage-5-draw-blueprint dei--async-thread)))
+  ;; Run again if more to do
+  (and chainp
+        dei--new-or-changed-stems
+        (push #'dei--stage-5-draw-blueprint dei--async-chain)))
 
 ;; TODO: use unwind-protect in case of keyboard-quit?
-(defun dei--stage-6-birth-dire-hydra ()
+(defun dei--stage-6-birth-dire-hydra (&optional chainp)
+  "Pass a blueprint to `defhydra', turning dry-run into wet-run.
+Each invocation pops one blueprint off `dei--hydra-blueprints'."
   (when dei--hydra-blueprints
     (let ((blueprint (pop dei--hydra-blueprints)))
       (or blueprint
           (error "Should not be null"))
       (when (dei--try-birth-dire-hydra (cadr blueprint) (cddr blueprint))
-        ;; The lists of truth need to stay up to date while we work
-        ;; through the blueprints, because the work thread may be
-        ;; interrupted.  Even if it wasn't a deferred loop, god forbid
-        ;; it's interrupted by an error or a keyboard-quit.
+        ;; Keep the lists of truth up to date while we work through the
+        ;; blueprints.  We may be interrupted by a million different things and
+        ;; don't want the lists to be wrong then.
         (push (car blueprint) dei--live-stems)
         (setq dei--last-hydrable-bindings
               (--remove (dei--immediate-child-p (car blueprint) (car it))
@@ -1135,38 +1129,44 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
               (append dei--last-hydrable-bindings
                       (--filter (dei--immediate-child-p (car blueprint) (car it))
                                 dei--current-hydrable-bindings))))))
-  (when dei--hydra-blueprints
-    (push #'dei--stage-6-birth-dire-hydra dei--async-thread)))
+  ;; Run again if more to do
+  (and chainp
+       dei--hydra-blueprints
+       (push #'dei--stage-6-birth-dire-hydra dei--async-chain)))
 
-(defun dei--stage-7 ()
-  (setq dei--last-hydrable-bindings dei--current-hydrable-bindings) ;; prob unnecessary
+(defun dei--stage-7 (&optional _caller)
+  "Probably unnecessary."
+  (setq dei--last-hydrable-bindings
+        dei--current-hydrable-bindings)
   (run-hooks 'dei--after-rebuild-hydra-hook))
 
-(defvar dei--async-thread-master-copy  #'(dei--stage-1
-                                       dei--stage-2
-                                       dei--stage-3
-                                       dei--stage-4-model-the-world
-                                       dei--stage-5-draw-blueprint
-                                       dei--stage-6-birth-dire-hydra
-                                       dei--stage-7))
+(defvar dei--async-chain-master-copy
+  #'(dei--stage-1
+     dei--stage-3
+     dei--stage-4-model-the-world
+     dei--stage-5-draw-blueprint
+     dei--stage-6-birth-dire-hydra
+     dei--stage-7))
 
-(defun dei-generate-hydras-async ()
+(defun dei-generate-hydras ()
   "(Re)generate hydras to match the buffer bindings."
-  (interactive)
-  (if (null dei--async-thread)
+  (if (null dei--async-chain)
       ;; No next steps in chain.  Reset for the next time this function is
       ;; called, and stop here this time so we don't re-run endlessly.
-      (setq dei--async-thread dei--async-thread-master-copy)
-    (condition-case err
-        (progn
-          (funcall (pop dei--async-thread))
-          (named-timer-idle-run 'deianira-chain .5 nil #'dei-generate-hydras-async))
-      ((error quit)
-       ;; If chain interrupted, reset to start from the beginning next time.
-       (setq dei--async-thread dei--async-thread-master-copy)
-       (named-timer-cancel 'deianira-chain)
-       ;; Now go ahead and signal the error as if we hadn't wrapped it.
-       (signal (car err) (cdr err))))))
+      (setq dei--async-chain dei--async-chain-master-copy)
+    ;; in case it got called twice in a very short time
+    (unless (member (named-timer-get 'deianira-at-work) timer-list)
+      (condition-case err
+          (progn
+            (funcall (pop dei--async-chain) t)
+            (named-timer-idle-run 'deianira-at-work
+              .5 nil #'dei-generate-hydras))
+        ((error quit)
+         ;; If chain interrupted, reset to start from the beginning next time.
+         (setq dei--async-chain dei--async-chain-master-copy)
+         (named-timer-cancel 'deianira-at-work)
+         ;; Now go ahead and signal the error as if we hadn't wrapped it.
+         (signal (car err) (cdr err)))))))
 
 (defun dei--immediate-child-p (stem keydesc)
   (declare (pure t) (side-effect-free t))
@@ -1175,14 +1175,24 @@ CELL comes in the form returned by `dei--scan-current-bindings'."
     (when child-p
       (= (dei--key-seq-steps-length keydesc) (1+ n-steps)))))
 
-(defun dei-force-regenerate-hydras ()
+(defun dei-generate-hydras-restart (&optional _)
+  "Drop the chain and start a new one.
+Useful on a hook in case the user switches buffer rapidly, for
+example, going from buffer A to B to C: we don't want to still be
+generating hydras to match B's bindings when we're in C."
+  (interactive)
+  (setq dei--async-chain dei--async-chain-master-copy)
+  (dei-generate-hydras))
+
+(defun dei-generate-hydras-force-all ()
+  "Regenerate all hydras from scratch."
   (interactive)
   (setq dei--last-hydrable-bindings nil)
   (setq dei--live-stems nil)
-  (setq dei--async-thread dei--async-thread-master-copy)
-  (dei-generate-hydras-async))
+  (setq dei--async-chain dei--async-chain-master-copy)
+  (dei-generate-hydras))
 
-;; (dei-generate-hydras-async)
+;; (dei-generate-hydras)
 
 
 ;;;; Bonus functions for mass remaps
@@ -1709,21 +1719,48 @@ settings."
   :global t
   :lighter " dei"
   :group 'deianira
-  :keymap `((,(kbd "<katakana>") . dei-C/body)
+  :keymap `((,(kbd "<f31>") . dei-A/body)
+            (,(kbd "<katakana>") . dei-C/body)
+            (,(kbd "<f24>") . dei-H/body)
             (,(kbd "<muhenkan>") . dei-M/body)
             (,(kbd "<henkan>") . dei-s/body)
-            (,(kbd "<f24>") . dei-H/body)
-            (,(kbd "<f31>") . dei-A/body)
             ;; in case of sticky keys
+            (,(kbd "A-<f31>") . dei-A/body)
             (,(kbd "C-<katakana>") . dei-C/body)
+            (,(kbd "H-<f24>") . dei-H/body)
             (,(kbd "M-<muhenkan>") . dei-M/body)
             (,(kbd "s-<henkan>") . dei-s/body)
-            (,(kbd "H-<f24>") . dei-H/body)
-            (,(kbd "A-<f31>") . dei-A/body))
+
+            ;; theoretically, we can get a third hydra by chording two modifiers and releasing. Cannot allow sticky keys then, as it'd destroy being able to switch hydra with one press.
+
+            ;; (,(kbd "M-<katakana>") . dei-CM/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-CM/body)
+
+            ;; (,(kbd "s-<muhenkan>") . dei-sM/body) ;; nonstandard modifier order required in name to disambig. from M-s
+            ;; (,(kbd "M-<henkan>")   . dei-sM/body)
+
+            ;; (,(kbd "C-<henkan>")   . dei-sC/body)
+            ;; (,(kbd "s-<katakana>") . dei-sC/body)
+
+            ;; (,(kbd "C-<muhenkan>") . dei-CH/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-CH/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-AC/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-AC/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-AH/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-AH/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-AM/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-AM/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-HM/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-HM/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-sH/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-sH/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-sA/body)
+            ;; (,(kbd "C-<muhenkan>") . dei-sA/body)
+            )
 
   (if deianira-mode
       (progn
-        (setq dei--async-thread dei--async-thread-master-copy)
+        (setq dei--async-chain dei--async-chain-master-copy)
         (setq dei--old-hydra-cell-format hydra-cell-format)
         (setq dei--old-hydra-C-u (lookup-key hydra-base-map (kbd "C-u")))
         (setq hydra-cell-format "% -20s %% -11`%s")
@@ -1732,28 +1769,36 @@ settings."
         (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
-        ;; Want a hook for when any major/minormode is enabled or maybe when a
-        ;; non-temp buffer is created; this will have to do
-        (add-hook 'window-buffer-change-functions #'dei--record-keymap-maybe)
-        (dei-generate-hydras-async))
+        (add-hook 'window-buffer-change-functions #'dei--record-keymap-maybe -48)
+        (add-hook 'window-buffer-change-functions #'dei-generate-hydras-restart 56)
+        (add-hook 'after-change-major-mode-hook #'dei-generate-hydras-restart)
+        ;; (add-variable-watcher 'local-minor-modes #'dei-generate-hydras-restart)
+        )
 
-    (named-timer-cancel 'deianira-chain)
+    (named-timer-cancel 'deianira-at-work)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") dei--old-hydra-C-u)
     (remove-hook 'window-buffer-change-functions #'dei--record-keymap-maybe)
+    (remove-hook 'window-buffer-change-functions #'dei-generate-hydras-restart)
+    (remove-hook 'after-change-major-mode-hook #'dei-generate-hydras-restart)
+    ;; (remove-variable-watcher 'local-minor-modes #'dei-generate-hydras)
     (advice-remove #'completing-read #'dei--slay)
+    (advice-remove #'completing-read #'dei--slay)
+    (advice-remove #'ido-read-internal #'dei--slay)
     (advice-remove #'ivy-read #'dei--slay)
     (advice-remove #'helm #'dei--slay)))
 
 ;; User config
-(add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctlmeta-everywhere)
+(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)
+;; (add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctlmeta-everywhere)
+
+;; Don't show permacahords in which-key (unnecessary), only chord-onces
 (after! which-key
-  ;; Don't show keys like C-x C-a, only show simple leafs like C-x a.
   (push '((" .-." . nil) . t) which-key-replacement-alist))
 
 ;; dev settings
 (general-auto-unbind-keys 'undo) ;; we shouldn't rely on general
-(remove-hook 'after-save-hook 'my-compile-and-drop)
+;; (remove-hook 'after-save-hook 'my-compile-and-drop)
 
 (provide 'deianira)
 ;;; deianira.el ends here
