@@ -230,9 +230,18 @@ Note that you do not need to specify shift symbols, as
   :set (lambda (var new)
          (set-default var (--map (key-description (kbd it)) new))))
 
-(defcustom dei-quitter-keys
+(defcustom dei-stemless-quitter-keys
   '("<menu>"
     "C-g")
+  "Keys guaranteed to slay the hydra and behave like the literal
+key, instead of the key plus a prefix."
+  :type '(repeat key)
+  :group 'deianira)
+  :set (lambda (var new)
+         (set-default var (--map (key-description (kbd it)) new)))
+
+(defcustom dei-quitter-keys
+  '()
   "Key sequences guaranteed to slay the hydra.
 
 If you use the mass remapper, the hydras are generated
@@ -761,7 +770,7 @@ Optional argument VERBOTEN-LEAFS, a list of strings such as
                                          dei-inserting-quitter-keys)
                      collect (dei--head-invisible-self-inserting-stemless stem leaf))
             ;; NOTE: This doesn't overlap with dei-quitter-keys; have to be stemless
-            (cl-loop for leaf in '("<menu>" "C-g")
+            (cl-loop for leaf in dei-stemless-quitter-keys
                      collect (dei--head-invisible-exiting-stemless stem leaf)))))
     (-remove (lambda (head)
                (member (car head) verboten-leafs))
@@ -1615,10 +1624,11 @@ unbindable."
                 event
                 cmd))))
 
-(defun dei--preview-remap-actions ()
+(defun dei-remap-actions-preview ()
   "For convenience while debugging."
   (interactive)
   (with-current-buffer (dei--debug-buffer)
+    (read-only-mode -1)
     (goto-char (point-min))
     (newline)
     (insert "Remap actions planned as of " (current-time-string))
@@ -1643,7 +1653,7 @@ unbindable."
   (when-let ((window (get-buffer-window (dei--debug-buffer))))
     (with-selected-window window
       (recenter 0)
-      (read-only-mode))))
+      (view-mode))))
 
 (defun dei--wipe-remap-actions ()
   "For convenience while debugging."
