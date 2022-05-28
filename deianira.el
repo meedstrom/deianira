@@ -172,32 +172,6 @@ stem is not.  Return t if true, else nil."
               leaf))))
     (-snoc (butlast x) corrected-leaf)))
 
-(defun dei--normalize-build-segments (x)
-  (declare (pure t) (side-effect-free t))
-  (string-join x "-"))
-
-;; TODO: Try out an alternative, simple solution using internals:
-;; (key-description (kbd "<C-M-SPC> <M-backspace>")).  See if that makes any
-;; bugs.
-(defun dei--normalize (keydesc)
-  (declare (pure t) (side-effect-free t))
-  (if (dei--dangling-stem-p keydesc)
-      (error "Dangling stem passed to `dei--normalize': %s" keydesc)
-    (->> keydesc
-         (s-split " ")
-         (-map #'dei--normalize-trim-segment)
-         (-map #'dei--normalize-get-atoms)
-         (-map #'dei--normalize-wrap-leaf-maybe)
-         (-map #'dei--normalize-build-segments)
-         (s-join " "))))
-
-(defun dei--normalize (keydesc)
-  "Sanitize KEYDESC."
-  (declare (pure t) (side-effect-free t))
-  (if (dei--dangling-stem-p keydesc)
-      (error "Dangling stem passed to `dei--normalize': %s" keydesc)
-    (key-description (kbd keydesc))))
-
 (defcustom dei-quasiquitter-keys
   '("C-c c"
     "C-x l" ;; for testing
@@ -1274,12 +1248,11 @@ a proper mode map)."
   :set
   (lambda (var new)
     (set-default
-     var
-     (cl-loop for cell in new
-              collect (cons (if (stringp (car cell))
-                                (dei--normalize (car cell))
-                              (car cell))
-                            (cdr cell))))))
+     var (cl-loop for cell in new
+                  collect (cons (if (stringp (car cell))
+                                    (key-description (kbd (car cell)))
+                                  (car cell))
+                                (cdr cell))))))
 
 (defvar dei--remap-actions nil
   "List of actions to pass to `define-key'.")
@@ -1388,15 +1361,17 @@ You may be interested in `dei-define-super-like-ctl-everywhere' or
 ;; (dei--update-super-reflection-2)
 ;; (dei--record-keymap-maybe nil)
 
-
 (defun dei--where-is (command &optional keymap)
   "Find to which keys COMMAND is bound.
 Optional argument KEYMAP means look only in that keymap."
   (->> (where-is-internal command (when keymap (list keymap)))
        (-map #'key-description)
        (--remove (string-match-p dei--ignore-keys-regexp it))
-       (-map #'dei--normalize)))
+       ;; TODO: Check it works after commenting this out
+       ;; (-map #'dei--normalize)
+       ))
 
+;; Pretty shitty
 (defun dei--as-raw-keymap (keymap-or-keymapsym)
   "If KEYMAP-OR-KEYMAPSYM is a symbol, return its global value.
 Otherwise return it as it was input.
