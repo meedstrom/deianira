@@ -19,9 +19,9 @@
   ;; (dei--key-has-more-than-one-modifier "C-x d")
 
   ;; (dei--key-has-more-than-one-modifier "s-i")
-  ;;      (dei--contains-upcase keydesc)
-  ;;      (dei--key-contains-multi-chords "s-i")
-  ;;      (dei--key-seq-mixes-modifiers "s-i")
+  ;; (dei--contains-upcase keydesc)
+  ;; (dei--key-contains-multi-chord "s-i")
+  ;; (dei--key-mixes-modifiers "s-i")
   ;; (dei--contains-upcase "s-i")
   ;; (dei--contains-upcase "s-i")
 
@@ -29,13 +29,16 @@
   (should-not (dei--key-seq-has-non-prefix-in-prefix "C-x C-v"))
   (should (dei--key-seq-has-non-prefix-in-prefix "C-x C-v C-x"))
 
-  (should (dei--key-seq-mixes-modifiers "C-h M-o"))
-  (should-not (dei--key-seq-mixes-modifiers "C-h C-o"))
-  (should-not (dei--key-seq-mixes-modifiers "C-h o"))
+  (should (dei--key-mixes-modifiers "C-s M-s"))
+  (should (dei--key-mixes-modifiers "C-M-s"))
+  (should-not (dei--key-mixes-modifiers "s-s"))
+  (should-not (dei--key-mixes-modifiers "s M-s"))
+  (should-not (dei--key-mixes-modifiers "C-s C-s"))
+  (should-not (dei--key-mixes-modifiers "C-s s"))
 
-  (should (dei--key-contains-multi-chords "C-M-f"))
-  (should-not (dei--key-contains-multi-chords "C-f M-f"))
-  ;; (should (dei--key-contains-multi-chords "C-<M-return>")) ;; fail ok b/c we assume normalized input
+  (should (dei--key-contains-multi-chord "C-M-s"))
+  (should-not (dei--key-contains-multi-chord "C-s M-s"))
+  ;; (should (dei--key-contains-multi-chord "C-<M-return>")) ;; fail ok b/c we assume normalized input
 
   (should (dei--key-has-more-than-one-modifier "C-x C-h"))
   (should (dei--key-has-more-than-one-modifier "C-M-x h"))
@@ -77,19 +80,35 @@
   (should (equal "C-x C-k C-e" (dei--ensure-permachord "C-x k C-e")))
   (should (equal "C-x C-k C-e" (dei--ensure-permachord "C-x k C-e")))
   (should (equal "C-x C-k C-e" (dei--ensure-permachord "C-x k e")))
-  (should (equal "C-x C-k C-e" (dei--ensure-permachord "x k e")))
   (should (equal "C-x C-k C-e" (dei--ensure-permachord "C-x C-k C-e")))
-
-  (should (dei--key-is-permachord "C-x C-k C-n"))
-  (should-not (dei--key-is-permachord "C-x C-k n"))
-  (should-not (dei--key-is-permachord "C-M-x C-k C-M-n"))
-  (should-not (dei--key-is-permachord "<f3> C-k C-M-n"))
+  (should-error (dei--ensure-permachord "x k e"))
 
   (should (dei--immediate-child-p "C-x " "C-x f"))
   (should (dei--immediate-child-p "C-x C-" "C-x C-f"))
   ;; (should-not (dei--immediate-child-p "C-x C-" "C-x C-M-f"))
   (should-not (dei--immediate-child-p "C-x C-" "C-x f"))
   (should-not (dei--immediate-child-p "C-x C-" "C-x C-f f"))
+
+  (should (dei--key-seq-is-permachord "C-x C-f C-e"))
+  (should (dei--key-seq-is-permachord "M-<f1> M-f M-e"))
+  (should (dei--key-seq-is-permachord "C-x"))
+  (should-not (dei--key-seq-is-permachord "C-x C-M-f C-e"))
+  (should-not (dei--key-seq-is-permachord "C-x C-f e"))
+  (should-not (dei--key-seq-is-permachord "<f1> C-f C-e"))
+  (should-not (dei--key-seq-is-permachord "C-x M-f C-e"))
+  (should-not (dei--key-seq-is-permachord "M-x M-f C-e"))
+  (should-not (dei--key-seq-is-permachord "C-x M-f M-e"))
+
+  ;; (dei--key-contains dei--all-shifted-symbols-list "M-F")
+  ;; (dei--key-contains dei--all-shifted-symbols-list "C-M-F")
+  ;; (dei--key-contains dei--all-shifted-symbols-list "F")
+
+  ;; (dei--last-key "C-M-<backspace>")
+  ;; (dei--last-key "C-M--")
+  ;; (dei--last-key "-")
+  ;; (dei--last-key "<")
+  ;; (dei--last-key "C-<")
+  ;; (dei--last-key "C-F")
 
   )
 
@@ -112,15 +131,16 @@
 
   (should (equal (dei--normalize-build-segments '("C" "M" "-")) "C-M--")))
 
+;; TODO: the squash function should insert <> around RET, TAB, ESC etc.
 (ert-deftest keydesc-handling-2 ()
   (let ((problematic-key-descriptions
          '(;; raw            normalized       squashed            leaf      1step?
-           ("C-x 8 RET"      "C-x 8 <RET>"    "dei-Cx8<RET>"      "<RET>"      nil)
-           ("<f2> 8 RET"     "<f2> 8 <RET>"   "dei-<f2>8<RET>"    "<RET>"      nil)
+           ("C-x 8 RET"      "C-x 8 RET"    "dei-Cx8RET"      "RET"      nil)
+           ("<f2> 8 RET"     "<f2> 8 RET"   "dei-<f2>8RET"    "RET"      nil)
            ("<f2> f r"       "<f2> f r"       "dei-<f2>fr"        "r"          nil)
            ("<f2> <f2>"      "<f2> <f2>"      "dei-<f2><f2>"      "<f2>"       nil)
-           ("ESC <C-down>"   "<ESC> C-<down>" "dei-<ESC>C<down>"  "<down>"     nil)
-           ("C-x RET C-\\"   "C-x <RET> C-\\" "dei-Cx<RET>C\\"    "\\"         nil)
+           ("ESC <C-down>"   "ESC C-<down>" "dei-ESCC<down>"  "<down>"     nil)
+           ("C-x RET C-\\"   "C-x RET C-\\" "dei-CxRETC\\"    "\\"         nil)
            ("TAB"            "TAB"            "dei-TAB"           "TAB"          t)
            ("A-T A-B"        "A-T A-B"        "dei-ATAB"          "B"          nil)
            ("A-T A B"        "A-T A B"        "dei-ATAB"          "B"          nil)
@@ -135,8 +155,8 @@
            )))
     (dolist (case problematic-key-descriptions)
       (seq-let (raw normalized squashed leaf 1step?) case
-        (should (string= normalized (dei--normalize raw)))
-        (should (string= squashed (dei--dub-from-key normalized)))
+        (should (string= normalized (key-description (kbd raw))))
+        (should (string= squashed (dei--dub-hydra-from-key-or-stem normalized)))
         (should (string= leaf (dei--get-leaf normalized)))
         (should (eq 1step? (dei--key-seq-steps=1 normalized)))))))
 

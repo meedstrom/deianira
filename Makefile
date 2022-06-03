@@ -1,4 +1,4 @@
-# https://nullprogram.com/blog/2020/01/22/ for a guide
+# https://nullprogram.com/blog/2020/01/22/ for a makefile guide
 .POSIX:
 .SUFFIXES: .el .elc
 EMACS	= emacs

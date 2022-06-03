@@ -1,3 +1,3 @@
 ((emacs-lisp-mode . ((lexical-binding . t)
-                     (nameless-aliases . (("dei" . "deianira")))
+                     (nameless-current-name . "dei")
                      (indent-tabs-mode . nil))))
