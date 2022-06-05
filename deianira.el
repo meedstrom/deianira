@@ -945,6 +945,171 @@ When they change, we want to carry out some re-calculations, but
 we don't want to do them super-often so we skip doing them as
 long as they don't change.")
 
+
+(defvar dei--flocks nil
+  "Alist relating major plus minor modes with root hydras.")
+
+(make-variable-buffer-local (defvar deianira-local-map))
+(make-variable-buffer-local (defvar dei--all-done nil))
+
+(defvar dei--async-chain-last-idle-value)
+(defvar dei--async-chain-template
+  #'(dei--async-1-check-predone
+     dei--stage-4b-check-settings
+     dei--async-4-model-the-world
+     dei--async-5-draw-blueprint
+     dei--async-6-birth-dire-hydra
+     dei--async-7-register
+     dei--async-8-bind-hydras))
+
+(defun dei--async-chomp ()
+  "Pop the next function off `dei--async-chain' and call it.
+Rinse and repeat until user does something, in which case defer
+to a short idle timer so that user is free to use Emacs.  Stop
+only when `dei--async-chain' is empty or a keyboard quit occurs
+during execution.
+
+To start, see `dei-async-make-hydras'."
+  (when (member (named-timer-get 'deianira-at-work) timer-list)
+    (error "Timer was not cancelled before `dei--async-chomp'"))
+  (when dei--async-chain
+    (funcall (pop dei--async-chain) t) ;; work happens here
+    (let ((polite-delay .7)
+          (idled-time (or (current-idle-time) 0)))
+      (if (and (time-less-p idled-time polite-delay)
+               (time-less-p dei--async-chain-last-idle-value idled-time))
+          ;; If user hasn't done anything since last chomp, go go go.
+          (named-timer-run 'deianira-at-work 0 nil #'dei--async-chomp)
+        ;; Otherwise go slow and polite.
+        ;; (cl-incf dei--async-chain-last-idle-value .321)
+        (named-timer-idle-run 'deianira-at-work polite-delay nil #'dei--async-chomp-polite))
+      (setq dei--async-chain-last-idle-value idled-time))))
+
+(defun dei--async-chomp-polite ()
+  (when dei--async-chain
+    (funcall (pop dei--async-chain) t) ;; work happens here
+    (let ((polite-delay .7)
+          (idled-time (or (current-idle-time) 0)))
+      (if (time-less-p polite-delay idled-time)
+          ;; Switch back to aggressive
+          (named-timer-run 'deianira-at-work 0 nil #'dei--async-chomp)
+        (named-timer-idle-run 'deianira-at-work polite-delay nil #'dei--async-chomp-polite))
+      (setq dei--async-chain-last-idle-value idled-time))))
+
+(defun dei-async-make-hydras (&rest _)
+  "Drop any running chain and start a new one."
+  (interactive)
+  (dei--echo "Launching new chain.  Previous value of `dei--async-chain': %s"
+          dei--async-chain)
+  (named-timer-cancel 'deianira-at-work)
+  (setq dei--async-chain dei--async-chain-template)
+  (setq dei--async-chain-last-idle-value 0) ;; yes, 0
+  (dei--async-chomp))
+
+;; TODO: wipe dei--flocks if frame-width etc changed (or record every possible
+;; framewidth...). go back in git-timemachine for the old
+;; dei--stage-4-model-the-world, grab some of its framewidth checks
+(defun dei--async-1-check-predone (&optional _)
+  "If worked on this buffer before, drop the chain."
+  (setq dei--buffer-under-operation (current-buffer))
+  (setq dei--flock-under-operation (dei--hash-current-modes))
+  ;; This mode combo worked on before
+  (when (rassoc dei--flock-under-operation dei--flocks)
+    (setq dei--async-chain nil)
+    (dei--echo "Already created flock: %s." dei--flock-under-operation)
+    (dei--async-8-bind-hydras)))
+
+(defun dei--async-4-model-the-world (&optional _)
+  "Calculate things."
+  (with-current-buffer dei--buffer-under-operation
+    ;; Infer which submaps exist by cutting the leafs off every key.
+    (setq dei--stems
+          (->> (dei--get-filtered-bindings)
+               ;; Sort to avail the most relevant hydras to the user soonest.
+               (seq-sort-by #'dei--key-seq-steps-length #'>)
+               (-map #'dei--drop-leaf)
+               (-remove #'string-empty-p)
+               (-uniq)))
+
+    ;; Figure out dei--hydrable-prefix-keys, important in several
+    ;; functions indirectly called from the next stage.
+    (setq dei--hydrable-prefix-keys
+          (-difference (-map #'dei--stem-to-parent-keydesc dei--stems)
+                       ;; Subtract the root stems since they are still invalid
+                       ;; keydescs, which is ok bc no hydra refers to them.
+                       '("C-" "M-" "s-" "H-" "A-")))
+
+    ;; Clear the workbench from a previous done or half-done iteration.
+    (setq dei--hydra-blueprints nil)
+
+    (when (null dei--stems)
+      (error "Something is fucky"))))
+
+(defun dei--async-5-draw-blueprint (&optional chainp)
+  "Draw blueprint for one of `dei--stems'.
+In other words, we compute all the arguments we'll later pass to
+defhydra.  Pop a stem off the list `dei--stems',
+transmute it into a blueprint, and push that onto the list
+`dei--hydra-blueprints'.
+
+With CHAINP non-nil, the function will add another invocation of
+itself to the front of `dei--async-chain', until
+`dei--stems' is empty."
+  (require 'message)
+  (when dei--stems
+    (with-current-buffer dei--buffer-under-operation
+      (let* ((flock dei--flock-under-operation)
+             (stem (pop dei--stems))
+             (name (dei--dub-hydra-from-key-or-stem stem)))
+        (push (dei--specify-dire-hydra stem (concat name flock "-nonum") t)
+              dei--hydra-blueprints)
+        (push (dei--specify-dire-hydra stem (concat name flock))
+              dei--hydra-blueprints))))
+  ;; Run again if more to do
+  (and chainp
+       dei--stems
+       (push #'dei--async-5-draw-blueprint dei--async-chain)))
+
+(defun dei--async-6-birth-dire-hydra (&optional chainp)
+  "Pass a blueprint to `defhydra', turning dry-run into wet-run.
+Each invocation pops one blueprint off `dei--hydra-blueprints'.
+With CHAINP non-nil, the function will add another invocation of
+itself to the front of `dei--async-chain', until
+`dei--hydra-blueprints' is empty."
+  (when dei--hydra-blueprints
+    (with-current-buffer dei--buffer-under-operation
+      (let ((blueprint (pop dei--hydra-blueprints)))
+        (or blueprint
+            (error "Blueprint should not be nil"))
+        (dei--try-birth-dire-hydra (cadr blueprint) (cddr blueprint)))))
+  ;; Run again if more to do
+  (and chainp
+       dei--hydra-blueprints
+       (push #'dei--async-6-birth-dire-hydra dei--async-chain)))
+
+(defun dei--async-7-register (&optional _)
+  "Register this mode combination."
+  (with-current-buffer dei--buffer-under-operation
+    (let ((mode-combn (cons major-mode local-minor-modes)))
+      (unless (assoc mode-combn dei--flocks)
+        (push (cons mode-combn dei--flock-under-operation)
+              dei--flocks)))))
+
+(defun dei--async-8-bind-hydras (&optional chainp)
+  "Buffer-locally bind appropriate root hydras for the buffer.
+Optional argument CHAINP should only be used by `dei--async-chomp'."
+  (with-current-buffer dei--buffer-under-operation
+    (let ((map (current-local-map)))
+      (define-key map (kbd dei-ersatz-control) (dei--corresponding-hydra "C- "))
+      (define-key map (kbd dei-ersatz-meta) (dei--corresponding-hydra "M- "))
+      (define-key map (kbd dei-ersatz-super) (dei--corresponding-hydra "s- "))
+      (define-key map (kbd dei-ersatz-hyper) (dei--corresponding-hydra "H- "))
+      (define-key map (kbd dei-ersatz-alt) (dei--corresponding-hydra "A- ")))
+    (dei--echo "Bound keys in buffer %s" (buffer-name))
+    (setq-local dei--all-done t)))
+
+
+
 (defun dei--stage-4b-check-settings (&optional _)
   (unless (--all? (equal (cdr it) (symbol-value (car it)))
                   dei--last-settings-alist)
@@ -1774,173 +1939,6 @@ hint may not reflect the truth in other modes."
                (dei--try-birth-dire-hydra (cadr bp2) (cddr bp2))))
     (kill-buffer (current-buffer))))
 
-(defvar dei--flocks nil
-  "Alist relating major plus minor modes with root hydras.")
-
-(make-variable-buffer-local (defvar deianira-local-map))
-(make-variable-buffer-local (defvar dei--all-done nil))
-
-(defvar dei--async-chain-last-idle-value)
-(defvar dei--async-chain-template
-  #'(dei--async-1-check-predone
-     dei--stage-4b-check-settings
-     dei--async-4-model-the-world
-     dei--async-5-draw-blueprint
-     dei--async-6-birth-dire-hydra
-     dei--async-7-register
-     dei--async-8-bind-hydras))
-
-;; TODO: if we're gonna use an idle timer, we really need fallback hydras per
-;; major mode, that'll always be bound in that mode map.
-;;
-;; REVIEW: When it was laggy as shit due to unnecessary re-running, the lag was
-;; in such a pattern it seemed to be as if it's just using the named-timer-run
-;; and doesn't switch to named-timer-idle-run after user input.  I've hopefully
-;; fixed it now. TODO: Verify it switches to the idle timer.
-(defun dei--async-chomp ()
-  "Pop the next function off `dei--async-chain' and call it.
-Rinse and repeat until user does something, in which case defer
-to a short idle timer so that user is free to use Emacs.  Stop
-only when `dei--async-chain' is empty or a keyboard quit occurs
-during execution.
-
-To start, see `dei-async-make-hydras'."
-  (when (member (named-timer-get 'deianira-at-work) timer-list)
-    (error "Timer was not cancelled before `dei--async-chomp'"))
-  (when dei--async-chain
-    (funcall (pop dei--async-chain) t) ;; work happens here
-    (let ((polite-delay .321)
-          (idled-time (or (current-idle-time) 0)))
-      (if (and (time-less-p idled-time polite-delay)
-               (time-less-p dei--async-chain-last-idle-value idled-time))
-          ;; If user hasn't done anything since last chomp, go go go.
-          (named-timer-run 'deianira-at-work 0 nil #'dei--async-chomp)
-        ;; Otherwise go slow and polite.
-        ;; (cl-incf dei--async-chain-last-idle-value .321)
-        (named-timer-idle-run 'deianira-at-work polite-delay nil #'dei--async-chomp-polite))
-      (setq dei--async-chain-last-idle-value idled-time))))
-
-(defun dei--async-chomp-polite ()
-  (when dei--async-chain
-    (funcall (pop dei--async-chain) t) ;; work happens here
-    (let ((polite-delay .321)
-          (idled-time (or (current-idle-time) 0)))
-      (if (time-less-p polite-delay idled-time)
-          ;; Switch back to aggressive
-          (named-timer-run 'deianira-at-work 0 nil #'dei--async-chomp)
-        (named-timer-idle-run 'deianira-at-work polite-delay nil #'dei--async-chomp-polite))
-      (setq dei--async-chain-last-idle-value idled-time))))
-
-(defun dei-async-make-hydras (&rest _)
-  "Drop any running chain and start a new one."
-  (interactive)
-  (dei--echo "Launching new chain.  Previous value of `dei--async-chain': %s"
-          dei--async-chain)
-  (named-timer-cancel 'deianira-at-work)
-  (setq dei--async-chain dei--async-chain-template)
-  (setq dei--async-chain-last-idle-value 0) ;; yes, 0
-  (dei--async-chomp))
-
-;; TODO: unset all-done if frame-width etc changed. go back in git-timemachine
-;; for the old dei--stage-4-model-the-world, grab some of its framewidth checks
-(defun dei--async-1-check-predone (&optional _)
-  "If worked on this buffer before, drop the chain."
-  (setq dei--buffer-under-operation (current-buffer))
-  (setq dei--flock-under-operation (dei--hash-current-modes))
-  ;; This mode combo worked on before
-  (when (rassoc dei--flock-under-operation dei--flocks)
-    (setq dei--async-chain nil)
-    (dei--echo "Already created flock: %s." dei--flock-under-operation)
-    (dei--async-8-bind-hydras)))
-
-(defun dei--async-4-model-the-world (&optional _)
-  "Calculate things."
-  (with-current-buffer dei--buffer-under-operation
-    ;; Infer which submaps exist by cutting the leafs off every key.
-    (setq dei--stems
-          (->> (dei--get-filtered-bindings)
-               ;; Sort to avail the most relevant hydras to the user soonest.
-               (seq-sort-by #'dei--key-seq-steps-length #'>)
-               (-map #'dei--drop-leaf)
-               (-remove #'string-empty-p)
-               (-uniq)))
-
-    ;; Figure out dei--hydrable-prefix-keys, important in several
-    ;; functions indirectly called from the next stage.
-    (setq dei--hydrable-prefix-keys
-          (-difference (-map #'dei--stem-to-parent-keydesc dei--stems)
-                       ;; Subtract the root stems since they are still invalid
-                       ;; keydescs, which is ok bc no hydra refers to them.
-                       '("C-" "M-" "s-" "H-" "A-")))
-
-    ;; Clear the workbench from a previous done or half-done iteration.
-    (setq dei--hydra-blueprints nil)
-
-    (when (null dei--stems)
-      (error "Something is fucky"))))
-
-(defun dei--async-5-draw-blueprint (&optional chainp)
-  "Draw blueprint for one of `dei--stems'.
-In other words, we compute all the arguments we'll later pass to
-defhydra.  Pop a stem off the list `dei--stems',
-transmute it into a blueprint, and push that onto the list
-`dei--hydra-blueprints'.
-
-With CHAINP non-nil, the function will add another invocation of
-itself to the front of `dei--async-chain', until
-`dei--stems' is empty."
-  (require 'message)
-  (when dei--stems
-    (with-current-buffer dei--buffer-under-operation
-      (let* ((flock dei--flock-under-operation)
-             (stem (pop dei--stems))
-             (name (dei--dub-hydra-from-key-or-stem stem)))
-        (push (dei--specify-dire-hydra stem (concat name flock "-nonum") t)
-              dei--hydra-blueprints)
-        (push (dei--specify-dire-hydra stem (concat name flock))
-              dei--hydra-blueprints))))
-  ;; Run again if more to do
-  (and chainp
-       dei--stems
-       (push #'dei--async-5-draw-blueprint dei--async-chain)))
-
-(defun dei--async-6-birth-dire-hydra (&optional chainp)
-  "Pass a blueprint to `defhydra', turning dry-run into wet-run.
-Each invocation pops one blueprint off `dei--hydra-blueprints'.
-With CHAINP non-nil, the function will add another invocation of
-itself to the front of `dei--async-chain', until
-`dei--hydra-blueprints' is empty."
-  (when dei--hydra-blueprints
-    (with-current-buffer dei--buffer-under-operation
-      (let ((blueprint (pop dei--hydra-blueprints)))
-        (or blueprint
-            (error "Blueprint should not be nil"))
-        (dei--try-birth-dire-hydra (cadr blueprint) (cddr blueprint)))))
-  ;; Run again if more to do
-  (and chainp
-       dei--hydra-blueprints
-       (push #'dei--async-6-birth-dire-hydra dei--async-chain)))
-
-(defun dei--async-7-register (&optional _)
-  "Register this mode combination."
-  (with-current-buffer dei--buffer-under-operation
-    (let ((mode-combn (cons major-mode local-minor-modes)))
-      (unless (assoc mode-combn dei--flocks)
-        (push (cons mode-combn dei--flock-under-operation)
-              dei--flocks)))))
-
-(defun dei--async-8-bind-hydras (&optional chainp)
-  "Buffer-locally bind appropriate root hydras for the buffer.
-Optional argument CHAINP should only be used by `dei--async-chomp'."
-  (with-current-buffer dei--buffer-under-operation
-    (let ((map (current-local-map)))
-      (define-key map (kbd dei-ersatz-control) (dei--corresponding-hydra "C- "))
-      (define-key map (kbd dei-ersatz-meta) (dei--corresponding-hydra "M- "))
-      (define-key map (kbd dei-ersatz-super) (dei--corresponding-hydra "s- "))
-      (define-key map (kbd dei-ersatz-hyper) (dei--corresponding-hydra "H- "))
-      (define-key map (kbd dei-ersatz-alt) (dei--corresponding-hydra "A- ")))
-    (dei--echo "Bound keys in buffer %s" (buffer-name))
-    (setq-local dei--all-done t)))
 
 (provide 'deianira)
 ;;; deianira.el ends here
