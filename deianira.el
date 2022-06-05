@@ -925,7 +925,7 @@ AVOID-PREFIXES is a list of prefixes to leave out of the result."
 ;;;; Async worker
 
 ;; Persistent variables helpful for debugging
-(defvar dei--new-or-changed-stems nil)
+(defvar dei--stems nil)
 (defvar dei--hydra-blueprints nil)
 
 (defvar dei--buffer-under-operation nil)
@@ -1702,7 +1702,7 @@ Interactively, use the value of `dei--remap-actions'."
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
         (add-hook 'window-buffer-change-functions #'dei--record-keymap-maybe -48)
-        (add-hook 'window-buffer-change-functions #'dei-async-make-hydrasd-maybe 56)
+        (add-hook 'window-buffer-change-functions #'dei-async-make-hydras 56)
         ;; (add-variable-watcher 'local-minor-modes #'dei-generate-hydras-restart)
         ;; NOTE: Horrid performance penalty!  For some reason the hook re-runs
         ;; on every hydra head call? May be a Doom thing.
@@ -1774,7 +1774,7 @@ hint may not reflect the truth in other modes."
                (dei--try-birth-dire-hydra (cadr bp2) (cddr bp2))))
     (kill-buffer (current-buffer))))
 
-(defvar dei--buffer-hydras nil
+(defvar dei--flocks nil
   "Alist relating major plus minor modes with root hydras.")
 
 (make-variable-buffer-local (defvar deianira-local-map))
@@ -1847,25 +1847,17 @@ To start, see `dei-async-make-hydras'."
   "If worked on this buffer before, drop the chain."
   (setq dei--buffer-under-operation (current-buffer))
   (setq dei--flock-under-operation (dei--hash-current-modes))
-  (if dei--all-done
-      ;; This specific buffer worked on before
-      (progn
-        (setq dei--async-chain nil)
-        (unless (bound-and-true-p deianira-local-map)
-          (warn "Unexpected state! Grateful for bug report")))
-    ;; This mode combo worked on before
-    (when (rassoc dei--flock-under-operation dei--buffer-hydras)
-      (setq dei--async-chain nil)
-      (unless (bound-and-true-p deianira-local-map)
-        (dei--async-8-bind-hydras))
-      (dei--echo "Already created flock: %s."
-              dei--flock-under-operation))))
+  ;; This mode combo worked on before
+  (when (rassoc dei--flock-under-operation dei--flocks)
+    (setq dei--async-chain nil)
+    (dei--echo "Already created flock: %s." dei--flock-under-operation)
+    (dei--async-8-bind-hydras)))
 
 (defun dei--async-4-model-the-world (&optional _)
   "Calculate things."
   (with-current-buffer dei--buffer-under-operation
     ;; Infer which submaps exist by cutting the leafs off every key.
-    (setq dei--new-or-changed-stems
+    (setq dei--stems
           (->> (dei--get-filtered-bindings)
                ;; Sort to avail the most relevant hydras to the user soonest.
                (seq-sort-by #'dei--key-seq-steps-length #'>)
@@ -1876,33 +1868,32 @@ To start, see `dei-async-make-hydras'."
     ;; Figure out dei--hydrable-prefix-keys, important in several
     ;; functions indirectly called from the next stage.
     (setq dei--hydrable-prefix-keys
-          (-difference (-map #'dei--stem-to-parent-keydesc dei--all-stems)
-                       ;; Subtract the root stems since they are still
-                       ;; invalid keydescs, which is ok bc no hydra
-                       ;; refers to them.
+          (-difference (-map #'dei--stem-to-parent-keydesc dei--stems)
+                       ;; Subtract the root stems since they are still invalid
+                       ;; keydescs, which is ok bc no hydra refers to them.
                        '("C-" "M-" "s-" "H-" "A-")))
 
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)
 
-    (when (null dei--new-or-changed-stems)
+    (when (null dei--stems)
       (error "Something is fucky"))))
 
 (defun dei--async-5-draw-blueprint (&optional chainp)
-  "Draw blueprint for one of `dei--new-or-changed-stems'.
+  "Draw blueprint for one of `dei--stems'.
 In other words, we compute all the arguments we'll later pass to
-defhydra.  Pop a stem off the list `dei--new-or-changed-stems',
+defhydra.  Pop a stem off the list `dei--stems',
 transmute it into a blueprint, and push that onto the list
 `dei--hydra-blueprints'.
 
 With CHAINP non-nil, the function will add another invocation of
 itself to the front of `dei--async-chain', until
-`dei--new-or-changed-stems' is empty."
+`dei--stems' is empty."
   (require 'message)
-  (when dei--new-or-changed-stems
+  (when dei--stems
     (with-current-buffer dei--buffer-under-operation
       (let* ((flock dei--flock-under-operation)
-             (stem (pop dei--new-or-changed-stems))
+             (stem (pop dei--stems))
              (name (dei--dub-hydra-from-key-or-stem stem)))
         (push (dei--specify-dire-hydra stem (concat name flock "-nonum") t)
               dei--hydra-blueprints)
@@ -1910,7 +1901,7 @@ itself to the front of `dei--async-chain', until
               dei--hydra-blueprints))))
   ;; Run again if more to do
   (and chainp
-       dei--new-or-changed-stems
+       dei--stems
        (push #'dei--async-5-draw-blueprint dei--async-chain)))
 
 (defun dei--async-6-birth-dire-hydra (&optional chainp)
@@ -1934,41 +1925,22 @@ itself to the front of `dei--async-chain', until
   "Register this mode combination."
   (with-current-buffer dei--buffer-under-operation
     (let ((mode-combn (cons major-mode local-minor-modes)))
-      (unless (assoc mode-combn dei--buffer-hydras)
+      (unless (assoc mode-combn dei--flocks)
         (push (cons mode-combn dei--flock-under-operation)
-              dei--buffer-hydras)))))
+              dei--flocks)))))
 
-;; TODO: There is no way to have a buffer-local map -- not without running code
-;; on every buffer switch to turn it on and off somehow (set-transient-map). So
-;; we may as well just bind it in (current-local-map) i.e. the major mode
-;; map. Be aware that the minor mode maps take priority over it, so don't bind
-;; stuff in deianira-mode-map.
 (defun dei--async-8-bind-hydras (&optional chainp)
   "Buffer-locally bind appropriate root hydras for the buffer.
 Optional argument CHAINP should only be used by `dei--async-chomp'."
-  (with-current-buffer (if chainp
-                           dei--buffer-under-operation
-                         (current-buffer))
-    (if (bound-and-true-p deianira-local-map)
-        (dei--echo "Already bound")
-      (let ((map (make-sparse-keymap)))
-        (define-key map
-          (kbd dei-ersatz-control) (dei--corresponding-hydra "C- "))
-        (define-key map
-          (kbd dei-ersatz-meta) (dei--corresponding-hydra "M- "))
-        (define-key map
-          (kbd dei-ersatz-super) (dei--corresponding-hydra "s- "))
-        (define-key map
-          (kbd dei-ersatz-hyper) (dei--corresponding-hydra "H- "))
-        (define-key map
-          (kbd dei-ersatz-alt) (dei--corresponding-hydra "A- "))
-        (setq-local deianira-local-map map))
-      (dei--echo "Made new bindings in buffer %s" (buffer-name)))
+  (with-current-buffer dei--buffer-under-operation
+    (let ((map (current-local-map)))
+      (define-key map (kbd dei-ersatz-control) (dei--corresponding-hydra "C- "))
+      (define-key map (kbd dei-ersatz-meta) (dei--corresponding-hydra "M- "))
+      (define-key map (kbd dei-ersatz-super) (dei--corresponding-hydra "s- "))
+      (define-key map (kbd dei-ersatz-hyper) (dei--corresponding-hydra "H- "))
+      (define-key map (kbd dei-ersatz-alt) (dei--corresponding-hydra "A- ")))
+    (dei--echo "Bound keys in buffer %s" (buffer-name))
     (setq-local dei--all-done t)))
-
-;; test
-;; (add-hook 'window-buffer-change-functions #'dei-async-make-hydras)
-;; (remove-hook 'window-buffer-change-functions #'dei-make-hydras-maybe)
 
 (provide 'deianira)
 ;;; deianira.el ends here
