@@ -434,13 +434,12 @@ Copy-pasted from the message library, no idea how it works."
                                   (% num 36))))))
 
 (defun dei--hash-current-modes ()
-  (let ((hash (sxhash local-minor-modes)))
-    (concat "/"
-            (substring (symbol-name major-mode) 0 -4)
-            (dei--number-base36 (if (< hash 0)
-                                 (- hash)
-                               hash)
-                             5))))
+  "Make a 5-char hash of the current major and minor modes."
+  (let ((hash (sxhash (cons major-mode local-minor-modes))))
+    (concat "/" (dei--number-base36 (if (< hash 0)
+                                     (- hash)
+                                   hash)
+                                 5))))
 
 ;; This is used by dei--head-arg-cmd
 (defun dei--corresponding-hydra (keydesc-or-stem &optional leaf)
