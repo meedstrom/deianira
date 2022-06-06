@@ -500,7 +500,7 @@ sub-keymap.  As such, both of these return the same parent: \"C-\"."
     (dei--drop-leaf (dei--stem-to-parent-keydesc stem))))
 
 (defun dei--parent-key (keydesc)
-  "Return parent prefix of KEYDESC, or nil if no parent."
+  "Return immediate prefix of KEYDESC, or nil if it hasn't one."
   (declare (pure t) (side-effect-free t))
   (let ((steps (split-string keydesc " ")))
     (if (= 1 (length steps))
@@ -1086,13 +1086,11 @@ To start, see `dei-async-make-hydras'."
 (defun dei--async-5-draw-blueprint (&optional chainp)
   "Draw blueprint for one of `dei--stems'.
 In other words, we compute all the arguments we'll later pass to
-defhydra.  Pop a stem off the list `dei--stems',
-transmute it into a blueprint, and push that onto the list
-`dei--hydra-blueprints'.
+`defhydra'.  Pop a stem off the list `dei--stems', transmute it into
+a blueprint, and push that onto the list `dei--hydra-blueprints'.
 
-With CHAINP non-nil, the function will add another invocation of
-itself to the front of `dei--async-chain', until
-`dei--stems' is empty."
+With CHAINP non-nil, add another invocation of this function to
+the front of `dei--async-chain', until `dei--stems' is empty."
   (when dei--stems
     (with-current-buffer dei--buffer-under-operation
       (let* ((flock dei--flock-under-operation)
@@ -1155,8 +1153,6 @@ Optional argument CHAINP should only be used by `dei--async-chomp'."
       (define-key map (kbd dei-ersatz-alt) (dei--corresponding-hydra "A- ")))
     (dei--echo "Bound keys in buffer %s" (buffer-name))
     (setq-local dei--all-done t)))
-
-
 
 (defun dei--stage-4b-check-settings (&optional _)
   (unless (--all? (equal (cdr it) (symbol-value (car it)))
