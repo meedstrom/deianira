@@ -487,21 +487,17 @@ example, inputting a STEM of \"C-x \" returns \"C-x\"."
           (concat "dei-" squashed "-")) ;; leaf is -
       (concat "dei-" squashed))))
 
-(defun dei--stem-to-hydra-sym (stem)
-  (declare (pure t) (side-effect-free t))
-  (when stem
-    (intern (concat (dei--dub-hydra-from-key-or-stem stem) "/body"))))
-
 (defun dei--parent-stem (stem)
+  "Return a parent stem to STEM.
+Note what is considered a parent.  The stem \"C-s C-\" is in some
+information-theoretic sense nested more deeply than \"C-s \", but
+speaking in terms of keymap nesting, they refer to the same
+sub-keymap.  As such, both of these return the same parent: \"C-\"."
   (declare (pure t) (side-effect-free t))
   (if (or (= 2 (length stem))
           (dei--key-seq-steps=1 stem))
       nil
     (dei--drop-leaf (dei--stem-to-parent-keydesc stem))))
-
-;; Used by specify-extra-heads for backspace
-(defun dei--parent-hydra (stem)
-  (dei--corresponding-hydra (dei--parent-stem stem)))
 
 (defun dei--parent-key (keydesc)
   "Return parent prefix of KEYDESC, or nil if no parent."
@@ -611,6 +607,31 @@ you want to be able to type nccnccnccncc."
 
 
 ;;;; Hydra blueprinting
+
+(defcustom dei-ersatz-control "<katakana>"
+  "Key that represents Control."
+  :type 'key
+  :group 'deianira)
+
+(defcustom dei-ersatz-meta "<muhenkan>"
+  "Key that represents Meta."
+  :type 'key
+  :group 'deianira)
+
+(defcustom dei-ersatz-super "<henkan>"
+  "Key that represents Super."
+  :type 'key
+  :group 'deianira)
+
+(defcustom dei-ersatz-hyper "<f30>"
+  "Key that represents Hyper."
+  :type 'key
+  :group 'deianira)
+
+(defcustom dei-ersatz-alt "<f31>"
+  "Key that represents Alt."
+  :type 'key
+  :group 'deianira)
 
 (defvar dei--hydrable-prefix-keys nil)
 
@@ -778,16 +799,16 @@ These are mostly the kinds of heads shared by all of Deianira's
 hydras.  With NONUM-P non-nil, return a different set of extra
 heads suited for a nonum hydra."
   (let ((self-poppers
-         (cond ((string= "C-" stem) '("<katakana>"
-                                      "C-<katakana>"))
-               ((string= "M-" stem) '("<muhenkan>"
-                                      "M-<muhenkan>"))
-               ((string= "s-" stem) '("<henkan>"
-                                      "s-<henkan>"))
-               ((string= "H-" stem) '("<f32>"
-                                      "H-<f32>"))
-               ((string= "A-" stem) '("<f31>"
-                                      "A-<f31>"))))
+         (cond ((string= "C-" stem) `(,dei-ersatz-control
+                                      ,(concat "C-" dei-ersatz-control)))
+               ((string= "M-" stem) `(,dei-ersatz-meta
+                                      ,(concat "M-" dei-ersatz-meta)))
+               ((string= "s-" stem) `(,dei-ersatz-super
+                                      ,(concat "s-" dei-ersatz-super)))
+               ((string= "H-" stem) `(,dei-ersatz-hyper
+                                      ,(concat "H-" dei-ersatz-hyper)))
+               ((string= "A-" stem) `(,dei-ersatz-alt
+                                      ,(concat "A-" dei-ersatz-alt)))))
         (extras (if nonum-p
                     (mapcar #'dei--convert-head-for-nonum dei-extra-heads)
                   dei-extra-heads)))
@@ -802,6 +823,8 @@ heads suited for a nonum hydra."
 
 ;; Massive list of heads
 
+;; TODO: take prefix key as input, not stem. convert to stem inside the body.
+;; TODO: n oneed to return the stem since we now have no live-stems variable.
 (defun dei--specify-dire-hydra (stem name &optional nonum-p)
   "Return a list of three items.
 The first two items are STEM and NAME unmodified, and the third
@@ -1054,7 +1077,6 @@ transmute it into a blueprint, and push that onto the list
 With CHAINP non-nil, the function will add another invocation of
 itself to the front of `dei--async-chain', until
 `dei--stems' is empty."
-  (require 'message)
   (when dei--stems
     (with-current-buffer dei--buffer-under-operation
       (let* ((flock dei--flock-under-operation)
@@ -1086,6 +1108,16 @@ itself to the front of `dei--async-chain', until
        dei--hydra-blueprints
        (push #'dei--async-6-birth-dire-hydra dei--async-chain)))
 
+;; TODO: use (current-active-maps), not mode combn, because some maps are not
+;; implied by modes. For example, vertico-map is not a mode map, but it's
+;; enabled on a hook with use-local-map.  That case is fine since I use vertico
+;; everywhere, so when a completing-read happens, the hydra makers will pick up
+;; the vertico-map bindings (remember, they consult true buffer bindings and no
+;; particular keymap).  Also, different sorts of minibuffer-mode-based prompts
+;; tend to have different sets of local-minor-modes, further aiding
+;; disambiguation, but it could be a problem if I don't always use vertico and
+;; a prompt with vertico and a prompt without vertico both have the exact same
+;; set of modes.
 (defun dei--async-7-register (&optional _)
   "Register this mode combination."
   (with-current-buffer dei--buffer-under-operation
@@ -1784,31 +1816,6 @@ Interactively, use the value of `dei--remap-actions'."
 (declare-function #'ido-read-internal "ido")
 (declare-function #'ivy-read "ivy")
 (declare-function #'helm "helm-core")
-
-(defcustom dei-ersatz-control "<katakana>"
-  "Key that represents Control."
-  :type 'key
-  :group 'deianira)
-
-(defcustom dei-ersatz-meta "<muhenkan>"
-  "Key that represents Meta."
-  :type 'key
-  :group 'deianira)
-
-(defcustom dei-ersatz-super "<henkan>"
-  "Key that represents Super."
-  :type 'key
-  :group 'deianira)
-
-(defcustom dei-ersatz-hyper "<f30>"
-  "Key that represents Hyper."
-  :type 'key
-  :group 'deianira)
-
-(defcustom dei-ersatz-alt "<f31>"
-  "Key that represents Alt."
-  :type 'key
-  :group 'deianira)
 
 ;;;###autoload
 (define-minor-mode deianira-mode
