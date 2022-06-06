@@ -6,16 +6,15 @@
 [[https://img.shields.io/badge/license-GPL3+-blue.png]]
 
 #+begin_html
-<a title="Giulio Bonasone
-, CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" align="center" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a>
+<a title="Giulio Bonasone, CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" align="center" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a>
 #+end_html
 
 # TODO: More consistent "we", "you", "I"
 # TODO: More consistent "hotkey", "key sequence", "key", "key binding" .. try to pick one.
 
-A [[https://github.com/abo-abo/hydra][hydra]]-based /which-key/ banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][Hercules.el]], who in ancient Greek myth, was slain by the princess [[https://en.wikipedia.org/wiki/Deianira][Deianira]].
+A [[https://github.com/abo-abo/hydra][hydra]]-based /which-key/ banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][Hercules.el]], whose namesake was slain by his wife, the Princess [[https://en.wikipedia.org/wiki/Deianira][Deianira]].
 
-Currently the package is not that generalized and it's made for my own needs, but it took me years to code up and might be an useful POC for somebody else.  Although less general than Hercules, it does more in some areas, and assists the specific paradigm described below.
+# Deianira can in theory be made to run on top of Hercules.el, using it as an engine.
 
 * Paradigm
 
@@ -54,20 +53,23 @@ The consequences are:
 
 My motivations were:
 
-- I wanted a genuinely modifier-free life (even dropping Shift), and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  As a happy side effect of implementing the vision, I found we need surprisingly little extra typing and bizarre enough, sometimes /less/, because we exploit hydras, key sequence undos and/or =repeat=, and several exploitations are only possible with the strict rules we impose on the keymap.
-- I asked myself as a thought experiment how one would use Emacs with an [[https://olkb.com/][OLKB]] Planck or other tiny keyboard.  This gave me many ideas, since necessity is the mother of invention.  I wanted to bind all commands to lowercase letters, and with Deianira you can.  As a consequence, the Planck won't have to use its "Raise" or "Lower" hardware modes just to access a hotkey.  Please observe that no part of the design was sacrificed to support small keyboards -- I actually prefer huge keyboards -- and the good compatibility is a side effect.
+- I wanted a genuinely modifier-free life (even dropping Shift), and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  As a happy side effect of implementing the vision, I found we need surprisingly little extra typing this way, and sometimes even /less/, because we exploit hydras to their fullest, and several exploitations are only possible with the strict rules we impose on the keymap.
+- I asked myself as a thought experiment how one would use Emacs with an [[https://olkb.com/][OLKB]] Planck or other tiny keyboard.  This constraint sprouted many ideas.  Among other things, I wanted to bind all commands to lowercase letters, and with Deianira you can.  As a consequence, the Planck won't ever have to use its "Raise" or "Lower" hardware modes just to access a command.  Please observe that no part of the design was sacrificed to support tiny keyboards -- I actually prefer [[https://geekhack.org/index.php?topic=116622][ginormous]] keyboards -- and the good fit is a side effect.
 
 No "paradigm lock-in"
 
-- We rely on an external Linux utility, dual-function-keys, to turn Control, Meta and Super into leader keys.  But we won't be left dead in the water without it.  Because Deianira provides helpers for mass-remapping all bindings to conform to the paradigm, and these will always work, everything will continue to be mapped in the location you were expecting.  You'll just have to chord at first to enter these key sequences, like a normal Emacsian.
-  - It should be possible to create a half-Deianira that relies on sticky keys and a whole lot of repeat maps, but I suspect it won't be the same.  The full Deianira is simple in end use because you can expect the interface to be regular and uniform.
+- We rely on an external Linux utility, dual-function-keys, to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working, we won't be left dead in the water.  Deianira's helpers for mass-remapping bindings will still work, so your bindings will remain in the location you were expecting.  You'll just have to do one of two things:
+  1. Chord at first to start a key sequence, like a normal Emacsian.
+  2. Resort to =xmodmap= or the like to wholesale remap the keys labelled "Ctrl" and "Alt" to different key events entirely.  You can no longer chord, but it's a small loss.
+
+# - It should be possible to create a half-Deianira that relies on sticky keys and a whole lot of repeat maps, but I suspect it won't be the same.  The full Deianira is simple in end use because you can expect the interface to be regular and uniform.
 
 * Setup
 
-Chat to me, I'll walk you through.
+Since this package is new, I'm happy to personally walk you through setup.  Strike up a chat.
 
-The problems are
-- We need an external program to get the Control, Meta and Super keys to send the F35, F34 and F33 key events, respectively.  I have been using [[https://github.com/alols/xcape][xcape]], and you can reproduce the setup by calling =dei-xmodmap-reload= and =dei-xcape-reload=, but xcape is buggy and unmaintained so I highly advise setting up [https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools] instead.  See instructions somewhere in this document.
+The problems we have to solve:
+- We need an external program to get the Control, Meta and Super keys to send the F35, F34 and F33 key events, respectively.  I had been using [[https://github.com/alols/xcape][xcape]], but it's buggy and unmaintained so now I advise setting up [https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools] instead.  See instructions somewhere in this document.
 - It's up to the user to choose which keys to keep when flattening the keymap -- do you use ~C-x f~ or ~C-x C-f~ more?
   + Customize =dei-permachord-wins-flattening= and =dei-flattening-winners=.
 - Though optional, we should teach the user to reclaim hotkey real estate with a set of suggested unbinds or rebinds. ~M-q~ and ~C-q~ are prime examples of unworthy bindings.
@@ -780,4 +782,4 @@ The way keymaps are designed, it's not possible to bind /only/ ~C-x C-k C-t~ and
 
 I owe thanks to [[https://github.com/abo-abo][abo-abo]] and the other contributors to Hydra.  If I'd had to wrangle =god-mode= or =which-key= to my purposes, I would have needed to know a lot more about the Emacs hotkey internals than I did starting out.  With Hydra, I could just hack and experiment, and incrementally arrive to where I am.  It's a friendly API for doing whatever you want, so it's a fine example of the Emacs spirit.
 
-There's something right about the hydra API, something that allows you to iteratively learn as you use more and more of it.  Even as we use more of these shiny techs like Emacs 28's repeat-maps and tarsius' transient library, I'd make the case that they shouldn't and can't replace hydra, so it's worth making them interop.
+There's something right about the hydra API, something that allows you to iteratively learn as you bend it more and more towards your needs.  Even if the purists among us transition to more of these shiny techs like Emacs 28's repeat-maps and tarsius' excellent transient library, not to mention Hercules, my experience makes a case that Hydra has a QWAN and it's worth thinking about why.
