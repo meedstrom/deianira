@@ -823,14 +823,15 @@ heads suited for a nonum hydra."
 
 ;; Massive list of heads
 
-;; TODO: take prefix key as input, not stem. convert to stem inside the body.
-;; TODO: n oneed to return the stem since we now have no live-stems variable.
 (defun dei--specify-dire-hydra (stem name &optional nonum-p)
-  "Return a list of three items.
-The first two items are STEM and NAME unmodified, and the third
-is a list of hydra heads.  You can call
-`dei--try-birth-dire-hydra' directly with the second and third
-items as input.
+  "Return a list of hydra heads, with NAME as first element.
+You can pass the output to `dei--try-birth-dire-hydra' like:
+
+   (let ((spec (dei--specify-dire-hydra ...)))
+     (funcall #'dei--try-birth-dire-hydra (car spec) (cdr spec)))
+
+String STEM is a stem on which the resulting list of heads will
+be based.
 
 Boolean NONUM-P determines if this should be a numberless hydra,
 i.e. one where the numeric keys do numeric prefix arguments
@@ -843,7 +844,7 @@ instead of anything else they may have been bound to."
                  extra-heads
                  (dei--specify-visible-heads stem verboten-leafs)
                  (dei--specify-invisible-heads stem verboten-leafs))))
-    (-cons* stem name heads)))
+    (cons name heads)))
 
 (defun dei--try-birth-dire-hydra (name list-of-heads)
   "Create a hydra named NAME with LIST-OF-HEADS.
@@ -1029,37 +1030,52 @@ To start, see `dei-async-make-hydras'."
   (dei--async-chomp))
 
 ;; TODO: wipe dei--flocks if frame-width etc changed (or record every possible
-;; framewidth...). go back in git-timemachine for the old
+;; framewidth...). Go back in git-timemachine for the old
 ;; dei--stage-4-model-the-world, grab some of its framewidth checks
 (defun dei--async-1-check-predone (&optional _)
   "If worked on this buffer before, drop the chain."
   (setq dei--buffer-under-operation (current-buffer))
   (setq dei--flock-under-operation (dei--hash-current-modes))
   ;; This mode combo worked on before
-  (when (rassoc dei--flock-under-operation dei--flocks)
-    (setq dei--async-chain nil)
-    (dei--echo "Already created flock: %s." dei--flock-under-operation)
-    (dei--async-8-bind-hydras)))
+  ;; (when (rassoc dei--flock-under-operation dei--flocks)
+  (when (assoc (cons major-mode local-minor-modes) dei--flocks)
+      (setq dei--async-chain nil)
+      (dei--echo "Already created flock: %s." dei--flock-under-operation)
+      (dei--async-8-bind-hydras)))
+
+(defun dei--prefix-to-stem (keydesc)
+  (concat keydesc " "))
 
 (defun dei--async-4-model-the-world (&optional _)
   "Calculate things."
   (with-current-buffer dei--buffer-under-operation
-    ;; Infer which submaps exist by cutting the leafs off every key.
-    (setq dei--stems
-          (->> (dei--get-filtered-bindings)
-               ;; Sort to avail the most relevant hydras to the user soonest.
-               (seq-sort-by #'dei--key-seq-steps-length #'>)
-               (-map #'dei--drop-leaf)
-               (-remove #'string-empty-p)
-               (-uniq)))
-
     ;; Figure out dei--hydrable-prefix-keys, important in several
     ;; functions indirectly called from the next stage.
     (setq dei--hydrable-prefix-keys
-          (-difference (-map #'dei--stem-to-parent-keydesc dei--stems)
-                       ;; Subtract the root stems since they are still invalid
-                       ;; keydescs, which is ok bc no hydra refers to them.
-                       '("C-" "M-" "s-" "H-" "A-")))
+          (-uniq
+           (cl-loop
+            for key in (-uniq
+                        (-keep #'dei--parent-key (dei--get-filtered-bindings)))
+            for n = (length (split-string key " "))
+            append (-iterate #'dei--parent-key key n))))
+
+    ;; Figure out stems from which to make hydras
+    (setq dei--stems
+          (->> dei--hydrable-prefix-keys
+               (-map #'dei--prefix-to-stem)
+               (append '("C-" "M-" "s-" "H-" "A-"))))
+
+    ;; Simulate a new key sequence -- can use this from a fallback hydra, lol.
+    ;; Unfortunately not 100% simulation.  Which-key doesn't trigger, for one
+    ;; thing.
+    (let ((key "C-x"))
+      (while (keymapp (key-binding (kbd key)))
+        (message key)
+        (setq key (general--extend-key-sequence key)))
+      (message "%s is bound to: %s"
+               key (key-binding (kbd key))))
+    ;; The real way to simulate:
+    (setq unread-command-events (listify-key-sequence "\C-xa"))
 
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)
@@ -1094,15 +1110,16 @@ itself to the front of `dei--async-chain', until
 (defun dei--async-6-birth-dire-hydra (&optional chainp)
   "Pass a blueprint to `defhydra', turning dry-run into wet-run.
 Each invocation pops one blueprint off `dei--hydra-blueprints'.
-With CHAINP non-nil, the function will add another invocation of
-itself to the front of `dei--async-chain', until
-`dei--hydra-blueprints' is empty."
+
+With CHAINP non-nil, add another invocation of this function to
+the front of `dei--async-chain', until `dei--hydra-blueprints' is
+empty."
   (when dei--hydra-blueprints
     (with-current-buffer dei--buffer-under-operation
       (let ((blueprint (pop dei--hydra-blueprints)))
         (or blueprint
             (error "Blueprint should not be nil"))
-        (dei--try-birth-dire-hydra (cadr blueprint) (cddr blueprint)))))
+        (dei--try-birth-dire-hydra (car blueprint) (cdr blueprint)))))
   ;; Run again if more to do
   (and chainp
        dei--hydra-blueprints
@@ -1126,7 +1143,7 @@ itself to the front of `dei--async-chain', until
         (push (cons mode-combn dei--flock-under-operation)
               dei--flocks)))))
 
-(defun dei--async-8-bind-hydras (&optional chainp)
+(defun dei--async-8-bind-hydras (&optional _)
   "Buffer-locally bind appropriate root hydras for the buffer.
 Optional argument CHAINP should only be used by `dei--async-chomp'."
   (with-current-buffer dei--buffer-under-operation
@@ -1823,6 +1840,7 @@ Interactively, use the value of `dei--remap-actions'."
   :global t
   :lighter " dei"
   :group 'deianira
+  ;; TODO: Bind fallback hydras
   ;; :keymap `((,(kbd "<f31>") . dei-A/body)
   ;;           (,(kbd dei-ersatz-control) . dei-C/body)
   ;;           (,(kbd "<f24>") . dei-H/body)
@@ -1880,6 +1898,8 @@ Interactively, use the value of `dei--remap-actions'."
         ;; (add-hook 'after-change-major-mode-hook #'dei-generate-hydras-restart)
         )
 
+    ;; TODO: Unbind the ersatz keys in all the major mode maps.  But first:
+    ;; revamp so dei--flocks is built with (current-active-maps).
     (named-timer-cancel 'deianira-at-work)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") dei--old-hydra-C-u)
