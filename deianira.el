@@ -1501,19 +1501,32 @@ more silent bug is C-x i becoming C-x C-i which goes ahead and
 overrides your C-x TAB binding without signaling anything even to
 the developer.
 
-The problem is that control characters should be deprecated.  I
-recommend a solution like `dei-define-super-like-ctl-everywhere' and
-never typing another control character.
+The problem is anachronistic Unix control character behavior,
+which Emacs could deprecate but has so far chosen not to, for the
+sake of functioning under terminal emulators.  I recommend a
+solution like `dei-define-super-like-ctl-everywhere' and never
+typing another control character.
 
 If you don't, it pays to know to always bind <tab> instead of
 TAB, <return> instead of RET, and <escape> instead of ESC.  GUI
 Emacs always looks up these if bound, and only falls back to the
 control character if these function keys are unbound.  They do
 not work on the terminal/TTY, but neither does Super or many
-other niceties."
-  (cl-assert (dei--key-starts-with-modifier keydesc))
-  (and (string-search "C-" (substring keydesc 0 2))
-       (string-match-p (rx (any "[" "m" "i")) keydesc)))
+other niceties.  This will still not let you use C-\[ as anything
+other than an ESC shorthand, but you'll be able to bind C-m and
+C-i without clobbering the Tab or Return keys.  You may still
+encounter issues with packages either binding RET/TAB, ruining
+your C-m/C-i, and/or not thinking to bind <return>/<tab> so that
+you have to add them yourself.
+
+As an additional nicety, we avoid touching key sequences
+involving Control and \"g\" so as to prevent clobbering the
+meaning of \"C-g\".  Otherwise, homogenizing C-h g binds C-h C-g
+to the same, creating a situation when C-g is not available for
+`keyboard-quit'."
+  (declare (pure t) (side-effect-free t))
+  (and (string-prefix-p "C-" keydesc)
+       (string-match-p (rx (any "[" "m" "i" "g")) keydesc)))
 
 ;; TODO: Maybe just return the action, and let the caller push onto
 ;; external variables if they wish.
@@ -1528,10 +1541,10 @@ with \\[dei-remap-actions-execute]."
     (error "String not passed: %s" this-key))
   (and
    (not (dei--key-seq-steps=1 this-key)) ;; nothing to homogenize if length 1
+   (not (dei--nightmare-p this-key))
    (dei--key-starts-with-modifier this-key)
-   (dei--nightmare-p this-key)
    (let* ((raw-keymap (dei--raw-keymap keymap))
-           (this-cmd (lookup-key-ignore-too-long raw-keymap (kbd this-key))))
+          (this-cmd (lookup-key-ignore-too-long raw-keymap (kbd this-key))))
       ;; REVIEW: what do if this-cmd is another keymap?
       (when (functionp this-cmd)
         (let* (;; NOTE: we are assuming there exist no "bastard sequences",
