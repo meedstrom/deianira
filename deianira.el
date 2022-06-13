@@ -357,7 +357,7 @@ that, see `dei--key-contains-any'."
               (string-match-p dei--modifier-regexp-safe keydesc)))
     ;; We use +1 and not +2 b/c of the peculiarities of this regexp, but it
     ;; gets the job done.
-    (string-match-p dei--modifier-regexp-safe keydesc (+ 1 first-modifier-pos))))
+    (string-match-p dei--modifier-regexp-safe keydesc (1+ first-modifier-pos))))
 
 (defun dei--key-starts-with-modifier (keydesc)
   "Return t if kEYDESC starts with a modifier."
@@ -377,14 +377,15 @@ those, see `dei--key-contains-any'.  Does catch e.g. C-S-<RET>."
       (let* (;; Compensate if `dei--modifier-regexp-safe' matched a dash or
              ;; space preceding the actual modifier.
              (first-match-pos (if (zerop first-match-pos)
-                              first-match-pos
-                            (1+ first-match-pos)))
+                                  first-match-pos
+                                (1+ first-match-pos)))
              (caught (substring keydesc first-match-pos (1+ first-match-pos)))
              (mods '("A" "C" "H" "M" "S" "s"))
-             (now-forbidden-mods (concat "\\(-\\|^\\| \\)\\(["
-                                         (string-join (remove caught mods))
-                                         "]-\\)")))
-        (string-match-p now-forbidden-mods keydesc)))))
+             (now-forbidden-mods-regexp
+              (concat "\\(-\\|^\\| \\)\\(["
+                      (string-join (remove caught mods))
+                      "]-\\)")))
+        (string-match-p now-forbidden-mods-regexp keydesc)))))
 
 (defun dei--key-seq-steps=1 (keydesc)
   (declare (pure t) (side-effect-free t))
@@ -423,7 +424,7 @@ For that, see `dei--key-mixes-modifiers'."
 
 (defun dei--number-base36 (num len)
   "Return NUM as base 36 and ensure it's LEN characters wide.
-Copy-pasted from the message library, no idea how it works."
+Copy-pasted from the message library in gnus."
   (declare (pure t) (side-effect-free t))
   (if (if (< len 0)
           (<= num 0)
@@ -846,16 +847,17 @@ instead of anything else they may have been bound to."
                  (dei--specify-invisible-heads stem verboten-leafs))))
     (cons name heads)))
 
+;; TODO: Make it even faster.  It's a bit slow because defhydra does a lot of
+;; heavy lifting.  Approaches: 1. give up on the self-inserting quitters
+;; (capital keys) since there are many of those heads. 2. Give up on nonum
+;; hydras. 3. Make a leaner subset of defhydra.
 (defun dei--try-birth-dire-hydra (name list-of-heads)
   "Create a hydra named NAME with LIST-OF-HEADS.
 This will probably be called by `dei--generate-hydras',
 which see."
-  ;; TODO: test running generate-hydras-async while in open hydra
+  ;; An old error check
   (if (eq hydra-curr-body-fn (intern name))
-      (progn
-        (message "This hydra active, skipped redefining: %s" name)
-        ;; Return nil because caller uses the return value
-        nil)
+      (error "This hydra active, skipped redefining: %s" name)
     (eval `(defhydra ,(intern name)
              (:columns ,dei-columns
               :exit nil
@@ -968,11 +970,9 @@ When they change, we want to carry out some re-calculations, but
 we don't want to do them super-often so we skip doing them as
 long as they don't change.")
 
-
 (defvar dei--flocks nil
   "Alist relating major plus minor modes with root hydras.")
 
-(make-variable-buffer-local (defvar deianira-local-map))
 (make-variable-buffer-local (defvar dei--all-done nil))
 
 (defvar dei--async-chain-last-idle-value)
@@ -1238,6 +1238,7 @@ Arguments KEYMAP, KEY, DEF and REMOVE as in `define-key'."
 
 (defvar dei--clean-actions nil)
 
+;; It seems rx's `or' keyword calls regexp-opt. Slow, so do it only once.
 (defconst dei--shift-regexp (rx (or bol "-" " ") "S-")
   "Match explicit \"S-\" chords in key descriptions.")
 
@@ -1245,14 +1246,6 @@ Arguments KEYMAP, KEY, DEF and REMOVE as in `define-key'."
   "Non-nil if KEYDESC would be unbound in a purist scheme."
   (let ((case-fold-search nil))
     (or
-     ;; TODO: it seems rx will call regexp-opt indirectly, when we use its `or'
-     ;; syntax. So this part is causing a full 30% of the lag. Does rx have an
-     ;; implicit eval-when-compile (Seems not)? If not, tell upstream. And I
-     ;; like interpreted performance to be passable, so let's replace this.
-     ;;
-     ;; The biggest question I have is why sometimes it does NOT lag.  Maybe it
-     ;; was using the compiled artifact of this code?  No, I guess it's fast
-     ;; enough when generate-hydras is not running repeatedly.
      (string-match-p dei--shift-regexp keydesc)
      (dei--key-contains dei--all-shifted-symbols-list keydesc)
      (dei--key-contains-multi-chord keydesc)
@@ -1281,10 +1274,8 @@ Arguments KEYMAP, KEY, DEF and REMOVE as in `define-key'."
                when (and
                      (not (string-match-p dei--ignore-keys-regexp key))
                      (or (dei--key-is-illegal key)
-                         ;; I don't want to touch these, they constitute an
-                         ;; alternative form of menu-bar to me.  I want to see
-                         ;; Doom, Spacemacs and friends crystallize a leader
-                         ;; key standard that one day lives as its own package.
+                         ;; I don't want to touch these, I want to see what
+                         ;; Doom does with them.
                          (when doom
                            (or (string-prefix-p doom-localleader-alt-key key)
                                (string-prefix-p doom-leader-alt-key key)))))
@@ -1749,7 +1740,8 @@ Interactively, use the value of `dei--remap-actions'."
         (when-let* ((conflict-prefix (dei--key-seq-has-non-prefix-in-prefix raw-keymap keydesc))
                     (conflict-def (lookup-key-ignore-too-long raw-keymap (kbd conflict-prefix))))
           (unless (keymapp conflict-def)
-            ;; if it's a keymap, we'll be perfectly able to bind our key
+            ;; If it's a keymap, we'll be perfectly able to bind our key. If
+            ;; not a keymap, we must unbind it.
             (define-key raw-keymap (kbd conflict-prefix) nil t)))
         (define-key raw-keymap (kbd keydesc) cmd)))))
 
