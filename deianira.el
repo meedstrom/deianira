@@ -1685,40 +1685,61 @@ with \\[dei-remap-actions-execute]."
                         chordonce-cmd
                         keymap
                         "Clone chord-once to perma-chord           "))))
-          ;; FIXME: no seq ending in g should ever overwrite the one ending in
-          ;; C-g.  Check if the leaf is g and then decline to duplicate it to
-          ;; C-g.
-          ;; Currently, magit-status gets bound to C-x C-g.
           (when (and action
                      (not (member action dei--remap-record)))
             (push action dei--remap-actions)
             (push action dei--remap-record)))))))
 
-;; (dei--homogenize-key-in-keymap "C-c C-;" 'vertico-map)
-;; (dei--homogenize-key-in-keymap "C-x C-k C-e" 'global-map)
-;; (dei--homogenize-keymap 'global-map)
+(defun dei--unnest-keymap-for-homogenizing (map &optional avoid-prefixes)
+  "Return MAP as a list of key seqs instead of a tree of keymaps.
+These key seqs are strings satisfying `key-valid-p'.
+AVOID-PREFIXES is a list of prefixes to leave out of the result."
+  (cl-loop for x being the key-seqs of (dei--raw-keymap map)
+           using (key-bindings cmd)
+           as key = (key-description x)
+           with cleaned = (member map dei--cleaned-maps)
+           unless
+           (or (member cmd '(nil
+                             self-insert-command
+                             ignore
+                             ignore-event
+                             company-ignore))
+               (string-match-p dei--ignore-keys-regexp key)
+               (string-search "backspace" key)
+               (string-search "DEL" key)
+               (unless cleaned
+                 (dei--key-is-illegal key))
+               (cl-loop for prefix in (or avoid-prefixes
+                                          dei--unnest-avoid-prefixes)
+                        when (string-prefix-p prefix key)
+                        return t))
+           collect key))
 
 ;; TODO: some way to catch when this doesn't do anything and it should
 (defun dei--homogenize-keymap (map)
   "Homogenize most of keymap MAP."
   (message "Keys rebound: %s"
-           (cl-loop for key in (dei--unnest-keymap-for-hydra-to-eat map)
+           (cl-loop for key in (dei--unnest-keymap-for-homogenizing map)
                     when (dei--homogenize-key-in-keymap key map)
                     count key)))
 
+(defcustom dei-debug-noisy nil
+  ".")
+
 (defun dei-homogenize-all-keymaps ()
-  "."
   (cl-loop for map in (-difference dei--known-keymaps dei--homogenized-keymaps)
            do (progn (dei--homogenize-keymap map)
                      (if (member map dei--homogenized-keymaps)
                          (warn "Keymap already homogenized, doing again: %s" map)
                        (push map dei--homogenized-keymaps)))
            finally (progn
+                     (and dei-debug
+                          dei-debug-noisy
+                          (dei-remap-actions-preview))
                      (dei-remap-actions-execute dei--remap-actions)
                      (setq dei--remap-actions nil))))
 
 (defun dei-homogenize-all-keymaps-dry-run ()
-  "."
   (interactive)
   (cl-loop for map in (-difference dei--known-keymaps dei--homogenized-keymaps)
            do (dei--homogenize-keymap map)
