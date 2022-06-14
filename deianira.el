@@ -1,5 +1,7 @@
 ;;; deianira.el --- Modifier-free pseudo-modal input -*- lexical-binding: t -*-
 
+;; (read-symbol-shorthands . '("dei-" . "deianira-"))
+
 ;; Copyright (C) 2018-2022 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -37,6 +39,7 @@
 (require 'seq)
 (require 'subr-x)
 (require 'cl-lib)
+(require 'help-fns)
 
 ;; external dependencies
 (require 'dash)
@@ -434,9 +437,9 @@ Copy-pasted from the message library in gnus."
             (char-to-string (aref "zyxwvutsrqponmlkjihgfedcba9876543210"
                                   (% num 36))))))
 
-(defun dei--hash-current-modes ()
-  "Make a 5-char hash of the current major and minor modes."
-  (let ((hash (sxhash (cons major-mode local-minor-modes))))
+(defun dei--hash (input)
+  "Make a 6-char hash of INPUT, which can be any Lisp object."
+  (let ((hash (sxhash input)))
     (concat "/" (dei--number-base36 (if (< hash 0)
                                      (- hash)
                                    hash)
@@ -1029,23 +1032,40 @@ To start, see `dei-async-make-hydras'."
   (setq dei--async-chain-last-idle-value 0) ;; yes, 0
   (dei--async-chomp))
 
+(defun dei--current-keymap-combn ()
+  "List the non-empty active named keymaps, as quoted symbols.
+Usually starts with the current global map, then the major mode
+map, then the minor modes."
+  (nreverse ;; more convenient for dev to inspect
+   (-uniq
+    (cl-loop for map in (current-active-maps)
+             unless (equal map '(keymap))
+             for named-map = (help-fns-find-keymap-name map)
+             when named-map
+             collect named-map))))
+
 ;; TODO: wipe dei--flocks if frame-width etc changed (or record every possible
 ;; framewidth...). Go back in git-timemachine for the old
 ;; dei--stage-4-model-the-world, grab some of its framewidth checks
 (defun dei--async-1-check-predone (&optional _)
   "If worked on this buffer before, drop the chain."
   (setq dei--buffer-under-operation (current-buffer))
-  (setq dei--flock-under-operation (dei--hash-current-modes))
-  ;; This mode combo worked on before
-  ;; (when (rassoc dei--flock-under-operation dei--flocks)
-  (when (assoc (cons major-mode local-minor-modes) dei--flocks)
+  (setq dei--flock-under-operation (dei--hash (dei--current-keymap-combn)))
+  (when (rassoc dei--flock-under-operation dei--flocks)
+  ;;(when (assoc (dei--current-keymap-combn) dei--flocks)
       (setq dei--async-chain nil)
       (dei--echo "Already created flock: %s." dei--flock-under-operation)
       (dei--async-8-bind-hydras)))
 
 (defun dei--prefix-to-stem (keydesc)
+  "Add a space to the end of KEYDESC.
+Simple function, but useful for `mapcar' and the like."
+  (declare (pure t) (side-effect-free t))
   (concat keydesc " "))
 
+;; TODO: Revive the old system that only checks for diffs in the bindings.
+;; Since we'll now bind all flocks into the same "namespace", it'll work, and
+;; we get to cut a lot of computation.
 (defun dei--async-4-model-the-world (&optional _)
   "Calculate things."
   (with-current-buffer dei--buffer-under-operation
@@ -1064,18 +1084,6 @@ To start, see `dei-async-make-hydras'."
           (->> dei--hydrable-prefix-keys
                (-map #'dei--prefix-to-stem)
                (append '("C-" "M-" "s-" "H-" "A-"))))
-
-    ;; Simulate a new key sequence -- can use this from a fallback hydra, lol.
-    ;; Unfortunately not 100% simulation.  Which-key doesn't trigger, for one
-    ;; thing.
-    (let ((key "C-x"))
-      (while (keymapp (key-binding (kbd key)))
-        (message key)
-        (setq key (general--extend-key-sequence key)))
-      (message "%s is bound to: %s"
-               key (key-binding (kbd key))))
-    ;; The real way to simulate:
-    (setq unread-command-events (listify-key-sequence "\C-xa"))
 
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)
@@ -1123,22 +1131,12 @@ empty."
        dei--hydra-blueprints
        (push #'dei--async-6-birth-dire-hydra dei--async-chain)))
 
-;; TODO: use (current-active-maps), not mode combn, because some maps are not
-;; implied by modes. For example, vertico-map is not a mode map, but it's
-;; enabled on a hook with use-local-map.  That case is fine since I use vertico
-;; everywhere, so when a completing-read happens, the hydra makers will pick up
-;; the vertico-map bindings (remember, they consult true buffer bindings and no
-;; particular keymap).  Also, different sorts of minibuffer-mode-based prompts
-;; tend to have different sets of local-minor-modes, further aiding
-;; disambiguation, but it could be a problem if I don't always use vertico and
-;; a prompt with vertico and a prompt without vertico both have the exact same
-;; set of modes.
 (defun dei--async-7-register (&optional _)
-  "Register this mode combination."
+  "Register this keymap combination to avoid remaking hydras."
   (with-current-buffer dei--buffer-under-operation
-    (let ((mode-combn (cons major-mode local-minor-modes)))
-      (unless (assoc mode-combn dei--flocks)
-        (push (cons mode-combn dei--flock-under-operation)
+    (let ((maps (dei--current-keymap-combn)))
+      (unless (assoc maps dei--flocks)
+        (push (cons maps dei--flock-under-operation)
               dei--flocks)))))
 
 (defun dei--async-8-bind-hydras (&optional _)
@@ -1151,8 +1149,7 @@ Optional argument CHAINP should only be used by `dei--async-chomp'."
       (define-key map (kbd dei-ersatz-super) (dei--corresponding-hydra "s- "))
       (define-key map (kbd dei-ersatz-hyper) (dei--corresponding-hydra "H- "))
       (define-key map (kbd dei-ersatz-alt) (dei--corresponding-hydra "A- ")))
-    (dei--echo "Bound keys in buffer %s" (buffer-name))
-    (setq-local dei--all-done t)))
+    (dei--echo "Bound keys in buffer %s" (buffer-name))))
 
 (defun dei--stage-4b-check-settings (&optional _)
   (unless (--all? (equal (cdr it) (symbol-value (car it)))
@@ -1351,6 +1348,23 @@ This simply evaluates `current-active-maps' and adds to
              (dei--define-super-like-ctlmeta-in-keymap definition))))))
    (dei--raw-keymap map)))
 
+;; TODO: Insert customizable exceptions such that we don't bring over
+;; TAB/RET/ESC/g as s-i/s-m/s-[/s-g unless user chooses it. Ideally, we would
+;; also react to every package that binds e.g. RET, and relocate that binding
+;; to <return>, but it's impossible to see after the fact whether the package
+;; author wrote it as RET or as C-m and therefore how they thought of it.  I
+;; guess we can count both as intended for the Return key.  Then, on
+;; keymap-found-hook, we always move this binding to <return>.  Only if
+;; <return> already exists within the same keymap, and C-m is bound to
+;; something different, we might consider duplicating C-m to s-m.  Otherwise,
+;; whatever the user chooses for C-m or s-m in the global map should tend to
+;; stick.
+;;
+;; Note that using Super also has the comes-for-free benefit of allowing you to
+;; homogenize s-x g to s-x s-g without making you go woops i typed C-g
+;; (keyboard-quit), ditto for m, i and [.  Mind you that homogenizing should be
+;; done directly on the Super bindings /after/ making them reflect the Control
+;; bindings.
 (defun dei-define-super-like-ctl-everywhere ()
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--super-reflected-keymaps)
@@ -1420,7 +1434,8 @@ matter the direction since there is no contest."
     ;; ("C-x r")
     ;; ("C-x v")
     ("M-g")
-    ("C-c C-c" . org-mode-map))
+    ("C-c C-c" . org-mode-map)
+    ("C-c C-," . org-mode-map))
   "Alist of keys that always win the homogenizing battle.
 See `dei-permachord-wins-homogenizing' for explanation.
 
@@ -1723,9 +1738,12 @@ AVOID-PREFIXES is a list of prefixes to leave out of the result."
                     when (dei--homogenize-key-in-keymap key map)
                     count key)))
 
-(defcustom dei-debug-noisy nil
+(defcustom dei-debug-noisy t
   ".")
 
+;; TODO: Always print the remaps to some buffer, even if not noisy
+;; TODO: And show what was previously bound, for when user preferred that action
+;; and want to find what was its name to add to homogenizing-winners.
 (defun dei-homogenize-all-keymaps ()
   (cl-loop for map in (-difference dei--known-keymaps dei--homogenized-keymaps)
            do (progn (dei--homogenize-keymap map)
@@ -1913,30 +1931,51 @@ Interactively, use the value of `dei--remap-actions'."
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
         (add-hook 'window-buffer-change-functions #'dei--record-keymap-maybe -48)
-        (add-hook 'window-buffer-change-functions #'dei-async-make-hydras 56)
-        ;; (add-variable-watcher 'local-minor-modes #'dei-generate-hydras-restart)
-        ;; NOTE: Horrid performance penalty!  For some reason the hook re-runs
-        ;; on every hydra head call? May be a Doom thing.
-        ;; (add-hook 'after-change-major-mode-hook #'dei-generate-hydras-restart)
+        ;; (add-hook 'window-buffer-change-functions #'dei-async-make-hydras 56)
+        ;; (add-hook 'window-selection-change-functions #'dei-async-make-hydras)
         )
 
-    ;; TODO: Unbind the ersatz keys in all the major mode maps.  But first:
-    ;; revamp so dei--flocks is built with (current-active-maps).
+    ;; TODO: Unbind the ersatz keys in all the major mode maps.  Not sure this works
+    (cl-loop for flock in dei--flocks
+             for sym in dei--ersatz-keys-list
+             as key = (symbol-value sym)
+             when key
+             do (define-key (dei--raw-keymap (cadar flock)) (kbd key) nil t))
     (named-timer-cancel 'deianira-at-work)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") dei--old-hydra-C-u)
-    ;; (remove-variable-watcher 'local-minor-modes #'dei--generate-hydras)
     (remove-hook 'window-buffer-change-functions #'dei--record-keymap-maybe)
     (remove-hook 'window-buffer-change-functions #'dei-async-make-hydras)
+    (remove-hook 'window-selection-change-functions #'dei-async-make-hydras)
     (advice-remove #'completing-read #'dei--slay)
     (advice-remove #'ido-read-internal #'dei--slay)
     (advice-remove #'ivy-read #'dei--slay)
     (advice-remove #'helm #'dei--slay)))
 
+;; (cl-loop for sym in dei--ersatz-keys-list
+;;          for flock in dei--flocks
+;;          as key = (symbol-value sym)
+;;          when key
+;;          do (define-key (dei--raw-keymap (cadar flock)) (kbd key) nil t))
+
+(defvar dei--ersatz-keys-list
+  '(dei-ersatz-alt
+    dei-ersatz-meta
+    dei-ersatz-hyper
+    dei-ersatz-super
+    dei-ersatz-control))
+
 ;;; User config
 
-;; lv is being terribly laggy for some reason
+;; FIXME: lv is being terribly laggy for some reason (seems to re-render the
+;; hint on every input event?)
 (setopt hydra-hint-display-type 'message)
+
+;; Note that lv also had(has?) a horrific bug that cleared the buffer of text
+;; without possibility of undo, by way of delete-region, because lv-message
+;; called (with-current-buffer (lv-window)) which soemtimes doesn't do the
+;; expected thing.  Patch in an extra safety clause before the delete?
+
 (setopt dei-debug "*Deianira Debug*")
 (setopt dei-invisible-leafs
       (seq-difference dei-invisible-leafs '("-" "=" "<menu>")))
@@ -1959,8 +1998,21 @@ Interactively, use the value of `dei--remap-actions'."
 
 ;;;; WIP area
 
-;; TODO: show only minimal hint to indicate that the hydra is on
 (defun dei--make-static-hydras ()
+  "Make simple fallback hydras.
+Model them on the bindings of `emacs-lisp-mode', to be most
+useful when developing the package or fixing initfiles, but the
+hint may not reflect the truth in other modes."
+  (with-current-buffer (get-buffer-create "deianira-temp-buffer")
+    (emacs-lisp-mode)
+    (dei-async-make-hydras)
+    (let ((x (current-buffer)))
+      (add-to-list dei--async-chain `(lambda ()
+                                    (kill-buffer ,x))
+                   'append))))
+
+;; TODO: show only minimal hint to indicate that the hydra is on
+(defun dei--make-static-hydras* ()
   "Make simple fallback hydras.
 Model them on the bindings of `emacs-lisp-mode', to be most
 useful when developing the package or fixing initfiles, but the
@@ -1983,8 +2035,8 @@ hint may not reflect the truth in other modes."
                as bp2 = (dei--specify-dire-hydra
                           stem (dei--dub-hydra-from-key-or-stem stem))
                do
-               (dei--try-birth-dire-hydra (cadr bp1) (cddr bp1))
-               (dei--try-birth-dire-hydra (cadr bp2) (cddr bp2))))
+               (dei--try-birth-dire-hydra (car bp1) (cdr bp1))
+               (dei--try-birth-dire-hydra (car bp2) (cdr bp2))))
     (kill-buffer (current-buffer))))
 
 
