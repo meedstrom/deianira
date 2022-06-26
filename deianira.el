@@ -1000,7 +1000,6 @@ which see."
               #'> :key #'dei--key-seq-steps-length))
        dei--clean-actions)))
 
-
 ;; REVIEW: Test <ctl> x 8 with Deianira active.
 (defvar dei--unnest-avoid-prefixes
   (cons "C-x 8"
@@ -1647,7 +1646,7 @@ This simply evaluates `current-active-maps' and adds to
 ;; possible to hide the strange combinations from the which-key popup, see
 ;; README.  It may be possible to use `copy-keymap' in order to avoid this, but
 ;; it has no impact on the user so I'll let it be.
-(defun dei--define-super-like-ctl-in-keymap (map)
+(defun dei--define-super-like-ctl-in-keymap* (map)
   (map-keymap
    (lambda (event definition)
      (let ((key (key-description (vector event))))
@@ -1657,7 +1656,64 @@ This simply evaluates `current-active-maps' and adds to
                  dei--reflect-actions)
            (when (keymapp definition)
              ;; Recurse!
+             ;; TODO: use `copy-keymap'
              (dei--define-super-like-ctl-in-keymap definition))))))
+   (dei--raw-keymap map)))
+
+;; (defun dei--define-super-like-ctl-in-keymap (map)
+;;   (cl-loop
+;;    for key being the key-seqs of (dei--raw-keymap map)
+;;    do (if (string-search " " key)
+;;           )
+;;            ))
+
+;; A variant that uses `copy-keymap' trick.
+;; Q: Should we use map inheritance? See `copy-keymap'.
+(defun dei--define-super-like-ctl-in-keymap (map &optional preserve)
+  (map-keymap
+   (lambda (event definition)
+     (let ((key (key-description (vector event))))
+       (when (string-search "C-" key)
+         (unless (string-search "s-" key)
+           (let ((ctlkey key)
+                 (superkey (string-replace "C-" "s-" key)))
+             (if (keymapp definition)
+                 (let ((new-submap (copy-keymap definition)))
+                   ;; Recurse!
+                   (dei--define-super-like-ctl-in-keymap new-submap)
+                   (push (list map superkey new-submap) dei--reflect-actions))
+               (push (list map superkey definition) dei--reflect-actions))
+             (unless preserve
+               (push (list map ctlkey nil) dei--reflect-actions)))))))
+   (dei--raw-keymap map)))
+
+;; (dei--define-super-like-ctl-in-keymap vertico-map t)
+;; (dei--reflect-actions-execute)
+;; (setq dei--reflect-actions nil)
+
+;; Variant that uses map inheritance.
+(defun dei--define-super-like-ctl-in-keymap (map &optional preserve)
+  (map-keymap
+   (lambda (event definition)
+     (let ((key (key-description (vector event))))
+       (when (string-search "C-" key)
+         (unless (string-search "s-" key)
+           (let ((ctlkey key)
+                 (superkey (string-replace "C-" "s-" key)))
+             (if (keymapp definition)
+                 (let ((new-submap (make-sparse-keymap))
+                       (map-name (help-fns-find-keymap-name definition)))
+                   (set-keymap-parent new-submap definition)
+                   ;; Give it a new name
+                   ;;(when map-name
+                   ;;  (set (intern (concat "dei-super-" (symbol-name map-name)))
+                   ;;       new-submap))
+                   ;; Recurse!
+                   (dei--define-super-like-ctl-in-keymap new-submap)
+                   (push (list map superkey new-submap) dei--reflect-actions))
+               (push (list map superkey definition) dei--reflect-actions))
+             (unless preserve
+               (push (list map ctlkey nil) dei--reflect-actions)))))))
    (dei--raw-keymap map)))
 
 (defun dei--define-super-like-ctlmeta-in-keymap (map)
@@ -1694,7 +1750,7 @@ This simply evaluates `current-active-maps' and adds to
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--super-reflected-keymaps)
            do (progn
-                (dei--define-super-like-ctl-in-keymap map)
+                (dei--define-super-like-ctl-in-keymap map t)
                 (dei--reflect-actions-execute)
                 (push map dei--super-reflected-keymaps))))
 
