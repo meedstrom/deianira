@@ -928,8 +928,8 @@ instead of anything else they may have been bound to."
 
 ;; TODO: Make it even faster.  It's a bit slow because defhydra does a lot of
 ;; heavy lifting.  Approaches: 1. give up on the self-inserting quitters
-;; (capital keys) since there are many of those heads. 2. Give up on nonum
-;; hydras. 3. Make a leaner subset of defhydra.
+;; (principally capital keys) since there are many of those heads. 2. Give up
+;; on nonum hydras. 3. Make a leaner subset of defhydra.
 (defun dei--try-birth-hydra (name list-of-heads)
   "Create a hydra named NAME with LIST-OF-HEADS.
 This will probably be called by `dei--generate-hydras',
@@ -1152,8 +1152,9 @@ When they change, we want to carry out some re-calculations, but
 we don't want to do them super-often so we skip doing them as
 long as they don't change.")
 
-;; NOTE: If we had a deterministic hash function (`sxhash' is only so for
-;; the current session), we could even restore flocks from disk.  Cool, eh?
+;; Sidenote: If we had a deterministic hash function (`sxhash' is not
+;; deterministic across restarts), we could even restore flocks from disk.
+;; Cool, eh?
 (defvar dei--flocks nil
   "Alist relating major plus minor modes with root hydras.")
 
@@ -1170,48 +1171,6 @@ long as they don't change.")
      ))
 
 (defvar dei--async-running nil)
-
-(defun dei--async-chomp* ()
-  "Pop the next function off `dei--async-chain' and call it.
-Rinse and repeat until user does something, in which case defer
-to a short idle timer so that user is free to use Emacs.  Stop
-only when `dei--async-chain' is empty or a keyboard quit occurs
-during execution.
-
-To start, see `dei-async-make-hydras'."
-  (if (buffer-live-p dei--buffer-under-analysis)
-      (let ((fun (car-safe dei--async-chain)))
-        (condition-case err
-            (progn
-              ;; In case `dei--async-chomp-polite' is lined up
-              (when (member (named-timer-get 'deianira-at-work) timer-list)
-                (error "Timer was not cancelled before `dei--async-chomp'"))
-              (setq dei--async-running t)
-              (dei--echo "Async running %s" fun)
-              (funcall fun t) ;; Real work happens here
-              ;; Now that we know it exited without error, pop one off the queue
-              (pop dei--async-chain)
-              (when dei--async-chain
-                (let ((polite-delay 1.0)
-                      (idled-time (or (current-idle-time) 0)))
-                  (if (and (time-less-p idled-time polite-delay)
-                           (time-less-p dei--async-chain-last-idle-value idled-time))
-                      ;; If user hasn't done anything since last chomp, go go go.
-                      (named-timer-run 'deianira-at-work 0 nil #'dei--async-chomp)
-                    ;; Otherwise allow time for user input.
-                    ;; (cl-incf dei--async-chain-last-idle-value .7)
-                    (named-timer-idle-run 'deianira-at-work polite-delay nil #'dei--async-chomp-polite))
-                  (setq dei--async-chain-last-idle-value idled-time))))
-          ((error quit)
-           (dei--echo "Chain interrupted because: %s" err)
-           (setq dei--async-running nil)
-           (when (eq (car err) 'error)
-             (error "Function %s failed: %s" fun (cdr err))))))
-    (dei--echo "Canceling because buffer killed: %s" dei--buffer-under-analysis)
-    (setq dei--async-chain nil))
-  ;; The chain fully finished, so set nil.
-  (unless dei--async-chain
-    (setq dei--async-running nil)))
 
 (defun dei--async-chomp (&optional politely)
   "Pop the next function off `dei--async-chain' and call it.
@@ -1263,49 +1222,8 @@ To start, see `dei-async-make-hydras'."
   (unless dei--async-chain
     (setq dei--async-running nil)))
 
-(defun dei--async-chomp-polite ()
-  "Pop the next function off `dei--async-chain' and call it.
-Rinse and repeat on a short idle timer so as to avoid blocking
-Emacs for the user.  Stop only when `dei--async-chain' is empty or a
-keyboard quit occurs during execution.
-
-To start, see `dei-async-make-hydras'."
-  (if (buffer-live-p dei--buffer-under-analysis)
-      (let ((fun (car-safe dei--async-chain)))
-        (condition-case err
-            (progn
-              (setq dei--async-running t)
-              (dei--echo "Async running %s" fun)
-              (funcall fun t) ;; work happens here
-              ;; Now that we know it exited without error, pop the list
-              (pop dei--async-chain)
-              (when dei--async-chain
-                (let ((polite-delay 1.0)
-                      (idled-time (or (current-idle-time) 0)))
-                  (if (time-less-p polite-delay idled-time)
-                      ;; Switch back to aggressive
-                      (named-timer-run 'deianira-at-work 0 nil #'dei--async-chomp)
-                    (named-timer-idle-run 'deianira-at-work polite-delay nil #'dei--async-chomp-polite))
-                  (setq dei--async-chain-last-idle-value idled-time))))
-          ((quit error)
-           (dei--echo "Chain interrupted because: %s" err)
-           (setq dei--async-running nil)
-           (when (eq (car err) 'error)
-             (error "Function %s failed: %s" fun (cdr err))))))
-    (dei--echo "Canceling because buffer killed: %s" dei--buffer-under-analysis)
-    (setq dei--async-chain nil))
-  ;; The chain fully finished, so set nil.
-  (unless dei--async-chain
-    (setq dei--async-running nil)))
-
-(defvar dei--diffs nil)
 (defvar dei--current-hash 0)
 (defvar dei--last-hash 0)
-
-;; (length dei--flocks)
-;; (length (car dei--flocks))
-;; (length (cadr dei--flocks))
-;; (length (cadar dei--flocks))
 
 (cl-defstruct (dei--flock (:constructor dei--flock-record)
                         (:copier nil))
@@ -1472,8 +1390,8 @@ Trivial function, but useful for `mapcar' and friends."
     (setq dei--hydrable-prefix-keys
           (-uniq
            (cl-loop
-            ;; Since `dei--get-filtered-bindings' returns no prefixes, figure them
-            ;; out by cutting the last key off each sequence.
+            ;; Since `dei--get-filtered-bindings' returns no prefixes, infer them
+            ;; by cutting the last key off each sequence.
             for key in (-uniq (-keep #'dei--parent-key (dei--get-filtered-bindings)))
             ;; Add ancestors (if we found C-c c p, count C-c c and C-c too).
             as n = (length (split-string key " "))
@@ -1527,6 +1445,34 @@ Trivial function, but useful for `mapcar' and friends."
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)))
 
+(defun dei--async-4b-check-settings (&optional _)
+  "Signal error if any two user settings overlap.
+Otherwise we could end up with two heads in one hydra both bound
+to the same key, no bueno."
+  (unless (--all-p (equal (symbol-value (car it)) (cdr it))
+                   dei--last-settings-alist)
+    (let ((vars
+           (list (cons 'dei-hydra-keys dei--hydra-keys-list)
+                 (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
+                 (cons 'dei-invisible-leafs dei-invisible-leafs)
+                 (cons 'dei-stemless-quitters dei-stemless-quitters)
+                 (cons 'dei-inserting-quitters dei-inserting-quitters)
+                 (cons 'dei-extra-heads (mapcar #'car dei-extra-heads)))))
+      (while vars
+        (let ((var (pop vars)))
+          (cl-loop
+           for remaining-var in vars
+           do (when-let ((overlap (-intersection (cdr var)
+                                                 (cdr remaining-var))))
+                (error "Found %s in both %s and %s"
+                       overlap (car var) (car remaining-var)))))))
+    ;; Record the newest setting values, so we can skip the relatively
+    ;; expensive calculations next time if nothing changed.
+    (setq dei--last-settings-alist
+          (cl-loop for cell in dei--last-settings-alist
+                   collect (cons (car cell) (symbol-value (car cell)))))))
+
+;; DEPRECATED
 (defun dei--stage-4-model-the-world (&optional _)
   "Calculate things."
   ;; TODO: test if resizing frame has desired effect
@@ -1594,57 +1540,6 @@ the front of `dei--async-chain', so that we repeat until
     (and chainp
          dei--hydra-blueprints
          (push #'dei--async-6-birth-hydra dei--async-chain))))
-
-;; TODO: Record every seen framewidth (nest the alist one more level).  But
-;; will still make the package slow for someone who likes to change frame
-;; geometry.  Yet, we can't just update the hint on changed frame geometry,
-;; because someone may have multiple geometries at once. Instead, two parts:
-;;
-;; 1. a way to re-define only the /hint by setting it to the recalculated
-;; output of (hydra--hint BODY HEADS).
-;;    (hydra--hint dei-C/params dei-C/heads)
-;;    (hydra--format "dei-C" dei-C/params dei-C/docstring dei-C/heads)
-;; (hydra--table '(a b c d) 2 2)
-;;
-;; 2. react to new frame width discovery, by copying all flocks, and applying
-;; the #1 method on them.
-;;
-;; when new flocks are made, make them first for the "master list", then copy
-;; to all other lists with said modification.  If we have an alist of
-;; framewidths, the first member is the master.
-;;
-;; Or rather... since the above could breed a lot of redundant computation,
-;; more simple method:
-;;
-;; 2. when we look if a hash exists, look within each sublist,
-;; in case it's been made for a different framewidth, then copy it from there.
-
-(defun dei--rehint-flock* (flock)
-  "Return FLOCK with hints updated to match framewidth."
-  (let ((dei--colwidth (dei--colwidth-recalc)))
-    (list (frame-parameter nil 'width) ;; (nth 0 flock)
-          (nth 1 flock)
-          (cl-loop
-           with copy
-           for pair in (nth 2 flock)
-           when (string-suffix-p "/hint" (symbol-name (car pair)))
-           collect
-           (let* ((basename (substring (symbol-name (car pair)) 0 -5))
-                  (body (intern-soft (concat basename "/params")))
-                  (docstr (intern-soft (concat basename "/docstring")))
-                  (heads (intern-soft (concat basename "/heads"))))
-             ;; NOTE: here we actually eval the output of hydra--format to get
-             ;; a static string instead of a sexp, as `lv-message' has had
-             ;; performance issues and we don't need a dynamic sexp.
-             (cons (car pair)
-                   (eval (hydra--format basename
-                                        (eval body)
-                                        (eval docstr)
-                                        (eval heads)))))
-           into copy
-           else collect pair
-           into copy
-           finally return copy))))
 
 ;; TODO: figure out if it's necessary to respecify heads due to changed
 ;; dei--filler and if so how to get the effect here (theory: we don't need filler
@@ -1787,62 +1682,40 @@ and one, but obviously ONLY ONE, of:
         (symbol-value map)
       (error "Not a keymap or keymap name: %s" map))))
 
+(defvar dei--known-keymaps '(global-map)
+  "List of named keymaps seen while `deianira-mode' was active.")
+
+(defvar dei--buffer-keymaps (make-hash-table))
+
+(defun dei--record-keymap-maybe (&optional _)
+  "If Emacs has seen new keymaps, record them in a variable.
+This simply evaluates `current-active-maps' and adds to
+`dei--known-keymaps' anything not already there."
+  (let ((maps (current-active-maps))
+        (remembered-maps (gethash (buffer-name) dei--buffer-keymaps)))
+    ;; Make sure we only run the expensive `help-fns-find-keymap-name' once for
+    ;; this buffer, unless the keymaps actually have changed.  In addition, use
+    ;; the buffer name as a reference (instead of a buffer-local variable as
+    ;; might be more logical), because some packages work by creating and
+    ;; destroying the same buffer repeatedly.
+    (unless (and remembered-maps
+                 (equal maps remembered-maps))
+      (puthash (buffer-name) maps dei--buffer-keymaps)
+      (when-let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
+                  (new-maps (-difference named-maps dei--known-keymaps)))
+        (setq dei--known-keymaps (append new-maps dei--known-keymaps))
+        (run-hooks 'dei-keymap-found-hook)))))
+
 ;;; Reflecting one stem in another
 
 (defvar dei--reflect-actions nil
   "List of actions to pass to `define-key'.")
-
-(defvar dei--known-keymaps '(global-map)
-  "List of named keymaps seen while `deianira-mode' was active.")
 
 (defvar dei--super-reflected-keymaps nil
   "List of keymaps worked on by `dei-define-super-like-ctl-everywhere'.")
 
 (defvar dei--ctlmeta-reflected-keymaps nil
   "List of keymaps worked on by `dei-define-super-like-ctlmeta-everywhere'.")
-
-(defvar dei--buffer-keymaps (make-hash-table))
-
-(make-variable-buffer-local
- (defvar dei--this-buffer-keymaps nil
-   "Cache variable to avoid unnecessary recomputation."))
-
-;; DEPRECATED: Don't depend on buffer-locality.  Some packages seem to simply
-;; create and destroy a buffer every time it's used (vertico?).  Check the
-;; buffer name instead (as that's consistent), against a hash table.
-(defun dei--record-keymap-maybe* (&optional _)
-  "If Emacs has seen new keymaps, record them in a variable.
-This simply evaluates `current-active-maps' and adds to
-`dei--known-keymaps' anything not already there."
-  (let ((maps (current-active-maps)))
-    ;; Make sure we only run the expensive `help-fns-find-keymap-name' once for
-    ;; this buffer, unless the keymaps actually have changed.
-    (unless (equal dei--this-buffer-keymaps maps)
-      (setq-local dei--this-buffer-keymaps maps)
-      (when-let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
-                  (new-maps (-difference named-maps dei--known-keymaps)))
-        (setq dei--known-keymaps (append new-maps dei--known-keymaps))
-        (run-hooks 'dei-keymap-found-hook)))))
-
-;; Fixed
-(defun dei--record-keymap-maybe (&optional _)
-  "If Emacs has seen new keymaps, record them in a variable.
-This simply evaluates `current-active-maps' and adds to
-`dei--known-keymaps' anything not already there."
-  (let ((maps (current-active-maps))
-        (remembered (gethash (buffer-name) dei--buffer-keymaps)))
-    ;; Make sure we only run the expensive `help-fns-find-keymap-name' once for
-    ;; this buffer, unless the keymaps actually have changed.  In addition, use
-    ;; the buffer name as a reference (instead of a buffer-local variable as
-    ;; might be more logical), because some packages work by creating and
-    ;; destroying the same buffer repeatedly.
-    (unless (and remembered
-                 (equal maps remembered))
-      (puthash (buffer-name) maps dei--buffer-keymaps)
-      (when-let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
-                  (new-maps (-difference named-maps dei--known-keymaps)))
-        (setq dei--known-keymaps (append new-maps dei--known-keymaps))
-        (run-hooks 'dei-keymap-found-hook)))))
 
 ;; NOTE: Below function creates many superfluous mixed bindings like
 ;; C-x s-k C-t
@@ -1971,7 +1844,7 @@ matter the direction since there is no contest."
     ("C-x p")
     ("C-g")
     ("C-h C-g")
-    ;; ("C-x r")
+    ;; ("C-x r") ;; FIXME: why C-x C-r not getting copied?
     ;; ("C-x v")
     ("M-g")
     ("C-c C-c" . org-mode-map)
