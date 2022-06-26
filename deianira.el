@@ -1249,84 +1249,29 @@ To start, see `dei-async-make-hydras'."
                      (eq width (dei--flock-width flock)))
            return flock))
 
-;; ;; test
-;; ;; I feel that maybe a struct would beat this car-cdr crap
-;; (let ((flockset (car dei--flocks)))
-;;   (consp flockset)
-;;   (= 2 (length flockset))
-;;   (integerp (car flockset))
-;;   ;; one list for each frame width seen, which are usually not many
-;;   (< (length (cdr flockset)) 10)
-;;   (= 3 (length (car (cdr flockset))))
-;;   ;; a frame width, usually 80-250
-;;   (< (car (car (cdr flockset))) 500))
-
-(defun dei-async-make-hydras* (&rest _)
-  "Set hydras to appropriate for the buffer.
-If no such hydras exist, start asynchronously making them.
-Drop any running chain and start a new one.
-Exception if hydras already exist. Then any running chain is
-permitted to continue."
-  (interactive)
-  ;; NOTE: Do not use the OLP argument of `current-active-maps'. This would
-  ;; look up hydra's own uses of `set-transient-map', potentially a mess
-  ;; of mutual recursion.
-  (let* ((hash (sxhash (current-active-maps)))
-         (flock-set (cdr (assoc hash dei--flocks))))
-    ;; If we already made hydras for this keymap composite, restore from cache.
-    (if flock-set
-        (if (equal hash dei--last-hash)
-            (dei--echo "Same keymap composite, doing nothing")
-          (unless (assoc (frame-width) flock-set)
-            (dei--echo "Converting flock for frame width %s" (frame-width))
-            (push (dei--rehint-flock (car flock-set)) flock-set))
-          (dei--echo "Flock exists, making it current: %s" hash)
-          ;; Point names to already made values.  It's fucking beautiful.
-          (let ((flock (assoc (frame-width) flock-set)))
-            (cl-loop for pair in (nth 1 flock)
-                     do (fset (car pair) (cdr pair)))
-            (cl-loop for pair in (nth 2 flock)
-                     do (set (car pair) (cdr pair)))
-            (setq dei--last-bindings (dei--get-filtered-bindings-with-commands))
-            (setq dei--last-hash hash)))
-      (if dei--async-running
-          (dei--echo "Already running chain, letting it continue")
-        (if (and dei--async-chain
-                 (not (equal dei--async-chain dei--async-chain-template))
-                 (buffer-live-p dei--buffer-under-analysis))
-            (if (>= dei--interrupt-counter 3)
-                (progn
-                  (deianira-mode 0)
-                  (dei--echo (message "3 interrupts last 5 min, disabling deianira-mode")))
-              ;; NOTE: The counter decays, see `dei--interrupt-decrement-ctr'
-              (cl-incf dei--interrupt-counter)
-              (dei--echo "Chain had been interrupted, resuming")
-              (dei--async-chomp-polite))
-          (dei--echo "Launching new chain.  Previous value of `dei--async-chain': %s"
-                  dei--async-chain)
-          (named-timer-cancel 'deianira-at-work)
-          (setq dei--buffer-under-analysis (current-buffer))
-          (setq dei--current-hash hash)
-          (setq dei--async-chain dei--async-chain-template)
-          (setq dei--async-chain-last-idle-value 0) ;; yes, 0
-          (dei--async-chomp))))))
-
 (defvar dei--current-bindings nil)
 (defvar dei--last-bindings nil)
 
 (defun dei--react (&rest _)
   "Wait a moment, then call `dei-async-make-hydras' once.
 Calling this function repeatedly within the wait period will
-still only result in one call to that, which lets you put this on
+still only result in one call.  You can add this wrapper to
 however many potentially co-occurring hooks you like, such as
 `window-buffer-change-functions' and
 `window-selection-change-functions'."
   (named-timer-run 'deianira-c .1 nil #'dei-async-make-hydras))
 
+(defvar dei--obarray (obarray-make))
+
 (defun dei-async-make-hydras ()
   "Set hydras to something appropriate for the buffer.
 If no such hydras exist, start asynchronously making them."
   (interactive)
+  ;; Briefly reveal this monster variable.  (We keep it hidden in a separate
+  ;; obarray most of the time because eldoc chokes for minutes if the reader of
+  ;; this code accidentally places point on the symbol `dei--flocks'.  Eldoc needs
+  ;; a timeout.)
+  (setq dei--flocks (symbol-value (obarray-get dei--obarray "dei--flocks")))
   ;; NOTE: Do not use the OLP argument of `current-active-maps'. This would
   ;; look up hydra's own uses of `set-transient-map', potentially a mess
   ;; of mutual recursion.
@@ -1362,11 +1307,17 @@ If no such hydras exist, start asynchronously making them."
           (dei--echo "Launching new chain.  Previous value of `dei--async-chain': %s"
                      dei--async-chain)
           (named-timer-cancel 'deianira-at-work)
+          ;; TODO: Use the recorded frame width everywhere so we're
+          ;; consistent all the way to the last async stage.
+          (setq dei--current-width (frame-width))
           (setq dei--buffer-under-analysis (current-buffer))
           (setq dei--current-hash hash)
           (setq dei--async-chain dei--async-chain-template)
           (setq dei--async-chain-last-idle-value 0) ;; so chomp won't wait
-          (dei--async-chomp))))))
+          (dei--async-chomp)))
+      (unless dei--async-running
+        (set (obarray-put dei--obarray "dei--flocks") dei--flocks)
+        (obarray-remove obarray "dei--flocks")))))
 
 (defun dei--prefix-to-stem (keydesc)
   "Add a space to the end of KEYDESC.
@@ -1599,62 +1550,23 @@ the front of `dei--async-chain', so that we repeat until
            (push (cons sym (symbol-function sym)) funs))
          (when (boundp sym)
            (push (cons sym (symbol-value sym)) vars)))))
-    ;; Flocks could be an alist of the form
-    ;; ((HASH . ((WIDTH FUNS VARS)
-    ;;           (WIDTH FUNS VARS)))
-    ;;  (HASH . ((WIDTH FUNS VARS))))
-    ;; or a flatter list/hash table of objects
-    ;; ((HASH WIDTH FUNS VARS)
-    ;;  (HASH WIDTH FUNS VARS)
-    ;;  (HASH WIDTH FUNS VARS))
-    ;; In a flat list, neither hash nor width are unique, but together they constitute
-    ;; an unique combination key. In a nested alist, there's no uniquity issues.
     ;; (frame-parameter (window-frame
-                                        ;; (get-buffer-window
-                                         ;; dei--buffer-under-analysis)) 'width)
+    ;;                   (get-buffer-window
+    ;;                    dei--buffer-under-analysis)) 'width)
     (push (dei--flock-record
            :hash dei--current-hash
-           :width (frame-width)
+           :width dei--current-width
            :funs funs
            :vars vars
            :bindings dei--current-bindings)
           dei--flocks)
-    ;; (push (cons dei--current-hash
-    ;;             (list (list (frame-width) funs vars)))
-    ;;       dei--flocks)
-    ;; (push (list dei--current-hash funs vars) dei--flocks)
     (dei--echo "Flock #%s born: %s" (length dei--flocks) dei--current-hash)
     (setq dei--last-bindings dei--current-bindings)
-    (setq dei--last-hash dei--current-hash)))
-
-;; (caar dei--flocks )
-
-(defun dei--async-4b-check-settings (&optional _)
-  "Signal error if any two user settings overlap.
-Otherwise we could end up with two heads in one hydra both bound
-to the same key, no bueno."
-  (unless (--all-p (equal (symbol-value (car it)) (cdr it))
-                   dei--last-settings-alist)
-    (let ((vars
-           (list (cons 'dei-hydra-keys dei--hydra-keys-list)
-                 (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
-                 (cons 'dei-invisible-leafs dei-invisible-leafs)
-                 (cons 'dei-stemless-quitters dei-stemless-quitters)
-                 (cons 'dei-inserting-quitters dei-inserting-quitters)
-                 (cons 'dei-extra-heads (mapcar #'car dei-extra-heads)))))
-      (while vars
-        (let ((var (pop vars)))
-          (cl-loop
-           for remaining-var in vars
-           do (when-let ((overlap (-intersection (cdr var)
-                                                 (cdr remaining-var))))
-                (error "Found %s in both %s and %s"
-                       overlap (car var) (car remaining-var)))))))
-    ;; Record the newest setting values, so we can skip the relatively
-    ;; expensive calculations next time if nothing changed.
-    (setq dei--last-settings-alist
-          (cl-loop for cell in dei--last-settings-alist
-                   collect (cons (car cell) (symbol-value (car cell)))))))
+    (setq dei--last-hash dei--current-hash)
+    ;; Now hide this monster variable.  See other use of `dei--obarray'.
+    (set (obarray-put dei--obarray "dei--flocks") dei--flocks)
+    (obarray-remove obarray "dei--flocks")
+    ))
 
 
 ;;;; Bonus functions for mass remaps
