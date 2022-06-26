@@ -527,15 +527,23 @@ If it's already that, return it unmodified."
   :type 'boolean)
 
 (defun dei--echo (&rest args)
-  (print (apply #'format (cons (concat (format-time-string "%T: ") (car args))
-                               (cdr args)))
-         (dei--debug-buffer)))
+  "Write a message to the debug buffer.
+Arguments same as for `format'."
+  (with-current-buffer (dei--debug-buffer)
+    (goto-char (point-max))
+    (insert (apply #'format
+                   (cons (concat (format-time-string "%T: ")
+                                 (car args))
+                         (cdr args))))
+    (newline)))
 
 (defun dei--debug-buffer ()
   (let ((bufname (concat (unless dei-debug " ") "*Deianira debug*")))
     (or (get-buffer bufname)
         (with-current-buffer (get-buffer-create bufname)
           (setq-local truncate-lines t)
+          (setq-local buffer-read-only nil)
+          (setq-local tab-width 12)
           (current-buffer)))))
 
 (defun dei-debug-show ()
