@@ -6,7 +6,7 @@
 [[https://img.shields.io/badge/license-GPL3+-blue.png]]
 
 #+begin_html
-<a title="Giulio Bonasone, CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" align="center" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a><br>
+<a title="Giulio Bonasone, CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" align="center" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a><br><br>
 #+end_html
 
 # TODO: More consistent "we", "you", "I"
@@ -39,7 +39,7 @@ The paradigm is:
 The consequences are:
 
 1. We can do transient exits.  In the Control hydra, we can press e.g. ~M-f~ like usual to move forward by word, without exiting the Control hydra.  This applies to all our hydras, even cases like the Control-X-prefix, so instead of the default ~C-x t C-n C-x t C-n C-x t~...  you can stay in the Control-X-prefix and do ~t C-n t C-n t~... This would not be possible if we allowed more than one modifier in a hotkey.
-   - In this case, =repeat= wouldn't have helped since you're switching between two different commands.
+   - In this example, =repeat= wouldn't have helped since you're cycling between two different commands, making it useless.
 2. We can feel as though we are in Vim's Normal mode and yet not have to press =i= or =a= to enter its Insert Mode, because capital letters (including capital symbols such as parens), spaces and newlines will self-insert and slay the hydra at the same time.  This works so well because the first character you type is frequently from this set, and it's nearly free because we (or I) didn't want Shift hotkeys anyway.
    - I might extend the set to include the period, comma and apostrophe, but that would cost real estate.
 3. I find it more intuitive than [[https://github.com/emacsorphanage/god-mode][god-mode]]. There is no weird leader key like ~<escape>~ or whatever you'd choose for it, or the Spacemacs ~M-m~, instead you press the same modifier keys you always have -- Control and Meta -- and the Space key doesn't have any special behavior.
@@ -54,19 +54,19 @@ The consequences are:
 My motivations were:
 
 - I wanted a genuinely modifier-free life (even dropping Shift), and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  As a happy side effect of implementing the vision, I found we need surprisingly little extra typing this way, and sometimes even /less/, because we exploit hydras to their fullest, and several exploitations are only possible with the strict rules we impose on the keymap.
-- I asked myself as a thought experiment how one would use Emacs with an [[https://olkb.com/][OLKB Planck]] or other tiny keyboard.  This constraint sprouted many ideas.  Among other things, I wanted to bind all commands to lowercase letters, and with Deianira you can.  The Planck won't ever have to use its "Raise" or "Lower" hardware modes just to access a command.  Please observe that no part of the design was sacrificed to support tiny keyboards -- I actually prefer [[https://geekhack.org/index.php?topic=116622][ginormous]] keyboards -- and the good fit is a side effect.
+- I asked myself as a thought experiment how one would use Emacs with an [[https://olkb.com/][OLKB Planck]] or other tiny keyboard.  This constraint sprouted many ideas.  Among other things, I wanted to bind all commands to lowercase letters, and with Deianira you can.  The Planck won't ever have to use its "Raise" or "Lower" hardware modes just to access a command.  Please observe that no part of the design was sacrificed to support tiny keyboards -- I actually prefer [[https://geekhack.org/index.php?topic=116622][enormous]] keyboards -- and the good fit is a side effect.
 
 No "paradigm lock-in"
 
 - We rely on an external Linux utility, dual-function-keys, to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working, we won't be left dead in the water.  Deianira's helpers for mass-remapping bindings will still work, so your bindings will remain in the location you were expecting.  You'll just have to do one of two things:
-  1. Chord at first to start a key sequence, like a normal Emacsian (boo hiss).  Even forgetting about the hydra system, the remaps you've made along the way aren't useless.
-  2. Resort to =xmodmap= or equivalent to wholesale remap the keys normally labelled "Ctrl" and "Alt" to send different key events entirely.  You can no longer chord, but it's a small loss, because you get to keep Hydra.  In fact, I suggest this trick anyway as the most important of the [[Training wheels][Training wheels]].
+  1. Chord at first to start a key sequence, like a normal Emacsian (boo hiss).  Even forgetting about the hydra system, the remaps you've made along the way remain accessible.
+  2. Resort to =xmodmap= or equivalent tool to wholesale remap the keys normally labelled "Ctrl" and "Alt" to send different key events entirely.  You can no longer chord, but it's a small loss, because you get to keep Hydra.  In fact, I suggest this trick anyway as the most important of the [[Training wheels][Training wheels]].
 
 # - It should be possible to create a half-Deianira that relies on sticky keys and a whole lot of repeat maps, but I suspect it won't be the same.  The full Deianira is simple in end use because you can expect the interface to be regular and uniform.
 
 * Setup
 
-Since this package is so new, I'm happy to personally walk you through setup.  Strike up a chat with me.
+Since this package is so new, and demands so much learning, I'm happy to personally walk you through setup.  Strike up a chat with me.
 
 The problems we have to solve:
 - We need an external program to get the Control, Meta and Super keys to send the F35, F34 and F33 key events, respectively.  I had been using [[https://github.com/alols/xcape][xcape]], but it's buggy and unmaintained so now I advise setting up [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] instead.  See instructions somewhere in this document.
@@ -86,84 +86,13 @@ The variables to customize are =dei-ersatz-control=, =dei-ersatz-meta=, =dei-ers
 
 *** Wayland
 
-Under Sway, the xmodmap command only takes effect momentarily, and the keymap table quickly reverts to some original determined by the Xkb settings, which you've set in the Sway config file.
+Under Sway, the xmodmap command only takes effect momentarily, and the keymap table quickly reverts to some original determined by the XKB settings, which you've set in the Sway config file.
 
-So you don't get fully free choice of keysym, and the defaults rarely have wild keysyms like ~F20~ through ~F24~ or ~<mail>~ that wold be safe to use.  For now, my solution is you just print out the full table via =xmodmap -pke= and pick any keysyms you don't need.
+So you don't get fully free choice of keysym as on Xorg, and the default tables rarely have wild keysyms like ~F20~ through ~F24~ or ~<mail>~ that wold be safe to use.  For now, my solution is you just print out the full table via =xmodmap -pke= and pick any keysyms you don't need.
 
 Which keysyms can I offer as suggestion?  Surprisingly many symbols straight-up did not work for me.  (if someone can help: they existed both in the [[https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h][Linux kernel keymap]] and my XKB keymap table, with the correct difference of 8 in the scancode, still absolutely no key event!)
 
-And that's the story of how I ended up using =<katakana>= for Control, =<muhenkan>= for Meta, =<henkan>= for Super, and =<hiragana>= for Hyper.
-
-
-*** Wayland  ARGH :noexport:
-
-Under Sway, the xmodmap command line above only takes effect momentarily, and the keymap table quickly reverts to some original determined by the xkb settings, which you've set in the Sway config file.
-
-So you don't get fully free choice of keysym, and the F20 through F24 is rarely among the existing ones.  For now, my solution is you just print out the full table via =xmodmap -pke= and pick any keysyms you don't need, such as KP_1, KP_2... if you don't use the keypad.
-
-
-
-So which keysyms?  Surprisingly many symbols that exist both in the Linux kernel keymap and my XKB keymap table, with the correct difference of 8 in the scancode, still nothing happens.
-
-Keypad looks more reliable.  Annoying that Num Lock changes most of its behavior, but it does not touch <kp-add>, <kp-multiply>, and <kp-subtract>, which are mnemonic for Alt, Meta and Super.  Alas, Control's out of luck.
-
-Again, annoying that "by default, Emacs translates these keys to the
-corresponding keys on the main keyboard.  For example, when ‘Num Lock’
-is on, the key labeled ‘8’ on the numeric keypad produces ‘kp-8’, which
-is translated to ‘8’; when ‘Num Lock’ is off, the same key produces
-‘kp-up’, which is translated to <UP>."
-
-So we have to undo this +translation. It's in function-key-map.
-
-(define-key function-key-map (kbd "<kp-add>") nil)
-(define-key function-key-map (kbd "<kp-multiply>") nil)
-(define-key function-key-map (kbd "<kp-add>") nil)
-
-(setq keypad-setup 'none)
-(setq keypad-numlock-setup 'none)
-(general-def "<kp-multiply>" (c'message "foo"))*--////
-
-none eof this wokrs
-HIRAGANA
-
-Other suggestions: mnemonically named keys
-
-Starting with S for Super and Shift
-
-| Linux keysym | Linux code | XKB keysym  | XKB code |
-|--------------+------------+-------------+----------|
-| KEY_SENDFILE |        145 | XF86Send    |      153 |
-| KEY_SEND     |        231 | XF86Send    |      239 |
-|              |            | XF86Sleep   |          |
-|              |            | XF86Search  |          |
-|              |            | scroll_lock |          |
-
-Starting with C for Control
-
-| Linux keysym | Linux code | XKB keysym | XKB code |
-|--------------+------------+------------+----------|
-| KEY_CUT      |        137 | XF86Cut    |      145 |
-| KEY_COPY     |        133 | XF86Copy   |      139 |
-|              |            | XF86Close  |          |
-|              |            | cancel     |          |
-
-Starting with M for Meta
-
-| Linux keysym  | Linux code | XKB keysym    | XKB code |
-|---------------+------------+---------------+----------|
-| KEY_MAIL      |        155 | XF86Mail      |      163 |
-| KEY_EMAIL     |        215 | XF86Mail      |      223 |
-|               |            | XF86MenuKB    |      147 |
-| KEY_MESSENGER |      0x1ae | XF86Messenger |          |
-
-Starting with A for Alt
-
-| Linux keysym | Linux code | XKB keysym      | XKB code |
-|--------------+------------+-----------------+----------|
-|              |            | XF86AudioPlay   |      172 |
-|              |            | XF86AudioRewind |          |
-
-Starting with H
+That's the story of how I ended up using =<katakana>= for Control, =<muhenkan>= for Meta, =<henkan>= for Super, and =<hiragana>= for Hyper.
 
 *** Guix System
 # note: this can be a separate protip blog post
@@ -262,11 +191,13 @@ All three have issues. #1 still will need ~C-g~ when no hydra is active. With #2
 
 - 4. Bind some other key to do what ~C-g~ did.
 
-Everyone's got a different origin story with Emacs, but when you first learned ~C-g~ in the tutorial, I expect you must have been bemused.  Maybe you got used to it and haven't thought about it since, but it's a bizarre binding.  Such a fundamental action should only take one keystroke -- maybe a convenient place like Tab or Return.
+Everyone's got a different origin story with Emacs, but when you first learned ~C-g~ in the tutorial, I expect you must have been bemused.  Maybe you got used to it and haven't thought about it since, but it's a bizarre binding.  Such a fundamental action should only take one keystroke -- maybe even a convenient place like Tab or Return.
 
-I put the following in my init file.  After a short period of feeling like I was committing sacrilege, it felt natural like I'd been waiting to do it this way all my life.  Try it!
+I picked Escape.  I put the following in my init file.  After a short period of feeling like I was committing sacrilege, it felt natural like I'd been waiting to do it this way all my life.  Try it!
 
 : (define-key function-key-map (kbd "<escape>") (kbd "C-g"))
+
+Note that when Emacs freezes up, you cannot break the freeze with ~<escape>~, and all of a sudden ~C-g~ is what you must type to break it, no other key will do.  Maybe ~C-g~ is hardcoded for that.  Try for yourself: eval =(sleep-for 5)= and try to break out of it.  Escape won't work.  But this is the only inconsistency I've experienced.
 
 ** Universal argument: ~C-u M-d~, Brutus?
 
@@ -275,8 +206,8 @@ The default bindings for universal-argument and digit-argument present a problem
 1. C-123456890 and M-123456890 are a huge waste of good keys.
   - Why are the ten keys M-1234567890 bound to digit-argument, but we're too stingy to bind one more key, ~M-u~, to universal-argument?
 3. Having =universal-argument= only on ~C-u~ breaks the ideal we were going for, of never mixing modifiers:
-   a. Ever had to type ~C-u 0 M-x~?  I wanted to jump out the window too.
-   b. It's a similar issue as with ~C-g~; the universal argument should be available under every modifier, and for us also every hydra. In other words if we stick to =u=, we want ~C-u~, ~C-x u~, ~M-u~, ~M-s u~, ~s-u~ etc.  But we needn't stick to =u=, more on this later.
+   - a. Ever had to type ~C-u 0 M-x~?  I wanted to jump out the window too.
+   - b. It's a similar issue as with ~C-g~; the universal argument should be available under every modifier, and for us also every hydra. In other words if we stick to =u=, we want ~C-u~, ~C-x u~, ~M-u~, ~M-s u~, ~s-u~ etc.  But we needn't stick to =u=, more on this later.
 
 Note: This is not a particular consequence of Deianira.  The issue just sticks out like a sore thumb under our paradigm.  Binding only ~C-u~ but not ~M-u~, so you end up having to switch modifier midway through typing a command, as in =C-u 0 M-x byte-recompile-directory=... It's made tolerable by the fact that all of C-1234567890 and M-1234567890 are digit-argument by default, so that example can be made into =M-0 M-x.=
 
@@ -285,7 +216,7 @@ If we unbind the digit arguments, we can deal with the loss by making it more co
 You notice that in the above example, we needed to bind ~M-u~, implying we bound every possible =u= combo: ~M-u~, ~s-u~, ~C-x u~ &c.  I do not recommend it.  If you pick a dedicated key such as ~<f12>~ instead, it's an equal waste of keys in theory since you could've used that to start a key sequence, but:
 
 1. it's a shame to spend an alphabetic character on this, they're best reserved for semantics.  The use of =u= can aid remembering commands like =up-list= and =upcase-word=.
-2. universal-argument isn't important enough for such a good key as ~u~
+2. universal-argument isn't important enough for such a good key as ~u~, in my experience
 3. it's nice to exploit Deianira by bringing in all key sequences under the umbrella of the root hydras, so we wouldn't put a sequence on ~<f12>~ anyway
 
 A clean-feeling alternative could be the character ~=~, i.e. the keys ~C-=~, ~M-=~, ~C-x =~ so on, since (on a US QWERTY keyboard) it's right next to ~-~, but I for one just don't use =universal-argument= that much.
@@ -537,7 +468,9 @@ Make real estate. This is the most opinionated part: I posit that these commands
 ** Out of GNOME hell :noexport:
 ** Warnings :noexport:
 
-Flattening the keymap is destructive for now! To get back your bindings, restart Emacs.
+Homogenizing the keymap is destructive for now!  To get back your bindings, restart Emacs.
+
+But you can check the buffer =*Deianira remaps*= to see what it did.
 
 ** Config options
 
@@ -548,6 +481,15 @@ The default assumes an US keyboard layout.  For example, it includes ~<~ and ~>~
 ** Purism
 
 (add-hook 'dei--after-scan-bindings-hook #'dei--unbind-illegal-keys -5)
+
+** Hyper and Alt under Wayland
+
+It seems that wlroots-based compositors like Sway use the basic XKB system, even if programs like xmodmap do not work.
+
+Most common layouts under xkb do not have Alt or Hyper, so even on X11 you'd use xmodmap to bring them into existence.   In lieu of xmodmap, it should be possible to just load a .xkb file that contains Hyper and Alt.  Basically start by generating a =custom.xkb= with xkbcomp and modify per:
+https://wiki.archlinux.org/title/X_keyboard_extension#Meta,_Super_and_Hyper
+
+Then =sway input xkbfile custom.xkb= should do it.
 
 * Ok, but what does it do to my Emacs?
 
@@ -577,7 +519,7 @@ Second, to turn modifier keys into leader keys, IOW to make it possible to press
 
 Why did I make this package?  It's not like keybindings are that important a problem, for Pete's sake.
 
-I would rather have been doing anything else, but keyboards and hotkeys are an old obsession I've been coming back to since playing World of Warcraft in my high school years.  I felt I /didn't understand keyboards/, it was always so non-obvious how to optimize a hotkey scheme.  In 2012, I wrote up a Deskthority page on the alternative keyboard layouts that existed then, like Arensito, Malt, Colemak, Workman, Capewell, Klausler, Advanced Developer's Dvorak, Carpalx and MTGAP.  I got a Kinesis Advantage keyboard but never started using it because the layout I wanted didn't exist.  Eventually I figured out that my style of touch-typing actually doesn't need a specialized keyboard -- they're crutches for a badly taught touch-typing style -- so I looked at contiguous ortholinear keyboards like the OLKB Preonic instead.  From WoW, I knew that a logical layout like that would make it easier to iterate on hotkey schemes, and contiguity is a big plus for one-handed typing, which we do more than we think.   Grant Rettke mirrored the idea of iteration -- [[https://www.wisdomandwonder.com/article/10141/prototype-your-keyboard-layout-first-x-keys-xke-128]["fail fast and find what is right"]] -- and he and Xah Lee reinforced my belief that having more keys is better.  F1 is always more comfortable than C-h unless you type in the handicapped, home-key-locked way I mentioned.  More keys are better, and the Planck is dumb.  In 2017, I got thinking about what I would do to make a Planck usable and pleasant, how Emacs could best exploit its thumb keys.  Spacemacs was an inspiration.  Hacker News discussions about modal editing got me thinking about what "modality" really is and I clarified the differences between modes, key sequences and key chords -- this was non-obvious at first, but they weren't the disparate things they seemed to be.
+I would rather have been doing anything else, but keyboards and hotkeys are an old obsession I've been coming back to since playing World of Warcraft in my high school years.  I felt I /didn't understand keyboards/, it was always so non-obvious how to optimize a hotkey scheme, even as I bound the entire keyboard to spells and actions (something not everyone did, but people are insane).  In 2012, I wrote up a Deskthority page on the alternative keyboard layouts that existed then, like Arensito, Malt, Colemak, Workman, Capewell, Klausler, Advanced Developer's Dvorak, Carpalx and MTGAP.  I got a Kinesis Advantage keyboard but never started using it because the layout I wanted didn't exist.  Eventually I figured out that my style of touch-typing actually doesn't need a specialized keyboard -- they're crutches for a badly taught touch-typing style -- so I looked at contiguous ortholinear keyboards like the OLKB Preonic instead.  From WoW, I knew that a logical layout like that would make it easier to iterate on hotkey schemes, and contiguity is a big plus for one-handed typing, which we do more than we think.   Grant Rettke mirrored the idea of iteration -- [[https://www.wisdomandwonder.com/article/10141/prototype-your-keyboard-layout-first-x-keys-xke-128]["fail fast and find what is right"]] -- and he and Xah Lee reinforced my belief that having more keys is better.  F1 is always more comfortable than C-h unless you type in the handicapped, home-key-locked way I mentioned.  More keys are better, and the Planck is dumb.  In 2017, I got thinking about what I would do to make a Planck usable and pleasant, how Emacs could best exploit its thumb keys.  Spacemacs was an inspiration.  Hacker News discussions about modal editing got me thinking about what "modality" really is and I clarified the differences between modes, key sequences and key chords -- this was non-obvious at first, but they weren't the disparate things they seemed to be.
 
 It was in December of 2017 that I got the first inkling of this complete paradigm.  The amount I've "written aloud" in my diary to try to make sense of keyboards could fill a book by now, so it's taken me a roundabout way to get here.
 
@@ -589,7 +531,7 @@ I used to have a macro that generated tens of thousands of lines of Lisp -- my v
 
 After putting the code into practice, trial and error taught me a few new things.  Having many modes is not as good as it sounds.  I tried turning the Right "Ctrl" and "Alt" keys into Hyper and Alt as opposed to Control and Meta, but found it's nicer to be able to stay in one mode as much as possible, like Vim's Normal Mode. (Sidenote: if you want more, make sure you have thumb keys, so you can have duplicates on both sides of the keyboard.  I ran into severe comfort issues, where I could no longer ~C-k~ with the right Ctrl).  That shifts the emphasis to picking the bindings well, and makes it overwhelmingly important to do away with wasted keys like ~C-i~ and ~C-[~, eliminate all the digit-argument bindings on C-1234567890 and M-1234567890, and relocate non-spammable bindings like C-q to some key sequence.   All that is up to the user, but one nice thing about this package is how fun and easy it makes it to revamp the scheme for basic movements and actions.  You probably could reimplement Kakoune in not too long, or come up with something entirely new.
 
-After four years of writing and re-writing code, I am happy to be able to present this package to you.
+After four years of writing and re-writing code, during which it was unusably broken 99% of the time, it's now virtually flawless and I am happy to be able to present this package to you.
 
 * Training wheels
 * Surprising powers
@@ -629,7 +571,7 @@ This is unnecessary.  With a completion sorter like Prescient or Orderless with 
 
 Because these sorters prefer recently used commands, if you've used =avy-move-region= at any point before, it's likely to be the first candidate.  This works for any command you know the name of.
 
-So if you ever get the idea to structure a group of key sequences like that, just scrap it.  With a sufficiently potent, predictable & fast ~M-x~ (does yours have perceptible lag? Fix ixt!), there should be little need to bind many keys!  Three reasons to bind keys are:
+So if you ever get the idea to structure a group of key sequences like that, just scrap it.  With a sufficiently potent, predictable & fast ~M-x~ (does yours have perceptible lag? Fix it!), there should be little need to bind many keys!  Three reasons to bind keys are:
 
 1. Discoverability via which-key or Deianira hints.
 2. Making extra-short key sequences.
@@ -650,11 +592,10 @@ I call the variant at \#1 a /chord-once sequence/ and the variant at \#4 a /perm
 
 As for the middle variants, \#2 and \#3, I call them 'bastard sequences', because they result from a copulation no one wanted.  These among others are unbound by =dei--unbind-illegal-keys=.
 
-:aside:
-I would recommend leaving that setting to nil, for two reasons.
+Aside: I would recommend leaving =dei-permachord-wins-homogenizing= at nil, for two reasons.
 - You can define keys in initfiles as "C-x k e" instead of "C-x C-k C-e", which looks more neat.
 - Not exactly every sequence can be typed in perma-chord fashion.  A typical example is Org-mode's ~C-c C-e l o~, which is actually just ~C-c C-e~, which spawns a new buffer wherein you type ~l o~.  As a consequence, you can still effectively type the chord-once variant ~C-c e l o~, but we don't yet have code to make ~C-c C-e C-l C-o~ a thing.  Since this is such a rare edge case, we probably never will.  So for psychological reasons, you'll be less misled if you think of \#1 as the 'authoritative version'.
-:end:
+
 
 ** Bastard sequence
 - C-c p 4 C-d  (projectile)
@@ -692,17 +633,7 @@ If you dive into the source, be aware of what a "stem" is.  A full key descripti
 | =C-x=             | "C-"   | "x"        |
 | =C-<M-return>=    | "C-M-" | "<return>" |
 
-If programming against this library, always wrap a key description in =dei--normalize= to safeguard against odd descriptions like =C-<M-return>=: the other functions expect a normalized key description, in this case =C-M-<return>=.
-
-** Dire hydra
-
-I used to have around ~80 hydras with some 500 heads each, totalling 30,000-40,000 heads. I called these dire hydras due only to their size.  Since then, I've effectivised them so that there are fewer explicit heads, but the behavior of every key remains thought-through and intended.
-
-Now my conception of a dire hydra is a hydra that attempts to faithfully represent all or (a semantically significant, such as half) part of the keyboard in the active buffer.  Reflecting a keymap such as =org-mode-map= does not qualify since we need the composite of all currently enabled keymaps, like that computed by =describe-bindings= (consequently, we can't use =map-keymap= or other cool keymap-oriented functions).  As for representing only part of the keyboard, that can happen if e.g. you want to represent one half of a split keyboard or you want to only represent the alphabetic keys.  Whatever set of keys you pick, it implies that more than one dire hydra exists for that same set, because of key sequences and different modifier keys.  Perhaps we should speak of a /pack/ of dire hydras.
-
-The dire hydra stands between you and the keyboard, like a monster guarding the gates of Hell, and you have to go through it.  If there was any way to slip past it, open for unspecified behavior, it would just be another hydra.  It's like how a bucket of pebbles meant to count sheep is only meaningful (or [[https://www.greaterwrong.com/posts/X3HpE8tMXz4m4w6Rz/the-simple-truth]["magical"]]) if the count of pebbles actually matches the count of sheep in the enclosure -- if it doesn't do that, it's just another bucket of pebbles.
-
-You could call a pack of dire hydras a "mode", but the term is overloaded and inflexible, and sets expectations.  Is it a mode if it only covers part of the keyboard?  I'm open to any alternative term.
+If programming against this library, always wrap a key description in =(key-description (kbd KEY))= to safeguard against odd descriptions like =C-<M-return>=: the other functions expect a normalized key description, in this case =C-M-<return>=.
 
 ** Quitter
 ** Pseudo-quitter
@@ -710,10 +641,10 @@ You could call a pack of dire hydras a "mode", but the term is overloaded and in
 ** Can I keep which-key?
 Yes.
 
-** What if you just have sticky keys and repeat-maps instead of all this crap?
+** What if you just use sticky keys and repeaters instead of all this crap?
 Look, man --- try it.
 
-** Can you use this without the drastic remapping?
+** Can you use this without the drastic "homogenizing" remapping?
 No.  Or there will be a lot of keys you can't reach from hydra, and the paradigm is broken.  Worse, if we have /bastard sequences/ (see terminology) or differing definitions between chord-once and perma-chord sequences (see terminology), it introduces a layer of doubt that interferes with you memorizing the sequence -- as your muscle memory can't "cross-train" between what happens inside the hydra and what happens outside it.
 
 Note that we remap only in a structural way, according to a few fixed rules.  Sometimes these rules poke us in the eye, but aside from them, we're carefully non-opinionated.  In another package, ergoemacs-mode, they move ~M-x~ to ~M-a~, a wonderful improvement but the kind of decision Deianira doesn't involve itself in.
@@ -728,16 +659,16 @@ It's more comfortable than Shift because Shift has flaws:
 - Shift needs to be held down.  (You can solve this with the "sticky keys" feature on many OSes.)
 - Shift is typically hit with the pinky finger.  (You can solve this with a non-standard keyboard that gives it to a thumb.)
 
-Even after solving both of these issues, the Shift-involved key sequence will only approach the comfort of the Shift-free key sequence, it will not exceed it.
+Even after solving both of these issues, the Shift-involved key sequence will only approach the comfort of the Shift-free key sequence, not meaningfully exceed it.
 
-So why ever involve Shift in a hotkey?  Especially considering you may not always have sticky keys or a specialty keyboard?  Reasons I've found:
+So why ever involve Shift in a hotkey?  Especially considering you may not always have sticky keys, nor a specialty keyboard?  Reasons I've found:
 
 1. Mnemonics
 2. /Because/ it chords
 
-Reason 1 doesn't by itself stand up to the drawbacks, so let's look at Reason 2.  It's subtle.
+Reason 1 doesn't by itself stand up to the drawbacks (just my opinion), so let's look at Reason 2.  It's subtle.
 
-With Deianira, the ~<f1> s ...~ keys become a new hydra.  This much you know.
+With Deianira, the ~<f1> s ...~ keys get collected into a new hydra.  This much you know.
 
 Now if we want that hydra to faithfully reflect the Shift experience, we have to make a tradeoff.  Should it reflect Shift-with-Sticky-Keys, or chord-Shift?  The latter case is easy, it's just Deianira's default behavior (sort of).
 
@@ -745,7 +676,8 @@ For the former, we'd need a new type of "temporary" hydra where once you execute
 
 If instead of the ~s~ key, you use the actual Shift key like a normal person, you get to /choose/ depending on the context.  Sticky Shift does not preclude chord-Shift on occasion.  So you can hold down Shift and spam something while sitting in the ~<f1> ...~ hydra.
 
-/That/ is the unique utility of Shift.  It may not be much, but it's there.  Know thy reasons for using it.
+/That/ is the unique utility of Shift.  It's not much, but it's there.  Know thy reasons for using it.
+
 * Known issues
 ** Hydra does not update instantly
 Deianira updates hydras every time you (a) exit a hydra or (b) enter a different hydra, since that entails exiting the previous hydra.  It generates hydras in a pseudo-async fashion, and only if the keymap has changed and only for the prefixes that changed, so you should usually not detect lag or input latency.  If you do, compiling the package makes a tremendous difference.
@@ -777,4 +709,4 @@ The way keymaps are designed, it's hard for us to bind /only/ ~C-x C-k C-t~ and 
 
 I owe thanks to [[https://github.com/abo-abo][abo-abo]] and the other contributors to Hydra.  If I'd had to wrangle =god-mode= or =which-key= to my purposes, I would have needed to know a lot more about the Emacs hotkey internals than I did starting out.  With Hydra, I could just hack and experiment, and incrementally arrive to where I am.  It's a friendly API for doing whatever you want, so it's a fine example of the Emacs spirit.
 
-There's something right about the hydra API, something that allows you to iteratively learn as you bend it more and more towards your needs.  Even if the purists among us transition to more of these shiny techs like Emacs 28's repeat-maps and tarsius' excellent transient library, not to mention Hercules, my experience makes a case that Hydra has a QWAN and it's worth thinking about why.
+There's something right about the hydra API, something that allows you to iteratively learn as you bend it more and more towards your needs.  Even if certain minimalists among us transition to more of these shiny techs like Emacs 28's repeat-maps and tarsius' excellent transient library, not to mention Hercules, my experience makes a case that Hydra has a QWAN and it's worth thinking about why.

@@ -530,7 +530,7 @@ If it's already that, return it unmodified."
   "Write a message to the debug buffer.
 Arguments same as for `format'."
   (with-current-buffer (dei--debug-buffer)
-    (goto-char (point-max))
+    (goto-char (point-min))
     (insert (apply #'format
                    (cons (concat (format-time-string "%T: ")
                                  (car args))
@@ -1248,9 +1248,12 @@ To start, see `dei-async-make-hydras'."
                      (eq width (dei--flock-width flock)))
            return flock))
 
+(defvar dei--current-width (frame-width))
 (defvar dei--current-bindings nil)
 (defvar dei--last-bindings nil)
 
+;; TODO: Since even 100ms seems not enough, maybe just set a variable akin to
+;; dei--async-running.
 (defun dei--react (&rest _)
   "Wait a moment, then call `dei-async-make-hydras' once.
 Calling this function repeatedly within the wait period will
@@ -1260,8 +1263,9 @@ however many potentially co-occurring hooks you like, such as
 `window-selection-change-functions'."
   (named-timer-run 'deianira-c .1 nil #'dei-async-make-hydras))
 
-(defvar dei--obarray (obarray-make))
+(defvar dei--hidden-obarray (obarray-make))
 
+;; TODO: check if last hash is the same, and do nothing
 (defun dei-async-make-hydras ()
   "Set hydras to something appropriate for the buffer.
 If no such hydras exist, start asynchronously making them."
@@ -1270,12 +1274,14 @@ If no such hydras exist, start asynchronously making them."
   ;; obarray most of the time because eldoc chokes for minutes if the reader of
   ;; this code accidentally places point on the symbol `dei--flocks'.  Eldoc needs
   ;; a timeout.)
-  (setq dei--flocks (symbol-value (obarray-get dei--obarray "dei--flocks")))
+  (setq dei--flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
   ;; NOTE: Do not use the OLP argument of `current-active-maps'. This would
   ;; look up hydra's own uses of `set-transient-map', potentially a mess
   ;; of mutual recursion.
   (let* ((hash (sxhash (current-active-maps)))
          (some-flock (dei--first-flock-by-hash hash)))
+    ;; (if (equal dei--last-hash hash)
+        ;; (dei--echo "Same hash, doing nothing: %s" hash))
     ;; If we already made hydras for this keymap composite, restore from cache.
     (if some-flock
         (let ((found (dei--flock-by-hash-and-width hash (frame-width))))
@@ -1315,7 +1321,7 @@ If no such hydras exist, start asynchronously making them."
           (setq dei--async-chain-last-idle-value 0) ;; so chomp won't wait
           (dei--async-chomp)))
       (unless dei--async-running
-        (set (obarray-put dei--obarray "dei--flocks") dei--flocks)
+        (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
         (obarray-remove obarray "dei--flocks")))))
 
 (defun dei--prefix-to-stem (keydesc)
@@ -1562,8 +1568,8 @@ the front of `dei--async-chain', so that we repeat until
     (dei--echo "Flock #%s born: %s" (length dei--flocks) dei--current-hash)
     (setq dei--last-bindings dei--current-bindings)
     (setq dei--last-hash dei--current-hash)
-    ;; Now hide this monster variable.  See other use of `dei--obarray'.
-    (set (obarray-put dei--obarray "dei--flocks") dei--flocks)
+    ;; Now hide this monster variable.  See other use of `dei--hidden-obarray'.
+    (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
     (obarray-remove obarray "dei--flocks")
     ))
 
