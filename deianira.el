@@ -640,7 +640,9 @@ you want to be able to type nccnccnccncc."
         (setq dei--old-hydra-cell-format hydra-cell-format)
         (setq dei--old-hydra-C-u (lookup-key hydra-base-map (kbd "C-u")))
         (setq hydra-cell-format "% -20s %% -11`%s")
-        (define-key hydra-base-map (kbd "C-u") nil t)
+        (if (version<= "29" emacs-version)
+            (define-key hydra-base-map (kbd "C-u") nil t)
+          (define-key hydra-base-map (kbd "C-u") nil))
         (advice-add #'completing-read :before #'dei--slay)
         (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
@@ -1072,6 +1074,7 @@ defaulting to the value of `dei--unnest-avoid-prefixes'."
          (warn "Took way too long getting bindings"))
     keys))
 
+;; TODO: dedup
 (defun dei--get-filtered-bindings-with-commands ()
   "List the current buffer keys appropriate for hydra."
   ;; You know that the same key can be found several times in multiple keymaps.
@@ -1136,7 +1139,6 @@ defaulting to the value of `dei--unnest-avoid-prefixes'."
 
 (defvar dei--buffer-under-analysis nil)
 (defvar dei--flock-under-operation nil)
-(defvar dei-lazy-p nil)
 (defvar dei--async-chain nil)
 
 (defvar dei--last-settings-alist
@@ -1156,8 +1158,6 @@ long as they don't change.")
 ;; Cool, eh?
 (defvar dei--flocks nil
   "Alist relating major plus minor modes with root hydras.")
-
-(make-variable-buffer-local (defvar dei--all-done nil))
 
 (defvar dei--async-chain-last-idle-value 0)
 (defvar dei--async-chain-template
@@ -1190,9 +1190,9 @@ To start, see `dei-async-make-hydras'."
               (when (member (named-timer-get 'deianira-at-work) timer-list)
                 (error "Timer was not cancelled before `dei--async-chomp'"))
               (setq dei--async-running t)
-              (dei--echo "Async running %s" fun)
+              (dei--echo "Running when ready: %s" fun)
               (funcall fun t) ;; Real work happens here
-              ;; Now that we know it exited without error, pop one off the queue
+              ;; Now that we know it exited without error, pop it off the queue
               (pop dei--async-chain)
               (when dei--async-chain
                 (let ((polite-delay 1.0)
@@ -1224,8 +1224,9 @@ To start, see `dei-async-make-hydras'."
 (defvar dei--current-hash 0)
 (defvar dei--last-hash 0)
 
-(cl-defstruct (dei--flock (:constructor dei--flock-record)
-                        (:copier nil))
+(cl-defstruct (dei--flock
+               (:constructor dei--flock-record)
+               (:copier nil))
   hash
   width
   funs
@@ -1238,9 +1239,9 @@ To start, see `dei-async-make-hydras'."
            when (eq hash (dei--flock-hash flock))
            return flock))
 
-;; In Elisp, hash tables are faster for lists longer than about 32 items, so we
-;; could give each flock object an unique key contrived from combining hash and
-;; width, and then use gethash.  But I doubt we have a bottleneck here.
+;; Note that this could be sped up with a hash table (faster for lists longer
+;; than about 32 items; give each flock object an unique key contrived from
+;; combining hash and width), but I doubt we have a bottleneck here.
 (defun dei--flock-by-hash-and-width (hash width)
   "Return the flock with :hash HASH and :width WIDTH."
   (cl-loop for flock in dei--flocks
@@ -1265,35 +1266,35 @@ however many potentially co-occurring hooks you like, such as
 
 (defvar dei--hidden-obarray (obarray-make))
 
-;; TODO: check if last hash is the same, and do nothing
+;; TODO: check if last hash&width are the same, and do nothing
 (defun dei-async-make-hydras ()
   "Set hydras to something appropriate for the buffer.
 If no such hydras exist, start asynchronously making them."
   (interactive)
   ;; Briefly reveal this monster variable.  (We keep it hidden in a separate
-  ;; obarray most of the time because eldoc chokes for minutes if the reader of
-  ;; this code accidentally places point on the symbol `dei--flocks'.  Eldoc needs
-  ;; a timeout.)
-  (setq dei--flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
-  ;; NOTE: Do not use the OLP argument of `current-active-maps'. This would
-  ;; look up hydra's own uses of `set-transient-map', potentially a mess
-  ;; of mutual recursion.
+  ;; obarray most of the time because eldoc chokes for minutes if the person
+  ;; reading this code accidentally places point on the symbol `dei--flocks'.
+  ;; Written 1995, eldoc is overdue for a timeout feature.)
+  (setq dei--flocks
+        (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
+  ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would
+  ;; look up hydra's own uses of `set-transient-map', risk of mutual recursion.
   (let* ((hash (sxhash (current-active-maps)))
          (some-flock (dei--first-flock-by-hash hash)))
-    ;; (if (equal dei--last-hash hash)
-        ;; (dei--echo "Same hash, doing nothing: %s" hash))
+    ;; (if (and (equal dei--last-hash hash)
+    ;;          (equal dei--last-width (frame-width)))
+    ;;     (dei--echo "Same hash and frame width, doing nothing: %s" hash))
     ;; If we already made hydras for this keymap composite, restore from cache.
     (if some-flock
         (let ((found (dei--flock-by-hash-and-width hash (frame-width))))
           (if found
               (dei--echo "Flock exists, making it current: %s" hash)
             (dei--echo "Converting to %s chars wide: %s" (frame-width) hash)
-            (push (setq found (dei--rehint-flock some-flock)) dei--flocks))
+            (setq found (dei--rehint-flock some-flock))
+            (push found dei--flocks))
           ;; Point names to already made values.  It's fucking beautiful.
-          (cl-loop for pair in (dei--flock-funs found)
-                   do (fset (car pair) (cdr pair)))
-          (cl-loop for pair in (dei--flock-vars found)
-                   do (set (car pair) (cdr pair)))
+          (cl-loop for x in (dei--flock-funs found) do (fset (car x) (cdr x)))
+          (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
           (setq dei--last-bindings (dei--flock-bindings found))
           (setq dei--last-hash hash))
       (if dei--async-running
@@ -1303,12 +1304,13 @@ If no such hydras exist, start asynchronously making them."
                  (buffer-live-p dei--buffer-under-analysis))
             (if (<= dei--interrupt-counter 3)
                 (progn
-                  ;; NOTE: The counter decays, see `dei--interrupt-decrement-ctr'
+                  ;; NOTE: The counter decays via `dei--interrupt-decrement-ctr'
                   (cl-incf dei--interrupt-counter)
                   (dei--echo "Chain had been interrupted, resuming")
                   (dei--async-chomp-polite))
               (deianira-mode 0)
-              (dei--echo (message "3 interrupts last 5 min, disabling deianira-mode")))
+              (dei--echo
+               (message "3 interrupts last 5 min, disabling deianira-mode")))
           (dei--echo "Launching new chain.  Previous value of `dei--async-chain': %s"
                      dei--async-chain)
           (named-timer-cancel 'deianira-at-work)
@@ -1341,7 +1343,7 @@ Trivial function, but useful for `mapcar' and friends."
           dei--colwidth (dei--colwidth-recalc)
           dei--filler (dei--filler-recalc))
 
-    ;; Figure out dei--hydrable-prefix-keys, for lookup when making hydra-heads.
+    ;; Figure out dei--hydrable-prefix-keys, to lookup when making hydra-heads.
     ;; Also used to figure out dei--new-or-changed-stems.
     (setq dei--hydrable-prefix-keys
           (-uniq
@@ -1427,25 +1429,6 @@ to the same key, no bueno."
     (setq dei--last-settings-alist
           (cl-loop for cell in dei--last-settings-alist
                    collect (cons (car cell) (symbol-value (car cell)))))))
-
-;; DEPRECATED
-(defun dei--stage-4-model-the-world (&optional _)
-  "Calculate things."
-  ;; TODO: test if resizing frame has desired effect
-  (when (and (or (not (equal dei--all-shifted-symbols-list
-                             (dei--all-shifted-symbols-list-recalc)))
-                 (not (equal dei--hydra-keys-list
-                             (dei--hydra-keys-list-recalc)))
-                 (not (equal dei--colwidth
-                             (dei--colwidth-recalc))))
-             (not dei-lazy-p))
-    ;; Force full regeneration of all hydras, to keep them consistent.
-    ;; Most common case is resizing frame, which leads to hydra hints
-    ;; that poorly fit the frame unless we update them all. NOTE:
-    ;; You're in for a bad time if you have frames of different widths
-    ;; at the same time... User should set `dei-colwidth-override'.
-    (setq dei--last-bindings nil)
-    (setq dei--live-stems nil)))
 
 (defun dei--async-5-draw-blueprint (&optional chainp)
   "Draw blueprint for one of `dei--stems'.
@@ -1771,11 +1754,23 @@ This simply evaluates `current-active-maps' and adds to
 (defun dei--reflect-actions-execute ()
   (cl-loop for arglist in dei--reflect-actions
            do (seq-let (map key def) arglist
-                (define-key (dei--raw-keymap map)
-                  (kbd key)
-                  def
-                  (when (null def)
-                    t)))
+                (apply #'define-key
+                       (dei--raw-keymap map)
+                       (kbd key)
+                       def
+                       ;; Remove the binding entirely
+                       (and (null def)
+                            (version<= "29" emacs-version)
+                            t))
+
+                ;; Known working in Emacs 29
+                ;; (define-key (dei--raw-keymap map)
+                ;;   (kbd key)
+                ;;   def
+                ;;   (when (null def)
+                ;;     t))
+
+                )
            finally (setq dei--reflect-actions nil)))
 
 ;; (dei-define-super-like-ctl-everywhere)
@@ -1896,11 +1891,12 @@ the developer.
 
 The problem is anachronistic Unix control character behavior,
 which Emacs could deprecate but has so far chosen not to, for the
-sake of functioning under terminal emulators.  I recommend a
-solution like `dei-define-super-like-ctl-everywhere' and never
-typing another control character.
+sake of functioning inside basic terminal emulators.  I'm not
+saying they should deprecate it, we have a clean solution in
+`dei-define-super-like-ctl-everywhere' and never typing another
+control character.
 
-If you don't, it pays to know to always bind <tab> instead of
+If you don't, it pays to know this: always bind <tab> instead of
 TAB, <return> instead of RET, and <escape> instead of ESC.  GUI
 Emacs always looks up these if bound, and only falls back to the
 control character if these function keys are unbound.  They do
@@ -2200,7 +2196,10 @@ Interactively, use the value of `dei--remap-actions'."
             ;; If it's a keymap, we'll be perfectly able to bind our key. If
             ;; not a keymap, we must unbind it. (prevent error "Key sequence
             ;; starts with non-prefix key")
-            (define-key raw-keymap (kbd conflict-prefix) nil t)))
+            (apply #'define-key raw-keymap (kbd conflict-prefix) nil (version<= "29" emacs-version))
+            ;; known working in emacs 29
+            ;; (define-key raw-keymap (kbd conflict-prefix) nil t)
+            ))
         (define-key raw-keymap (kbd keydesc) cmd)))))
 
 
@@ -2295,11 +2294,11 @@ Interactively, use the value of `dei--remap-actions'."
 ;; (setopt hydra-hint-display-type 'message)
 ;; (setopt hydra-hint-display-type 'lv)
 
-(setopt hydra-is-helpful t)
-(setopt dei-debug "*Deianira Debug*")
-(setopt dei-invisible-leafs
+(setq hydra-is-helpful t)
+(setq dei-debug "*Deianira Debug*")
+(setq dei-invisible-leafs
       (seq-difference dei-invisible-leafs '("-" "=" "<menu>" "SPC")))
-(setopt dei-extra-heads
+(setq dei-extra-heads
       '(("=" dei-universal-argument nil :exit t)
         ("-" dei-negative-argument nil :exit t)
         ("<f5>" hydra-repeat nil)))

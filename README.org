@@ -28,7 +28,7 @@ The paradigm is:
 2. Control, Meta, Super (and Alt and Hyper if you have them) all become "leader keys" which spawn a hydra specific to each.
    - You may know that Spacemacs and Doom Emacs have a thing with the Space key.  That's a leader key.  You get up to five of them.  Why we abuse the modifier keys this way will become apparent, read on.
 3. "Homogenized keymaps": we forbid any difference between keys such as ~C-x C-e~ and ~C-x e~; we bind both to the same command, so it won't matter if you keep holding down Control or not.
-   - Necessary since I want every keybinding to be typeable by pressing each key in isolation separately, e.g. the sequence ~<ctl> x e~ maps to ~C-x e~, but a sequence like ~<ctl> x <ctl> e~ would have 4, count them, 4 isolated key presses and releases in sequence. It'd be Just Bad, so we don't use it and are left with no obvious key sequence that would map to ~C-x C-e~.  Plus, we use the Control key to restart the input sequence, which is useful often.
+   - Necessary since I want every keybinding to be typeable by pressing each key in isolation separately, e.g. the sequence ~<ctl> x e~ maps to ~C-x e~, but a sequence like ~<ctl> x <ctl> e~ would have 4, count them, 4 isolated key presses and releases in sequence. It'd be Just Bad, so we don't use it and are left with no obvious key sequence that would map to ~C-x C-e~.  Plus, we use the Control key to restart the input sequence, often useful.
 4. Forbid mixing modifiers: we don't allow key sequences with more than a single modifier, like ~C-M-f~, ~M-%~ or  ~C-c M-o~.  I find these gratuitously painful, and anyway there's no way to bring them over to our hydra system without sacrificing other aspects.
 5. Forbid the Shift key in any key combination or sequence.  That means regardless of which hydra you're in, typing ~F~ or ~(~ just self-inserts those characters and slays the hydra.
    - My biggest gripe with Vim is its excessive use of capitals, that I find about as uncomfortable as Control combos, a strange oversight in its design.
@@ -82,7 +82,13 @@ The problems we have to solve:
 
 To enable the Deianira Paradigm, we need to instruct the modifier keys to do something if you just tap and release them instead of holding them down.  As of 2022, the best software solution on Linux is probably [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]].  Compared to the unmaintained and buggy [[https://github.com/alols/xcape][xcape]], it operates at a lower level in the software stack, so it works no matter if you're on X11 or Wayland.
 
-The variables to customize are =dei-ersatz-control=, =dei-ersatz-meta=, =dei-ersatz-super=, =dei-ersatz-hyper=, =dei-ersatz-alt=, in addition to the interception-tools script, of course.
+The variables to customize are as follows.
+
+- =dei-ersatz-control= (default ="<katakana>"=)
+- =dei-ersatz-meta= (default ="<muhenkan>"=)
+- =dei-ersatz-super= (default ="<henkan>"=)
+- =dei-ersatz-hyper= 
+- =dei-ersatz-alt=
 
 *** Wayland
 
@@ -99,7 +105,7 @@ That's the story of how I ended up using =<katakana>= for Control, =<muhenkan>= 
 
 It works under Guix System as of [2022-05-10].  I don't yet know how to write an on-boot service, but putting this in the system declaration allows you to run an oneliner at any time.
 
-(For those just running GNU Guix as a package manager, you can write your own udevmon.yaml wherein you refer to paths such as =~/.guix-profile/bin/intercept= instead of the hardcoded store paths given by the gexp below)
+# (For those just running GNU Guix as a package manager, you can write your own udevmon.yaml wherein you refer to executable symlinks such as =~/.guix-profile/bin/intercept= instead of the store paths given by the gexp below).
 
 #+begin_src scheme
 (packages
@@ -120,14 +126,14 @@ It works under Guix System as of [2022-05-10].  I don't yet know how to write an
                           " -c /home/kept/system-config/dual-fn.yaml | "
                           interception-tools "/bin/uinput"
                           " -d $DEVNODE\"
-    DEVICE:
-      EVENTS:
-        EV_KEY: [ KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTMETA, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_RIGHTMETA ]
+  DEVICE:
+    EVENTS:
+      EV_KEY: [ KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTMETA, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_RIGHTMETA ]
 "))
         ...)
 #+end_src
 
-This file is set and forget, but it refers to another file =dual-fn.yaml=.  Create one at the indicated path with contents as below:
+As you see, the content of =udevmon.yaml= will refer to a second file we call =dual-fn.yaml= at an arbitrary path, which you likely want to change.  Create it with contents as below:
 
 #+begin_src yaml
 TIMING:
@@ -170,7 +176,7 @@ Execute this Bash in some TTY and you're ready to go.  Re-execute it every boot.
 
 : sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
 
-With the above program running, you should expect in Emacs that pressing Ctrl, Alt or Super will yield a message like "<muhenkan> is undefined".  If you see it, good, but make sure it happens for all three modifier keys.   Then type =M-x deianira-mode RET=.
+With the above program running, you should expect in Emacs that pressing Ctrl, Alt or Super will yield a message like "<muhenkan> is undefined".  Make sure you see such a message for all three modifier keys, so you know they all work.  Then type =M-x deianira-mode RET=.
 
 ** Fix which-key
 
@@ -677,6 +683,13 @@ For the former, we'd need a new type of "temporary" hydra where once you execute
 If instead of the ~s~ key, you use the actual Shift key like a normal person, you get to /choose/ depending on the context.  Sticky Shift does not preclude chord-Shift on occasion.  So you can hold down Shift and spam something while sitting in the ~<f1> ...~ hydra.
 
 /That/ is the unique utility of Shift.  It's not much, but it's there.  Know thy reasons for using it.
+
+** Why is this package so complex?  It seems simple what it does?
+
+1. KEYMAPS. Like a lot of software, Emacs binds keyboard keys to commands.  Unlike most software, Emacs doesn't just have one static list of key-bindings, but keeps hundreds of separate lists which it calls "keymaps".  Each may bind the same keys to different commands!  To determine what a given key should /in fact/ do, Emacs consults a composite of all the relevant keymaps for the current context, considering rules of precedence.  One problem is that this composite changes rapidly, and we use a technology (hydra) that defines keys in a static way.  A technical challenge then becomes to continuously update these hydras to reflect the current composite.
+2. KEY SEQUENCES.  Also unusual among software, Emacs has key sequences.  We want to make hydras to reflect /in which step/ of the sequence we are sitting.  This is one of the raisons d'etre, but increases complexity, as we must now make the hydras refer to each other in a predictable way.
+3. AVOIDING MODIFIERS  Having solved 1 and 2, we've done a lot already to avoid modifiers.  However there may be bound two sequences C-x f and C-x C-f to different commands.  And we don't want to press Ctrl again.  So we instead bash together the sublists of keys, some involving a chord and some not, into chord-free lists, so that we won't need to type C-f in that example.  However, there's a horrific amount of edge cases, such as when one keymap binds a single key and another keymap binds the same key to a sub-keymap, and we must resolve this conflict neatly, and plug in the user's preferences along the way.
+4. PERFORMANCE.  The package does a lot of work to cotinuously update things -- not just the hydras (1) but the bashing together of key bindings (3).  Since it may do so as often as every keystroke, and we don't want any input latency. performance becomes a challenge, and we must devise ways to let the computer avoid working.
 
 * Known issues
 ** Hydra does not update instantly
