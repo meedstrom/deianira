@@ -677,10 +677,12 @@ you want to be able to type nccnccnccncc."
 (defun dei--set-ersatz-key (var key)
   "Bind VAR to KEY, and help other code cope with the change."
   (require 'map)
-  ;; Reset all hydras bc value gets hardcoded by `dei--specify-extra-heads'.
+  ;; Reset all hydras b/c value gets hardcoded by `dei--specify-extra-heads'.
   (setq dei--flocks nil)
   (when (boundp var)
-    (define-key deianira-mode-map (kbd (symbol-value var)) nil t))
+    (if (version<= "29" emacs-version)
+        (define-key deianira-mode-map (kbd (symbol-value var)) nil t)
+      (define-key deianira-mode-map (kbd (symbol-value var)) nil)))
   ;; Bind the corresponding root hydra.
   (define-key deianira-mode-map (kbd key) (map-elt dei--ersatz-keys-alist var))
   (set-default var key))
@@ -1307,7 +1309,7 @@ If no such hydras exist, start asynchronously making them."
                   ;; NOTE: The counter decays via `dei--interrupt-decrement-ctr'
                   (cl-incf dei--interrupt-counter)
                   (dei--echo "Chain had been interrupted, resuming")
-                  (dei--async-chomp-polite))
+                  (dei--async-chomp 'politely))
               (deianira-mode 0)
               (dei--echo
                (message "3 interrupts last 5 min, disabling deianira-mode")))
