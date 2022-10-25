@@ -68,7 +68,7 @@ If you have a question, welcome to file a GitHub issue or send a message to http
 
 ** Getting the package
 
-It is not on any ELPA, but if you have [[https://github.com/raxod502/straight.el][straight.el]], you can install the package like so:
+If you have [[https://github.com/raxod502/straight.el][straight.el]], you can install the package like so:
 
 #+begin_src elisp
 (use-package deianira
@@ -83,12 +83,17 @@ Alternatively with Doom Emacs, this goes in =packages.el=:
 
 ** dual-function-keys
 
-You need [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] with its included plugin dual-function-keys.  If your distro does not package it, I'm sorry to say this step may take you some work.  On Arch and Guix it's easy.  As an alternative, if you always use a keyboard with QMK firmware, you could configure that keyboard at the firmware level.
+You need [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] with its included plugin dual-function-keys.  If your distro does not package it, I'm sorry to say this step may take you some work.  On Arch and Guix it's easy.
 
-I have not found any alternatives.  In Deianira's youth, I was using the buggy and unmaintained [[https://github.com/alols/xcape][xcape]], and it had a glut of issues: it could work fine for a while and then develop a 2-second latency with keystrokes (even with =nice -20=), whereupon the computer had to be rebooted.  This leads to giving up on Deianira.  Something so fundamental needs to be reliable.
+The buggy and unmaintained [[https://github.com/alols/xcape][xcape]] is NOT an alternative.  Something so fundamental needs to be reliable.  In Deianira's youth, I tried it and found a glut of issues: it could work fine for a while and then develop a 2-second latency with keystrokes, whereupon the computer had to be rebooted.  This leads to giving up on Deianira.
+
+Possible alternatives:
+- QMK firmware -- if you always use a keyboard with it QMK firmware
+- Hawck
+- ...
 
 *** What is it for?
-Emacs cannot detect the fact that you held down and released Control, Meta or Super, so some software lower in the stack needs to tell Emacs about it.  Thus, we configure dual-function-keys to send separate key events when this happens.  It does not matter which key events will represent this as the user almost never sees them printed in the echo area -- they can be F20, F21, F22 or some such.
+Emacs cannot detect the fact that you held down and released Control, Meta or Super, so some software lower in the stack needs to tell Emacs about it.  Thus, we configure dual-function-keys to send separate key events when this happens.  It does not matter which key events will represent this as the user almost never sees them printed in the echo area -- the default is F20, F21, F22, F23 and F24.
 
 *** Installation
 
@@ -144,22 +149,22 @@ MAPPINGS:
     HOLD: KEY_LEFTMETA
 
   - KEY: KEY_RIGHTMETA
-    TAP: KEY_24
+    TAP: KEY_F24
     HOLD: KEY_RIGHTMETA
 
   # The kernel doesn't name syms for what Emacs calls Alt or Hyper. I don't know
-  # which keycodes would be recognized as such on Wayland.  On Xorg it should be
+  # which keycodes would be recognized as such on Wayland, if any.  On Xorg it's
   # easy enough to use xmodmap to make a keycode-to-keysym or keysym-to-keysym
   # mapping.
 #+end_src
 
 **** Test
 
-To test, execute this in some terminal.  After satisfied, you can stop the effect by interrupting the terminal with Ctrl-C.
+To test, execute this shell command in some terminal.  You can stop the effect by interrupting the terminal with Ctrl-C.
 
 : sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
 
-With the program active, you should expect that pressing Ctrl, Alt or Super in Emacs will yield a message like "<XF86Mail> is undefined".  Make sure you see that sort of message for all three modifier keys, so you know they all work.
+With the program active, you should expect that pressing Ctrl, Alt or Super in Emacs will yield a message like "<f21> is undefined".  Make sure you see that sort of message for all three modifier keys, both the left and right variants, so you know they all work.
 
 After verifying the above, type =M-x deianira-mode RET= and see what now happens when you press Ctrl, Alt or Super.  You get hydras?  Great!
 
@@ -169,15 +174,15 @@ Please mind that this is just a test -- later on, I'll recommend some more lisp 
 
 The keys we've chosen to represent presses of Control/Meta/Super must be listed doubly -- once in the file =dual-fn.yaml=, and once in the following Customizable variables.
 
-- =dei-ersatz-alt= (default ="<f20>"=)
-- =dei-ersatz-control= (default ="<f21>"=)
-- =dei-ersatz-hyper= (default ="<f22>"=)
-- =dei-ersatz-meta= (default ="<f23>"=)
-- =dei-ersatz-super= (default ="<f24>"=)
+- =dei-ersatz-alt= (default ="<f20>"= )
+- =dei-ersatz-control= (default ="<f21>"= )
+- =dei-ersatz-hyper= (default ="<f22>"= )
+- =dei-ersatz-meta= (default ="<f23>"= )
+- =dei-ersatz-super= (default ="<f24>"= )
 
 If you wish to change a keysym, change it in both places!
 
-In addition, though it can be superfluous, ensure that the keysyms exist in your current Xkb keymap table, by customizing =dei-xmodmap-rules=.
+In addition, though it can be superfluous, ensure that the keysyms exist in your current Xkb keymap table, by also customizing =dei-xmodmap-rules= -- see the current value, I expect it's self-explanatory what to do.
 
 **** Which keysyms?
 
@@ -210,9 +215,9 @@ Here's a small selection of choices.  I tried to find ones that alliterate.
 
 Under Wayland, you most likely *have to* change the keys.
 
-The problem is you don't get fully free choice of keysym as you do on Xorg, and the default tables rarely have wild keysyms like ~F20~ through ~F24~ or ~<mail>~ that would be safe to use.   (Yes, xmodmap can seem to work, but only momentarily.  Under Sway, the keymap table quickly reverts to some original determined by the XKB settings, which you've set in the Sway config file.)
+The problem is you don't get fully free choice of keysym as you do on Xorg, and the default tables rarely have wild keysyms like ~F20~ through ~F24~ or ~Mail~ that would be safe to use.   (Yes, xmodmap can seem to work, but only momentarily.  Under Sway, the keymap table quickly reverts to some original determined by the Xkb settings you've set in the Sway config file.)
 
-I've found a few keys that do tend to work:  =<katakana>=, =<muhenkan>=, =<henkan>=, and =<hiragana>=.  If you write Japanese you'll have to find some other keys, I wish you luck.
+I've found a few keys that do tend to work:  =<katakana>=, =<muhenkan>=, =<henkan>=, and =<hiragana>=.  If you write Japanese, you'll have to find some other keys -- I wish you luck.
 
 To find other choices, print out the full table via =xmodmap -pke= and pick some keysyms you don't need, test those.
 
@@ -220,9 +225,9 @@ Unfortunately, while many syms look like they should work, surprisingly many did
 
 ***** Custom Xkb layout
 
-It seems that wlroots-based compositors like Sway use the basic XKB system, even if programs like xmodmap do not work.
+It seems that wlroots-based compositors like Sway use the Xkb system, even if programs like xmodmap do not work.
 
-Most common layouts under xkb do not have Alt or Hyper, so even on X11 you'd use xmodmap to bring them into existence.   In lieu of xmodmap, it should be possible to just load a .xkb file that contains Hyper and Alt.  Basically start by generating a =custom.xkb= with xkbcomp and modify, as per:
+Most common layouts under Xkb have neither Alt nor Hyper, so even on X11 you'd use xmodmap to bring them into existence.   In lieu of xmodmap, it should be possible to just load a .xkb file that contains Hyper and Alt.  Basically start by generating a =custom.xkb= with xkbcomp and modify, as per:
 https://wiki.archlinux.org/title/X_keyboard_extension#Meta,_Super_and_Hyper
 
 Then =sway input xkbfile custom.xkb= should do it.
@@ -231,7 +236,7 @@ I expect this will also let you get F20-F24 and whatever other keys you like.
 
 *** Guix System
 
-I don't yet know how to write an on-boot service, but creating =udevmon.yaml= inside the system declaration allows you to run an oneliner at any time:
+I don't yet know how to write an on-boot service, but creating =udevmon.yaml= inside the system declaration allows you to hardcode the store paths, as per Guix standard practice.  After that, you have all you need to run an oneliner.
 
 #+begin_src scheme
 (packages
@@ -263,7 +268,8 @@ Execute this Bash in some TTY and you're ready to go.  Re-execute it every boot.
 
 : sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
 
-(For those just running GNU Guix as a package manager, follow the Arch instructions instead, substituting =/bin/intercept= for =~/.guix-profile/bin/intercept= or some such.)
+(For those just running GNU Guix as a package manager, follow the Arch instructions instead, I think it'll work.)
+
 ** Basic initfile snippet
 
 #+begin_src elisp
@@ -277,24 +283,11 @@ Additionally, if you have =(setq hydra-is-helpful nil)= somewhere in your initfi
 
 ** Homogenizing
 
-To homogenize, eval this.  Tip: If you enjoy the homogenized keymaps, you can keep using that part of Deianira without ever turning on deianira-mode.  
+From before, the line that keeps your keys homogenized is =(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)=.
 
-#+begin_src elisp
-(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)
-#+end_src
+You can check the buffer =*Deianira remaps*= to see what it's doing.  Note that there is no way to undo.  To get back all your bindings, comment out that line and restart Emacs.
 
-You can check the buffer =*Deianira remaps*= to see what it did.  Note that there is no way to undo.  To get back all your bindings, comment out the snippet and restart Emacs.
-
-*** Superfluous entries in which-key
-:CUSTOM_ID: which-key
-
-If you want to keep which-key for the occasional use-case, this snippet will hide the superfluous entries.
-
-#+begin_src elisp
-;; Hide the duplicate keys that arose from Deianira homogenizing.
-(with-eval-after-load 'which-key
-  (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist))
-#+end_src
+Tip: If you enjoy the homogenized keymaps, you can keep using that part of Deianira without ever turning on deianira-mode.
 
 *** Choose what to keep
 
@@ -318,6 +311,17 @@ The variable comes with some defaults, but I advise overriding them with your ow
     ("M-g")
     ("C-c C-c" . org-mode-map)
     ("C-c C-," . org-mode-map)))
+#+end_src
+
+*** Superfluous entries in which-key
+:CUSTOM_ID: which-key
+
+If you want to keep which-key for the occasional use-case, this snippet will hide the superfluous entries.
+
+#+begin_src elisp
+;; Hide the duplicate keys that arose from Deianira homogenizing.
+(with-eval-after-load 'which-key
+  (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist))
 #+end_src
 
 ** C-g alternative
@@ -466,7 +470,7 @@ For the former, we'd need a new type of "temporary" hydra where once you execute
 
 If instead of the ~s~ key, you use the actual Shift key like a normal person, you get to /choose/ depending on the context.  Sticky Shift does not preclude chord-Shift on occasion.  So you can hold down Shift and spam something while sitting in the ~<f1> ...~ hydra.
 
-/That/ is the unique utility of Shift.  It's not much, but it's there.  Know thy reasons for using it.  We could probably generalize this benefit with a massive round of key-chord.el mappings inside each and every hydra, but that's a project I'm not tackling.
+/That/ is the unique utility of Shift.  It's not much, but it's there.  We could probably generalize this benefit with a massive round of [[https://github.com/emacsorphanage/key-chord/][key-chord.el]] mappings inside each and every hydra.  I won't tackle that project.
 
 ** I'm a layman.  Why is this package so complex?  It seems simple, what it does?
 
@@ -494,7 +498,7 @@ If your keyboard is blessed with extra thumb keys, you may be able to acquire Hy
 1. We have many discomfort mitigations in place.
 2. It isn't actually good to spread your leaves under many different prefixes.  It's something you do to shorten key sequences, but because we have hydras, many keys are now already as short as they can be, and switching prefix becomes an extra action!  The more well-filled one prefix, the less likely you'll have to switch prefix while exploiting a hydra.  Thus, you'll benefit more from curating the 2-3 modifiers you already have, than from acquiring extra modifiers.
 
-On a standard keyboard, Control/Alt/Super aren't in comfortable places, and then you may want to minimize the amount of switching between root hydras, and instead travel among a single root hydra's children, going in and out of nested key sequences with the help of Backspace.   However it's true that if you had 5 modifiers in really comfortable places and they were full of shallow key bindings, no deep key sequences, this may be preferable to the Backspace method.  I'm undecided.  It seems highly vulnerable to the choice of where you bind each command: it could be good or it could be terrible, needing you to change prefix very often.  Commands you're likely to call after each other should live in the same prefix.  So this mandates careful design.  See also [[Vision][Vision]].
+On a standard keyboard, Control/Alt/Super aren't in comfortable places, and then you may want to minimize the amount of switching between root hydras, and instead travel among a single root hydra's children, going in and out of nested key sequences with the help of Backspace.   However it's true that if you had 5 modifiers in really comfortable places and they were full of shallow key bindings, no deep key sequences, this may be preferable to the Backspace method.  I'm undecided.  It seems highly vulnerable to the choice of where you bind each command: it could be good or it could be terrible, needing you to change prefix very often.  Commands you're likely to call after each other should live in the same prefix.  So this mandates careful design.  See also [[#vision][Vision]].
 
 ** Concepts/terminology
 *** Permachord and chord-once
@@ -559,9 +563,7 @@ If programming against this library, always wrap a key description in =(key-desc
 *** Quasi-quitter
 * Known issues
 ** Hydra does not update instantly
-Deianira updates hydras every time you (a) exit a hydra or (b) enter a different hydra, since that entails exiting the previous hydra.  It generates hydras in a pseudo-async fashion, and only if the keymap has changed and only for the prefixes that changed, so you should usually not detect lag or input latency.  If you do, compiling the package makes a tremendous difference.
-
-This design results in a WONTFIX side effect: because it updates only after exiting, if you run a command such as =next-buffer= from within a hydra, getting a different buffer with potentially different major mode and keymaps, the hydra will not reflect this, but continue to reflect the buffer where it was first called.
+If you run a command such as =next-buffer= from within a hydra, getting a different buffer with potentially different major mode and keymaps, the hydra will not reflect this, but continue to reflect the buffer where it was first called.
 
 Aside from confusion, it's usually not a problem because in a supermajority of cases, the difference is only visual: it's the hydra /hint/ that reflects the wrong buffer's bindings.  The keys still do what they should, since they are not bound to specific commands but to =(call-interactively (key-binding KEY))=, which results in the correct action.
 
@@ -591,7 +593,7 @@ Despite the name, Deianira is not necessarily a Hercules killer, but could be re
 
 1. Hydra
 2. Hercules
-3. define-repeat-map
+3. [[https://tildegit.org/acdw/define-repeat-map.el][define-repeat-map]]
 4. Transient
 
 (I'd like an engine-agnostic term for the concept shared by all these.  Please hit me up.  For now, the term "hydra" is short and useful: it can become verbs and adjectives like "hydraize", "hydrable", even other nouns like "hydratics".  In addition, you can speak of "flocks" of hydras and of "spawning" and "slaying" them.)
@@ -614,7 +616,7 @@ If we represent all of Emacs' key bindings in Transients, the same way Magit swa
 - avy-transpose-lines-in-region
 - crux-transpose-windows
 
-These commands speak of one *verb,* the verb "transpose", together with a variety of targets or *objects* "char", "word", "sexp", "line" and so on.  We see a similar pattern for the verb "kill":
+These commands speak of one *verb* "transpose", together with a variety of targets or *objects* "char", "word", "sexp", "line" and so on.  We see a similar pattern for the verb "kill":
 
 - kill-word (M-d)
 - kill-line (C-k)
