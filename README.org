@@ -12,9 +12,7 @@
 # TODO: More consistent "we", "you", "I"
 # TODO: More consistent "hotkey", "key sequence", "key", "key binding" .. try to pick one.
 
-A [[https://github.com/abo-abo/hydra][hydra]]-based =which-key= banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][Hercules.el]] (a "which-key based hydra banisher"), whose namesake was slain by his wife, the [[https://en.wikipedia.org/wiki/Deianira][princess Deianira]].
-
-# Deianira can in theory be made to run on top of Hercules.el, using it as an engine. Nevertheless, the name fits.
+A [[https://github.com/abo-abo/hydra][hydra]]-based =which-key= banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][Hercules.el]] (a "which-key based hydra banisher"), whose namesake slayed the Hydra but was then slain by his wife, the [[https://en.wikipedia.org/wiki/Deianira][princess Deianira]].
 
 * Paradigm
 
@@ -65,75 +63,56 @@ No "paradigm lock-in"
 # - It should be possible to create a half-Deianira that relies on sticky keys and a whole lot of repeat maps, but I suspect it won't be the same.  The full Deianira is simple in end use because you can expect the interface to be regular and uniform.
 
 * Setup
+If you have a question, welcome to file a GitHub issue or send a message to https://reddit.com/u/meedstrom.
+# or Matrix username?
 
-Since this package is so new, and demands so much learning, I'm happy to personally walk you through setup.  Strike up a chat with me.
+** Getting the package
 
-The problems we have to solve:
-- We need an external program to get the Control, Meta and Super keys to send the F35, F34 and F33 key events, respectively.  I had been using [[https://github.com/alols/xcape][xcape]], but it's buggy and unmaintained so now I advise setting up [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] instead.  See instructions somewhere in this document.
-- It's up to the user to choose which keys to keep when homogenizing the keymap -- do you use ~C-x f~ or ~C-x C-f~ more?  Customize =dei-homogenizing-winners=.
-- Though optional, you'll benefit from reclaiming real estate with a set of suggested unbinds or rebinds. ~M-q~ and ~C-q~ are prime examples of unworthy bindings.
-- I'll develop this section when the package matures a bit.
+It is not on any ELPA, but if you have [[https://github.com/raxod502/straight.el][straight.el]], you can install the package like so:
 
-** Prerequisites
-- interception-tools
-- interception-dual-function-keys
+#+begin_src elisp
+(use-package deianira
+  :straight (deianira :type git :host github :repo "meedstrom/deianira"))
+#+end_src
 
-** Dual Function Keys
+Alternatively with Doom Emacs, this goes in =packages.el=:
 
-To enable the Deianira Paradigm, we need to instruct the modifier keys to do something if you just tap and release them instead of holding them down.  As of 2022, the best software solution on Linux is probably [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]].  Compared to the unmaintained and buggy [[https://github.com/alols/xcape][xcape]], it operates at a lower level in the software stack, so it works no matter if you're on X11 or Wayland.
+#+begin_src elisp
+(package! deianira :recipe (:host github :repo "meedstrom/deianira"))
+#+end_src
 
-The variables to customize are as follows.
+** dual-function-keys
 
-- =dei-ersatz-control= (default ="<katakana>"=)
-- =dei-ersatz-meta= (default ="<muhenkan>"=)
-- =dei-ersatz-super= (default ="<henkan>"=)
-- =dei-ersatz-hyper= 
-- =dei-ersatz-alt=
+You need [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] with its included plugin dual-function-keys.  If your distro does not package it, I'm sorry to say this step may take you some work.  On Arch and Guix it's easy.  As an alternative, if you always use a keyboard with QMK firmware, you could configure that keyboard at the firmware level.
 
-*** Wayland
+I have not found any alternatives.  In Deianira's youth, I was using the buggy and unmaintained [[https://github.com/alols/xcape][xcape]], and it had a glut of issues: it could work fine for a while and then develop a 2-second latency with keystrokes (even with =nice -20=), whereupon the computer had to be rebooted.  This leads to giving up on Deianira.  Something so fundamental needs to be reliable.
 
-Under Sway, the xmodmap command only takes effect momentarily, and the keymap table quickly reverts to some original determined by the XKB settings, which you've set in the Sway config file.
+*** What is it for?
+Emacs cannot detect the fact that you held down and released Control, Meta or Super, so some software lower in the stack needs to tell Emacs about it.  Thus, we configure dual-function-keys to send separate key events when this happens.  It does not matter which key events will represent this as the user almost never sees them printed in the echo area -- they can be F20, F21, F22 or some such.
 
-So you don't get fully free choice of keysym as on Xorg, and the default tables rarely have wild keysyms like ~F20~ through ~F24~ or ~<mail>~ that wold be safe to use.  For now, my solution is you just print out the full table via =xmodmap -pke= and pick any keysyms you don't need.
+*** Installation
 
-Which keysyms can I offer as suggestion?  Surprisingly many symbols straight-up did not work for me.  (if someone can help: they existed both in the [[https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h][Linux kernel keymap]] and my XKB keymap table, with the correct difference of 8 in the scancode, still absolutely no key event!)
+On Arch, install like so:
 
-That's the story of how I ended up using =<katakana>= for Control, =<muhenkan>= for Meta, =<henkan>= for Super, and =<hiragana>= for Hyper.
+: sudo pacman -S interception-dual-function-keys
 
-*** Guix System
-# note: this can be a separate protip blog post
+Let there be two config files, with the following filenames.
 
-It works under Guix System as of [2022-05-10].  I don't yet know how to write an on-boot service, but putting this in the system declaration allows you to run an oneliner at any time.
+- =/etc/interception/udevmon.yaml=
+- =/etc/interception/dual-fn.yaml=
 
-# (For those just running GNU Guix as a package manager, you can write your own udevmon.yaml wherein you refer to executable symlinks such as =~/.guix-profile/bin/intercept= instead of the store paths given by the gexp below).
+Fill them with copypasta from the following sections.  This won't have any effect on your system right now, though it may on the next boot.
 
-#+begin_src scheme
-(packages
- (cons* ...
-        interception-tools
-        interception-dual-function-keys
-        ...)
-(services
- (cons* ...
-        (extra-special-file
-         "/etc/interception/udevmon.yaml"
-         (mixed-text-file "udevmon.yaml"
-                          "- JOB: \""
-                          interception-tools "/bin/intercept"
-                          " -g $DEVNODE | "
-                          interception-dual-function-keys "/bin/dual-function-keys"
-                          ;; NOTE: change this filesystem path to your choice
-                          " -c /home/kept/system-config/dual-fn.yaml | "
-                          interception-tools "/bin/uinput"
-                          " -d $DEVNODE\"
+**** udevmon.yaml
+
+#+begin_src yaml
+- JOB: "intercept -g $DEVNODE | dual-function-keys -c /etc/interception/dual-fn.yaml | uinput -d $DEVNODE"
   DEVICE:
     EVENTS:
       EV_KEY: [ KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTMETA, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_RIGHTMETA ]
-"))
-        ...)
 #+end_src
 
-As you see, the content of =udevmon.yaml= will refer to a second file we call =dual-fn.yaml= at an arbitrary path, which you likely want to change.  Create it with contents as below:
+**** dual-fn.yaml
 
 #+begin_src yaml
 TIMING:
@@ -143,51 +122,207 @@ TIMING:
 MAPPINGS:
   # Control
   - KEY: KEY_LEFTCTRL
-    TAP: KEY_KATAKANA
+    TAP: KEY_F21
     HOLD: KEY_LEFTCTRL
 
   - KEY: KEY_RIGHTCTRL
-    TAP: KEY_KATAKANA
+    TAP: KEY_F21
     HOLD: KEY_RIGHTCTRL
 
-  # Emacs "Meta"
+  # Emacs calls this "Meta"
   - KEY: KEY_LEFTALT
-    TAP: KEY_MUHENKAN
+    TAP: KEY_F23
     HOLD: KEY_LEFTALT
 
   - KEY: KEY_RIGHTALT
-    TAP: KEY_MUHENKAN
+    TAP: KEY_F23
     HOLD: KEY_RIGHTALT
 
-  # Emacs "Super"
+  # Emacs calls this "Super"
   - KEY: KEY_LEFTMETA
-    TAP: KEY_HENKAN
+    TAP: KEY_F24
     HOLD: KEY_LEFTMETA
 
   - KEY: KEY_RIGHTMETA
-    TAP: KEY_HENKAN
+    TAP: KEY_24
     HOLD: KEY_RIGHTMETA
 
-  # The kernel doesn't have syms for what Emacs calls Alt or Hyper,
-  # IDK yet which keycodes are recognized as such.
+  # The kernel doesn't name syms for what Emacs calls Alt or Hyper. I don't know
+  # which keycodes would be recognized as such on Wayland.  On Xorg it should be
+  # easy enough to use xmodmap to make a keycode-to-keysym or keysym-to-keysym
+  # mapping.
+#+end_src
+
+**** Test
+
+To test, execute this in some terminal.  After satisfied, you can stop the effect by interrupting the terminal with Ctrl-C.
+
+: sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
+
+With the program active, you should expect that pressing Ctrl, Alt or Super in Emacs will yield a message like "<XF86Mail> is undefined".  Make sure you see that sort of message for all three modifier keys, so you know they all work.
+
+After verifying the above, type =M-x deianira-mode RET= and see what now happens when you press Ctrl, Alt or Super.  You get hydras?  Great!
+
+Please mind that this is just a test -- later on, I'll recommend some more lisp in your initfiles.
+
+*** If you wish to change the keys
+
+The keys we've chosen to represent presses of Control/Meta/Super must be listed doubly -- once in the file =dual-fn.yaml=, and once in the following Customizable variables.
+
+- =dei-ersatz-alt= (default ="<f20>"=)
+- =dei-ersatz-control= (default ="<f21>"=)
+- =dei-ersatz-hyper= (default ="<f22>"=)
+- =dei-ersatz-meta= (default ="<f23>"=)
+- =dei-ersatz-super= (default ="<f24>"=)
+
+If you wish to change a keysym, change it in both places!
+
+In addition, though it can be superfluous, ensure that the keysyms exist in your current Xkb keymap table, by customizing =dei-xmodmap-rules=.
+
+**** Which keysyms?
+
+Here's a small selection of choices.  I tried to find ones that alliterate.
+
+| Kernel keysym | Xkb keysym    | Emacs keysym    | Kernel code | Xkb code |
+|---------------+---------------+-----------------+-------------+----------|
+| KEY_F20       | F20           | <f20>           |         190 |      198 |
+| KEY_F21       | F21           | <f21>           |         191 |      199 |
+| KEY_F22       | F22           | <f22>           |         192 |      200 |
+| KEY_F23       | F23           | <f23>           |         193 |      201 |
+| KEY_F24       | F24           | <f24>           |         194 |      202 |
+| KEY_FRONT     | SunFront      |                 |         132 |      140 |
+| KEY_CANCEL    | Cancel        |                 |         223 |      231 |
+| KEY_HELP      | Help          |                 |         138 |      146 |
+| KEY_SEARCH    | XF86Search    | <XF86Search>    |         217 |      225 |
+| KEY_CUT       | XF86Cut       | <XF86Cut>       |         137 |      145 |
+| KEY_MAIL      | XF86Mail      | <XF86Mail>      |         155 |      163 |
+| KEY_HOMEPAGE  | XF86HomePage  | <XF86HomePage>  |         172 |      180 |
+| KEY_NEXTSONG  | XF86AudioNext | <XF86AudioNext> |         163 |      171 |
+| KEY_KATAKANA  | Katakana      | <katakana>      |          90 |       98 |
+| KEY_HIRAGANA  | Hiragana      | <hiragana>      |          91 |       99 |
+| KEY_HENKAN    | Henkan        | <henkan>        |          92 |      100 |
+| KEY_MUHENKAN  | Muhenkan      | <muhenkan>      |          94 |      102 |
+
+- More kernel keysyms: https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h
+- More Xorg keysyms: run =xmodmap -pke= or see https://gist.github.com/siarie/61247ee2bb70f1146484f852f845c1b7
+
+**** Wayland
+
+Under Wayland, you most likely *have to* change the keys.
+
+The problem is you don't get fully free choice of keysym as you do on Xorg, and the default tables rarely have wild keysyms like ~F20~ through ~F24~ or ~<mail>~ that would be safe to use.   (Yes, xmodmap can seem to work, but only momentarily.  Under Sway, the keymap table quickly reverts to some original determined by the XKB settings, which you've set in the Sway config file.)
+
+I've found a few keys that do tend to work:  =<katakana>=, =<muhenkan>=, =<henkan>=, and =<hiragana>=.  If you write Japanese you'll have to find some other keys, I wish you luck.
+
+To find other choices, print out the full table via =xmodmap -pke= and pick some keysyms you don't need, test those.
+
+Unfortunately, while many syms look like they should work, surprisingly many did not for me.  (If someone can help: they existed both in the [[https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h][Linux kernel keymap]] and my =xmodmap -pke=, with the correct difference of +8 in the scancode, and still Emacs saw absolutely no key event!)
+
+***** Custom Xkb layout
+
+It seems that wlroots-based compositors like Sway use the basic XKB system, even if programs like xmodmap do not work.
+
+Most common layouts under xkb do not have Alt or Hyper, so even on X11 you'd use xmodmap to bring them into existence.   In lieu of xmodmap, it should be possible to just load a .xkb file that contains Hyper and Alt.  Basically start by generating a =custom.xkb= with xkbcomp and modify, as per:
+https://wiki.archlinux.org/title/X_keyboard_extension#Meta,_Super_and_Hyper
+
+Then =sway input xkbfile custom.xkb= should do it.
+
+I expect this will also let you get F20-F24 and whatever other keys you like.
+
+*** Guix System
+
+I don't yet know how to write an on-boot service, but creating =udevmon.yaml= inside the system declaration allows you to run an oneliner at any time:
+
+#+begin_src scheme
+(packages
+ (cons* ...
+        interception-tools
+        interception-dual-function-keys
+        ...))
+(services
+ (cons* ...
+        (extra-special-file
+         "/etc/interception/udevmon.yaml"
+         (mixed-text-file "udevmon.yaml"
+                          "- JOB: \""
+                          interception-tools "/bin/intercept"
+                          " -g $DEVNODE | "
+                          interception-dual-function-keys "/bin/dual-function-keys"
+                          ;; NOTE: change this filesystem path to wherever you keep the file
+                          " -c /home/kept/system-config/dual-fn.yaml | "
+                          interception-tools "/bin/uinput"
+                          " -d $DEVNODE\"
+  DEVICE:
+    EVENTS:
+      EV_KEY: [ KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTMETA, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_RIGHTMETA ]
+"))
+        ...))
 #+end_src
 
 Execute this Bash in some TTY and you're ready to go.  Re-execute it every boot.
 
 : sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
 
-With the above program running, you should expect in Emacs that pressing Ctrl, Alt or Super will yield a message like "<muhenkan> is undefined".  Make sure you see such a message for all three modifier keys, so you know they all work.  Then type =M-x deianira-mode RET=.
+(For those just running GNU Guix as a package manager, follow the Arch instructions instead, substituting =/bin/intercept= for =~/.guix-profile/bin/intercept= or some such.)
+** Basic initfile snippet
 
-** Fix which-key
+#+begin_src elisp
+(require 'deianira)
+(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)
+(deianira-mode)
+#+end_src
 
-If you want to keep which-key for those times you type a chord, this snippet will hide the superfluous entries.
+Additionally, if you have =(setq hydra-is-helpful nil)= somewhere in your initfiles, you'll now probably want to remove that and let it be =t=.
+# TODO: code in a check+warning instead of readme, people don't read instructions.  Let user disable the check.
 
-: ;; Hide keys like C-x C-a, only show simple sequences like C-x a.
-: (push '((" .-.") . t) which-key-replacement-alist)
+** Homogenizing
+
+To homogenize, eval this.  Tip: If you enjoy the homogenized keymaps, you can keep using that part of Deianira without ever turning on deianira-mode.  
+
+#+begin_src elisp
+(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)
+#+end_src
+
+You can check the buffer =*Deianira remaps*= to see what it did.  Note that there is no way to undo.  To get back all your bindings, comment out the snippet and restart Emacs.
+
+*** Superfluous entries in which-key
+:CUSTOM_ID: which-key
+
+If you want to keep which-key for the occasional use-case, this snippet will hide the superfluous entries.
+
+#+begin_src elisp
+;; Hide the duplicate keys that arose from Deianira homogenizing.
+(with-eval-after-load 'which-key
+  (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist))
+#+end_src
+
+*** Choose what to keep
+
+You'll want to customize =dei-homogenizing-winners= over time.   Do you use ~C-x f~ or ~C-x C-f~ more?  It's hard to know when thinking about it.  But this is *absolutely key* to becoming comfortable.
+
+The variable comes with some defaults, but I advise overriding them with your own setting.  See its docstring for more info.
+
+#+begin_src elisp
+(setq dei-homogenizing-winners
+  '(("C-c C-c")
+    ("C-x C-f")
+    ("C-x C-s")
+    ("C-x C-;")
+    ("C-x a")
+    ("C-x g")
+    ("C-x b")
+    ("C-x n")
+    ("C-x p")
+    ("C-g")
+    ("C-h C-g")
+    ("M-g")
+    ("C-c C-c" . org-mode-map)
+    ("C-c C-," . org-mode-map)))
+#+end_src
 
 ** C-g alternative
 
-Since ~C-g~ is normally bound to keyboard-quit, pressing ~g~ in the Control hydra will do what you'd expect (the same thing as ~C-g~), but I advise against getting in the habit of using it.  It's so prone to muscle-memorization and when you're in the Meta hydra or any other hydra, ~g~ /will do something else/.  Some naive recourses are:
+Since ~C-g~ is normally bound to keyboard-quit, pressing ~g~ in the Control hydra will do what you'd expect (the same thing as ~C-g~), but I advise against getting in the habit of using it.  It's so prone to muscle-memorization and when you're in the Meta hydra or any other hydra, ~g~ /will do something else/.  Some naive recourses could be:
 
 - 1. Bind ~g~ to keyboard-quit in every hydra, i.e. bind ~M-g~, ~s-g~, ~M-s g~, ~C-x g~ and so on, or:
 - 2. Avoid pressing ~g~ in the Control hydra; press ~C-g~ always
@@ -257,6 +392,9 @@ Ensure the hydras reflect your choice:
   '(("=" dei-universal-argument)
     ("-" dei-negative-argument)
     ("<f5>" hydra-repeat)))
+
+(setq dei-invisible-leafs
+      (seq-difference dei-invisible-leafs '("-" "=")))
 #+end_src
 
 If you want to use a dedicated key like =<print>= instead, replace occurrences of ~=~ with =<print>= and add another line:
@@ -264,282 +402,79 @@ If you want to use a dedicated key like =<print>= instead, replace occurrences o
 (define-key global-map (kbd "<print>") #'universal-argument)
 #+end_src
 
-** Xcape
-I assume your keyboards have what X11 will interpret as Control, Alt and Super, and hasn't any keys that would be interpreted as Meta or Hyper.  On some keyboards Alt/Meta are apparently inverted, so you may need to customize =dei-xcape-rules=.  The default values follow.
+Some packages override M-1234567890.  Prevent that:
 
 #+begin_src elisp
-(setq dei-xcape-rules
-  '(
-    "Control_L=F35"
-    "Control_R=F35"
-    "Alt_L=F34"
-    "Alt_R=F34"
-    "Super_L=F33"
-    "Super_R=F33"
-    ;; "Meta_L=F32"
-    ;; "Meta_R=F32"
-    ;; "Hyper_L=F31"
-    ;; "Hyper_R=F31"
-    ))
+(with-eval-after-load 'ranger
+  ;; Don't take my M-1234567890
+  (let ((digits (split-string "1234567890" "" t)))
+    (dolist (d digits)
+      (define-key ranger-normal-mode-map (kbd (concat "M-" d)) nil)
+      (define-key ranger-emacs-mode-map (kbd (concat "M-" d)) nil))))
+
+(with-eval-after-load 'magit
+  ;; Don't take my M-1234567890
+  (define-key magit-section-mode-map (kbd "M-1") nil)
+  (define-key magit-section-mode-map (kbd "M-2") nil)
+  (define-key magit-section-mode-map (kbd "M-3") nil)
+  (define-key magit-section-mode-map (kbd "M-4") nil))
 #+end_src
 
-** Extra modifiers
-If your keyboard is blessed with extra thumb keys, you may be able to acquire Hyper and Alt for a total of five leader keys.  If so, you could move most of what you use from under ~C-h~, ~C-x~, ~M-g~, ~M-s~ etc to just ~H-~ and ~A-~, but I believe the advantage is small if you already curate the ~C-~  and ~M-~ prefixes since:
 
-1. We have many discomfort mitigations in place.
-2. It isn't actually good to spread your leaves under many different prefixes; the more well-filled one prefix, the less likely you'll have to switch prefix while exploiting a hydra.  If we didn't have hydras, it wouldn't matter, but we do and should exploit it, meaning each hydra should be as full as possible.
-#   - Not just a question of fullness, but which commands you're likely to call in sequence. A hard problem, and the benefit small, but a takeaway is that curating the default bindings is anyways necessary if we want to possibly ever beat Vim at Vimgolf.  
-3. On a standard keyboard, Control/Alt/Super aren't in comfortable places, and then you may want to minimize the amount of switching between root hydras, and instead travel among a single root hydra's children, going in and out of nested key sequences with the help of Backspace.   You pay for it in giving up some chances to use transient exits, so the ideal is having all five modifier keys in comfortable locations, each full of shallow key bindings, not deep key sequences.
-
-** Suggested bindings
-
-Note that here I use =general-def=, but you can use =define-key= or whatever you like.  With General you don't need to rely on constructs like =(with-eval-after-load 'smartparens=, as it'll do that for you.
-
-#+begin_src elisp
-;; C-h/F1
-;; Keep only what I really use (M-x is good enough for the rest)
-(setq help-map (make-sparse-keymap)) ;; Nuke defaults!
-(general-def "C-h f" #'helpful-callable)
-(general-def "C-h v" #'helpful-variable)
-(general-def "C-h o" #'helpful-symbol)
-(general-def "C-h k" #'helpful-key)
-(general-def "C-h i" #'info)
-(general-def "C-h e" #'view-echo-area-messages)
-(general-def "C-h p" #'describe-package)
-(general-def "C-h l" #'find-library)
-;; Convenient under C root for inserting control characters like C-l and C-j.
-(general-def "C-h q" #'quoted-insert) ;; was C-q.
-#+end_src
-
-Magit overrides M-1234. Calc overrides ~`~. Problems.
-
-Special commands that should return to the root-hydra:
-- set-mark-command
-- rectangle-mark-mode
-- Maybe C-c C-c (in org-mode anyway)
-
-#+begin_src elisp
-(general-def "<f5>" #'repeat)
-
-;; M-g
-(general-def "M-g ," #'beginning-of-buffer) ;; was M-<
-(general-def "M-g ." #'end-of-buffer) ;; was M->
-
-;; M-m
-(general-def global-map "M-m m" #'set-mark-command) ;; was C-SPC
-(general-def global-map "M-m r" #'rectangle-mark-mode) ;; was C-x SPC
-(general-def global-map "M-m g" #'pop-global-mark) ;; was C-x C-SPC
-
-;; M-m bonus
-(general-def global-map "M-m p" #'pop-to-mark-command)
-(general-def global-map "M-m x" #'exchange-point-and-mark) ;; also on C-x C-x
-(general-def "M-o =" #'text-scale-adjust) ;; was C-x =
-
-;; M-s
-(general-def "M-s 5" #'query-replace-regexp) ;; was M-%
-(general-def "M-s s" #'isearch-forward) ;; was C-s
-(general-def "M-s r" #'isearch-backward) ;; was C-r
-(general-def "M-s f" #'fill-paragraph) ;; was C-q
-
-;; M-q
-;; These are based on the default C-M-* bindings
-(general-def smartparens-mode-map "M-q a" #'sp-backward-down-sexp)
-(general-def smartparens-mode-map "M-q b" #'sp-backward-sexp)
-(general-def smartparens-mode-map "M-q d" #'sp-down-sexp)
-(general-def smartparens-mode-map "M-q f" #'sp-forward-sexp)
-(general-def smartparens-mode-map "M-q k" #'sp-kill-sexp)
-(general-def smartparens-mode-map "M-q n" #'sp-next-sexp)
-(general-def smartparens-mode-map "M-q p" #'sp-previous-sexp)
-(general-def smartparens-mode-map "M-q t" #'sp-transpose-sexp)
-(general-def smartparens-mode-map "M-q u" #'sp-backward-up-sexp)
-(general-def smartparens-mode-map "M-q w" #'sp-copy-sexp)
-
-;; Some extra smartparens stuff'
-(general-def smartparens-mode-map "M-q <left>" #'sp-backward-slurp-sexp)
-(general-def smartparens-mode-map "M-q <right>" #'sp-backward-barf-sexp)
-(general-def smartparens-mode-map "M-q ;" #'sp-comment)
-(general-def smartparens-mode-map "M-q " #'sp-kill-whole-line)
-(general-def smartparens-mode-map "M-q " #'sp-mark-sexp)
-(general-def smartparens-mode-map "s-<delete>" #'sp-backward-kill-sexp)
-(general-def smartparens-mode-map "C-<left>" #'sp-forward-barf-sexp)
-(general-def smartparens-mode-map "C-<right>" #'sp-forward-slurp-sexp)
-
-;; Common paredit-inspired keys we cannot bind under our paradigm
-;; (general-def smartparens-mode-map "M-<backspace>" #'sp-backward-unwrap-sexp)
-;; (general-def smartparens-mode-map "M-<delete>" #'sp-unwrap-sexp)
-;; (general-def smartparens-mode-map "s-<SPC>" #'sp-mark-sexp)
-#+end_src
-
-I suggest it's good practice to keep whole key sequences on the same half of the keyboard.  For example, the prefix ~M-o~ is on the right side of the keyboard (on a QWERTY keyboard), so its leaves should be on the right side too, resulting in keys like ~M-o k~ or ~M-o p~ but ideally not ~M-o a~.  The most defensible reason to break this guideline is for the sake of mnemonics.
-
-The guideline matters less if you rarely use the command in question.  You can consider the opposing half of the keyboard as bonus real estate for less used commands, and use it purely to get away with fewer prefixes in total.
-
-Also, may I suggest binding =repeat= globally to a comfortable and easy-to-find key, like Return?  This enhances the usability of every key sequence, even without hydra.  If you're using this package's hydras, it's less important, but you may still land in the following situation (for example):
-
-2. You enter the Control hydra and use nfbp to move point.
-3. You type ~M-q f~ to call forward-sexp while staying in the Control hydra.
-4. You want to call forward-sexp again, spam it a few times. So you have a few options:
-   a. Type ~M-q f~ repeatedly.  (Absurd, so no)
-   b. Enter the =M-q ...= hydra, and spam ~f~.
-   c. Press your global key for =repeat=. This lets you stay in the Control hydra.
-
-# 1. You type ~<meta> o m~ to activate the mark, and get sent to the root Meta hydra
-# 2. You type ~q~ to enter the ~M-q~ hydra and use abdfnpu to navigate the sexps.
-# 3. You
-
-Repeat is a beautiful concept, simple and useful, it should be one of the first commands to bind in any editor.  For us, it extends our claim of being able to access any key sequence's key from within any other key sequence hydra, to even being able to spam any of them.
-
-** Suggested de-bindings
-
-Necessary. Put these elsewhere.
-#+begin_src elisp
-(general-unbind "C-x DEL") ;; use M-- M-k
-(general-unbind "C-x SPC") ;; rectangle-mark-mode
-(general-unbind "C-x C-SPC") ;; pop-global-mark
-(general-unbind "C-SPC") ;; set-mark-command
-(general-unbind "M-SPC") ;; just-one-space
-(general-unbind "C-x -") ;; shrink-window-if-larger-than-buffer
-(general-unbind "C-x C--") ;; text-scale-adjust  (use neg arg: C-- C-x C-=)
-#+end_src
-
-Suggested. Put these elsewhere.
-#+begin_src elisp
-(general-unbind "C-u") ;; universal-argument
-(general-unbind "C-q") ;; quoted-insert
-(general-unbind "C-s") ;; isearch-forward
-(general-unbind "C-r") ;; isearch-backward
-(general-unbind "M-q") ;; fill-paragraph
-(general-unbind "M-<f10>") ;; toggle-frame-maximized
-(general-unbind "<f11>") ;; toggle-frame-fullscreen
-#+end_src
-
-In contrast with most keys, the following keys are bound in too bad locations by default, and they deserve better!  I suggest ~M-TAB~ and ~M-`~, if your window manager doesn't interfere, or ~M-1~ and ~M-2~.
-#+begin_src elisp
-(general-unbind "C-x o") ;; other-window
-(general-unbind "C-x b") ;; switch-to-buffer
-#+end_src
-
-At first, I thought keyboard macros deserve good keys, like the default ~<f3>~, but it occurred to me that when I type a keyboard macro, I am in any case in "slow mode", carefully thinking about each key, so it does not hurt or confuse if I have to type ~C-x C-k C-s~ or ~C-x k s~ to start one.  Finally, spamming a completed macro is done with ~C-x k k k k k k k k...~, so there's no need to occupy ~<f4>~.
-
-/Note: ~C-x k~ refers to kmacro-keymap by default only if you unbind ~C-x k~ in global-map, which I recommend under Make real estate. The default ~C-x k~ (kill-buffer) is useless; don't fall for the lure of killing buffers for fake feelings of productivity.  When and if a buffer acts up, you can type out =M-x kill-current-buffer=, because they don't act up on a regular basis, right?  Otherwise, consider finding a different key for kmacro-keymap and give ~<f3>~ to something more deserving, like =expand-abbrev=./
-
-#+begin_src elisp
-(general-unbind "<f3>") ;; kmacro-start-macro-or-insert-counter
-(general-unbind "<f4>") ;; kmacro-end-or-call-macro
-#+end_src
-
-If you're using smartparens/paredit, you might have these keys bound. They're difficult to unlearn, so I suggest just keeping them at first. They won't be replicated inside our hydras, but that's fine.
-
-- ~"M-<backspace>"~
-- ~"C-<backspace>"~
-- ~"C-M-<backspace>"~
-# - ~"M-<delete>"~
-# - ~"C-<delete>"~
-# - ~"C-M-<left>"~
-# - ~"C-M-<right>"~
-# - ~"C-<left>"~
-# - ~"C-<right>"~
-
-Make real estate. This is the most opinionated part: I posit that these commands aren't useful enough to be bound at all. Your mileage may vary; decide for yourself.
-
-#+begin_src elisp
-(general-unbind "<f2>") ;; 2C-command
-(general-unbind "<f5>") ;; NOTE: which-key-paging-key is this by default
-(general-unbind "<f6>")
-(general-unbind "<f7>")
-(general-unbind "<f8>")
-(general-unbind "<f9>")
-(general-unbind "<f10>") ;; menu-bar-open
-(general-unbind "<insert>") ;; overwrite-mode
-(general-unbind "C-o") ;; open-line
-(general-unbind "C-z") ;; suspend-frame
-(general-unbind "C-\\") ;; toggle-input-method
-(general-unbind "M-.") ;; xref-find-definitions
-(general-unbind "M-`") ;; tmm-menubar
-(general-unbind "M-i") ;; tab-to-tab-stop
-(general-unbind "M-j") ;; default-indent-new-line
-(general-unbind "M-m") ;; back-to-indentation
-(general-unbind "M-o") ;; facemenu-keymap
-(general-unbind "M-r") ;; move-to-window-line-top-bottom
-(general-unbind "M-z") ;; zap-to-char
-(general-unbind "M-~") ;; not-modified
-(general-unbind "C-x k") ;; Discourage unproductive behavior
-(general-unbind "C-x C-z")
-(general-unbind "C-x z")
-(general-unbind "C-x (")
-(general-unbind "C-x )")
-(general-unbind "C-x *")
-#+end_src
-
+** Training wheels
 ** Out of GNOME hell :noexport:
-** Warnings :noexport:
+* Imagined FAQ
+** Can I keep which-key?
+Yes.
 
-Homogenizing the keymap is destructive for now!  To get back your bindings, restart Emacs.
+** What if you just use sticky keys and carefully crafted repeat-maps instead of all this crap?
+Not the same thing -- you'd additionally need god-mode, and you'd still need to setup dual-function-keys or similar software so as to make the Control and Meta keys into entry-points for god-mode's modes.  Then we can compare.  If you do that, I'll link your blog post here!
 
-But you can check the buffer =*Deianira remaps*= to see what it did.
+** Can you use this without the drastic "homogenizing" remapping?
+No.  Or there will be a lot of keys you can't reach from hydra, and the paradigm is broken.  Worse, if we have /bastard sequences/ (see terminology) or differing definitions between chord-once and perma-chord sequences (see terminology), it introduces a layer of doubt that interferes with you memorizing the sequence -- as your muscle memory can't "cross-train" between what happens inside the hydra and what happens outside it.
 
-** Config options
+Note that we remap only in a structural way, according to a few fixed rules.  Sometimes these rules poke us in the eye, but aside from them, we're carefully non-opinionated.  In another package, ergoemacs-mode, they move ~M-x~ to ~M-a~, a wonderful improvement but the kind of decision Deianira doesn't involve itself in.
 
-dei-all-shifted-symbols
+** Why do you hate Shift?  Shift is great!
+Shift has some surprising utilities.  But to understand what makes it unique, here's a thought experiment.
 
-The default assumes an US keyboard layout.  For example, it includes ~<~ and ~>~ since both require Shift under the US layout.  The result is that it unbinds all key sequences involving either.  If you preferentially use a different layout, you can set it to a new string filled by holding down Shift and facerolling the keyboard.  Or you juggle layouts, you can simply add characters that imply Shift under at least one of them, so that it's an union of all keys that may possibly require holding Shift.2
+Consider an experiment where you have another key replace all the use cases of Shift.  Let's say we choose the ~s~ key, as a short for "Shift" because we're sentimental.
 
-** Purism
+Now instead of binding anything to say, ~<f1> K~, you bind ~<f1> s k~.  You'll note it's the same number of key presses (3), and probably more comfortable.
 
-(add-hook 'dei--after-scan-bindings-hook #'dei--unbind-illegal-keys -5)
+It's more comfortable than Shift because Shift has flaws:
 
-** Hyper and Alt under Wayland
+- Shift needs to be held down.  (You can solve this with the "sticky keys" feature on many OSes.)
+- Shift is typically hit with the pinky finger.  (You can solve this with a non-standard keyboard that gives it to a thumb.)
 
-It seems that wlroots-based compositors like Sway use the basic XKB system, even if programs like xmodmap do not work.
+Even after solving both of these issues, the Shift-involved key sequence will only approach the comfort of the Shift-free key sequence, not meaningfully exceed it.
 
-Most common layouts under xkb do not have Alt or Hyper, so even on X11 you'd use xmodmap to bring them into existence.   In lieu of xmodmap, it should be possible to just load a .xkb file that contains Hyper and Alt.  Basically start by generating a =custom.xkb= with xkbcomp and modify per:
-https://wiki.archlinux.org/title/X_keyboard_extension#Meta,_Super_and_Hyper
+So why ever involve Shift in a hotkey?  Especially considering you may not always have sticky keys, nor a specialty keyboard?  Reasons I've found:
 
-Then =sway input xkbfile custom.xkb= should do it.
+1. Mnemonics
+2. /Because/ it chords
 
-* Ok, but what does it do to my Emacs?
+Reason 1 doesn't by itself stand up to the drawbacks (my opinion), so let's look at Reason 2.  It's subtle.
 
-From the engineer perspective, this package is
+(The below is probably easier to understand after you've used Deianira)
 
-- An automated maker of hydras from looking at local bindings
-- A framework for continuously (repeatedly) remapping bindings according to user-defined rules.
-  - One of the roadblocks to any attempt to revamp the Emacs hotkeys is the unending list of packages whose default keybindings may violate your paradigm, so you have two options: familiarize yourself with every package on GNU ELPA and MELPA... or just re-map violators according to some rules upon every buffer change.  This does the latter.
-  - This is also useful for making the Super keybindings mirror the Control keybinding with an user-specified difference.  So you can have s-g do something other than C-g, while the rest of the Super keys go on mirroring their Control counterpart.  By not touching the actual C-g binding, you can make some other key like ESC translate to C-g via key-translation-map, which beats just binding it to keyboard-quit, as that doesn't work everywhere.  To do the mirroring, we don't use key translations, but bind keys to commands directly. A key such as ~C-m~ sometimes calls =newline= and sometimes =org-newline-and-indent=, which is why the mirroring has to be done repeatedly.  If you used key-translation-map instead, that would fix it, but after pressing e.g. ~s-x~ you'd see "C-x " in the minibuffer --- not a huge problem to get used to, but it starts to get confusing if you actually decided you prefer ~s-d~ over ~s-x~ and so are translating ~s-d~ to ~C-x~. Therefore, *translations aren't the most friendly solution for total revamps*.  Continuous remapping is the only clean solution, which will actually show "s-d " in the minibuffer instead of "C-x " in that example.
-# - A readme helping you set up the dual action keys needed
+With Deianira, the ~<f1> s ...~ keys get collected into a new hydra.  This much you know.
 
-** Past challenges
+Now if we want that hydra to faithfully reflect the Shift experience, we have to make a tradeoff.  Should it reflect Shift-with-Sticky-Keys, or chord-Shift?  The latter case is easy, it's just Deianira's default behavior (well, it doesn't in fact touch Shifted keys, but in principle).
 
-Multiple challenges needed solving.
+For the former, we'd need a new type of "temporary" hydra where once you execute any key in it, you exit, but /you go up only one level/, i.e. you come back to the ~<f1> ...~ hydra rather than exiting fully.
 
-First, to continuously, repeatedly do the following things:
-- Flatten the keymap, as discussed earlier
-- Undo shift bindings and other disallowed bindings
-- +Sync super map with control map+
-- Redefine hydras as necessary to match the local bindings
+If instead of the ~s~ key, you use the actual Shift key like a normal person, you get to /choose/ depending on the context.  Sticky Shift does not preclude chord-Shift on occasion.  So you can hold down Shift and spam something while sitting in the ~<f1> ...~ hydra.
 
-(It was a performance nightmare for a while.)
+/That/ is the unique utility of Shift.  It's not much, but it's there.  Know thy reasons for using it.  We could probably generalize this benefit with a massive round of key-chord.el mappings inside each and every hydra, but that's a project I'm not tackling.
 
-Second, to turn modifier keys into leader keys, IOW to make it possible to press the Control, Meta or Super key by itself.  The idea is like the macOS/Windows/X11 "sticky keys" accessibility feature, but instead of modifying the next key only, pressing Control pops up a hydra that reflects all Control bindings, and you can stay in the hydra, so the idea is sticky keys on steroids.  At the same time, they function as they always did when chorded with another key, so there is no destruction of workflow in this regard.
+** I'm a layman.  Why is this package so complex?  It seems simple, what it does?
 
------
+1. KEYMAPS. Like a lot of software, Emacs binds keyboard keys to commands.  Unlike most software, Emacs doesn't just have one static list of key-bindings, but keeps hundreds of separate lists which it calls "keymaps".  Each may bind the same keys to different commands!  To determine what a given key should /in fact/ do, Emacs consults a composite of all the relevant keymaps for the current context, considering rules of precedence.  One problem is that this composite changes rapidly, and we use a technology (hydra) that defines keys in a static way.  A technical challenge then becomes to continuously update these hydras to reflect the current composite.
+2. KEY SEQUENCES.  Also unusual among software, Emacs has key sequences.  We want to make hydras to reflect /in which step/ of the sequence we are sitting.  This is half the package's raison d'etre, and increases complexity as we must now make the hydras refer to each other in a predictable way.
+3. AVOIDING MODIFIERS  Having solved 1 and 2, we've done a lot already to avoid modifiers.  However there may be bound two sequences C-x f and C-x C-f to different commands.  And we don't want to press Ctrl again.  So we instead bash together the sublists of keys, some involving a chord and some not, into chord-free lists, so that we won't need to type C-f in that example.  However, there's a horrific amount of edge cases, such as when one keymap binds a single key and another keymap binds the same key to a sub-keymap, and we must resolve this conflict neatly, and plug in the user's preferences along the way.
+4. PERFORMANCE.  The package must continuously keep its state matching the truth of the context -- not just the hydras (1) but the bashing together of key bindings (3).  Since it may do so as often as every keystroke, and we don't want any input latency. performance becomes a challenge, and we must devise ways to let the computer work as little as possible.
 
-Why did I make this package?  It's not like keybindings are that important a problem, for Pete's sake.
-
-I would rather have been doing anything else, but keyboards and hotkeys are an old obsession I've been coming back to since playing World of Warcraft in my high school years.  I felt I /didn't understand keyboards/, it was always so non-obvious how to optimize a hotkey scheme, even as I bound the entire keyboard to spells and actions (something not everyone did, but people are insane).  In 2012, I wrote up a Deskthority page on the alternative keyboard layouts that existed then, like Arensito, Malt, Colemak, Workman, Capewell, Klausler, Advanced Developer's Dvorak, Carpalx and MTGAP.  I got a Kinesis Advantage keyboard but never started using it because the layout I wanted didn't exist.  Eventually I figured out that my style of touch-typing actually doesn't need a specialized keyboard -- they're crutches for a badly taught touch-typing style -- so I looked at contiguous ortholinear keyboards like the OLKB Preonic instead.  From WoW, I knew that a logical layout like that would make it easier to iterate on hotkey schemes, and contiguity is a big plus for one-handed typing, which we do more than we think.   Grant Rettke mirrored the idea of iteration -- [[https://www.wisdomandwonder.com/article/10141/prototype-your-keyboard-layout-first-x-keys-xke-128]["fail fast and find what is right"]] -- and he and Xah Lee reinforced my belief that having more keys is better.  F1 is always more comfortable than C-h unless you type in the handicapped, home-key-locked way I mentioned.  More keys are better, and the Planck is dumb.  In 2017, I got thinking about what I would do to make a Planck usable and pleasant, how Emacs could best exploit its thumb keys.  Spacemacs was an inspiration.  Hacker News discussions about modal editing got me thinking about what "modality" really is and I clarified the differences between modes, key sequences and key chords -- this was non-obvious at first, but they weren't the disparate things they seemed to be.
-
-It was in December of 2017 that I got the first inkling of this complete paradigm.  The amount I've "written aloud" in my diary to try to make sense of keyboards could fill a book by now, so it's taken me a roundabout way to get here.
-
-To make matters worse, it's been difficult to program.  In the start, I didn't even know what =mapcar= or =defmacro= was.  Now I do, and it's been absolutely necessary.  The code has taken many rewrites to start making sense, because this is by nature a complex problem.  Emacs has been cooperative, but sometimes it's confusing: just try call =(kbd "TAB")= and =(kbd "<TAB>")=.  They don't give the same results!
-
-I used to have a macro that generated tens of thousands of lines of Lisp -- my very first macro, combined with my very first use of a mapping function.  It was horrible for debugging, but it taught me the power of Lisp and I'm glad for it.  Good luck doing that in VSCode!  Goes to show that Emacs' particular strength is prototyping new ideas, even for those who didn't know functional programming.
-
-# I owe thanks to hydra, without which I'd never have gotten anywhere.  Hydra makes it easy to start and experiment and get quick results on which to iterate, so it's a perfect citizen of the Emacs ecosystem.  I also owe thanks to which-key because there is a fair amount of prior art in its source code which helped me see how to extract information from Emacs.
-
-After putting the code into practice, trial and error taught me a few new things.  Having many modes is not as good as it sounds.  I tried turning the Right "Ctrl" and "Alt" keys into Hyper and Alt as opposed to Control and Meta, but found it's nicer to be able to stay in one mode as much as possible, like Vim's Normal Mode. (Sidenote: if you want more, make sure you have thumb keys, so you can have duplicates on both sides of the keyboard.  I ran into severe comfort issues, where I could no longer ~C-k~ with the right Ctrl).  That shifts the emphasis to picking the bindings well, and makes it overwhelmingly important to do away with wasted keys like ~C-i~ and ~C-[~, eliminate all the digit-argument bindings on C-1234567890 and M-1234567890, and relocate non-spammable bindings like C-q to some key sequence.   All that is up to the user, but one nice thing about this package is how fun and easy it makes it to revamp the scheme for basic movements and actions.  You probably could reimplement Kakoune in not too long, or come up with something entirely new.
-
-After four years of writing and re-writing code, during which it was unusably broken 99% of the time, it's now virtually flawless and I am happy to be able to present this package to you.
-
-* Training wheels
 * Surprising powers
 
 Power 1. You can use digit arguments on commands bound to the same digit, by backspacing out of the prefix-argument-adapted hydra. Here we assume that <print> is your universal argument key, what normies call C-u:
@@ -552,40 +487,17 @@ Power 2. You can insert prefix arguments anywhere inside a key sequence rather t
 
 Power 3. When a desktop environment like GNOME clobbers your ~s-a~ chord, you can still access it by typing ~<super> a~. Similarly, on many systems Alt+F4 tries to kill your Emacs, but you can type ~<meta> <f4>~ to reach its real binding, if you gave it one.
 
-* Concepts/terminology
-** Taxonomy :noexport:
+* Notes
+** Note on extra modifiers
+If your keyboard is blessed with extra thumb keys, you may be able to acquire Hyper and Alt for a total of five leader keys.  If so, you could move most of what you use from under ~C-h~, ~C-x~, ~M-g~, ~M-s~ etc to just ~H-~ and ~A-~, but I believe the advantage is small if you already curate the ~C-~  and ~M-~ prefixes since:
 
-Hotkeys come in three categories.
+1. We have many discomfort mitigations in place.
+2. It isn't actually good to spread your leaves under many different prefixes.  It's something you do to shorten key sequences, but because we have hydras, many keys are now already as short as they can be, and switching prefix becomes an extra action!  The more well-filled one prefix, the less likely you'll have to switch prefix while exploiting a hydra.  Thus, you'll benefit more from curating the 2-3 modifiers you already have, than from acquiring extra modifiers.
 
-- Single keys
-- Single-pair chords
-- Key sequences
+On a standard keyboard, Control/Alt/Super aren't in comfortable places, and then you may want to minimize the amount of switching between root hydras, and instead travel among a single root hydra's children, going in and out of nested key sequences with the help of Backspace.   However it's true that if you had 5 modifiers in really comfortable places and they were full of shallow key bindings, no deep key sequences, this may be preferable to the Backspace method.  I'm undecided.  It seems highly vulnerable to the choice of where you bind each command: it could be good or it could be terrible, needing you to change prefix very often.  Commands you're likely to call after each other should live in the same prefix.  So this mandates careful design.  See also [[Vision][Vision]].
 
-Actually four, but...
-
-*** Commands that deserve dedicated keys
-
-- repeat
-  - (Tip: If you find it hard to learn to use regularly, you can temporarly give it a very accessible key like Tab to train the habit, and then move it elsewhere like F2.)
-- expand-abbrev, at least in text-mode buffers if you use abbrev
-
-*** Initialisms
-
-Since I don't mind typing extra, as an experiment I once bound ~M-g a g l~ to =avy-goto-line=, ~M-g a m r~ to =avy-move-region=, and many other [[https://github.com/abo-abo/avy][avy]] commands similarly.  Notice that the keys followed the initials?
-
-This is unnecessary.  With a completion sorter like Prescient or Orderless with their =initialisms= filter on (default for both), you can just type ~M-x amr~ without ever binding the command, and it works out to the same amount of keystrokes as what I showed above.
-
-Because these sorters prefer recently used commands, if you've used =avy-move-region= at any point before, it's likely to be the first candidate.  This works for any command you know the name of.
-
-So if you ever get the idea to structure a group of key sequences like that, just scrap it.  With a sufficiently potent, predictable & fast ~M-x~ (does yours have perceptible lag? Fix it!), there should be little need to bind many keys!  Three reasons to bind keys are:
-
-1. Discoverability via which-key or Deianira hints.
-2. Making extra-short key sequences.
-3. Chaining commands -- =avy-move-region= is a one-shot kind of command, but =forward-word= is something you often call in sequence many times or mix with other commands.  The latter is a category more in need of binding.
-
-Bonus: Make M-x even better... rebind it to a more comfortable ~M-a~ like in xah-fly-keys.  I tried it for a while and it's an impressive improvement.  But I don't know where you'd put =move-beginning-of-line=.  An even better location would be Tab or Left Shift. I'm starting to think it's worth remapping Left Shift and use only Right Shift to type capitals.
-
-** Permachord and chord-once
+** Concepts/terminology
+*** Permachord and chord-once
 
 The rule of homogenized keymaps imply the following:
 
@@ -603,31 +515,33 @@ Aside: I would recommend leaving =dei-permachord-wins-homogenizing= at nil, for 
 - Not exactly every sequence can be typed in perma-chord fashion.  A typical example is Org-mode's ~C-c C-e l o~, which is actually just ~C-c C-e~, which spawns a new buffer wherein you type ~l o~.  As a consequence, you can still effectively type the chord-once variant ~C-c e l o~, but we don't yet have code to make ~C-c C-e C-l C-o~ a thing.  Since this is such a rare edge case, we probably never will.  So for psychological reasons, you'll be less misled if you think of \#1 as the 'authoritative version'.
 
 
-** Bastard sequence
+*** Bastard sequence
 - C-c p 4 C-d  (projectile)
 - C-c C-e l o  (org)
 
-** Key sequence
+These are examples of bastard sequences.  Basically those that have you hit a modifier, release it halfway and maybe hit it again at different points.  They often arise accidentally or due to history.  Whoever knowingly binds such a key is not okay.
+
+*** Key sequence
 
 Standard Emacs term.  A sequence of keys of any number of steps, any of which may include chords.  Technically, a single key such as <f3>, or a chord such as C-M-f, is a key sequence of one step.
 
-** Multi-chord
+*** Multi-chord
 
 A chord involving more than one modifier, such as C-M-f.
 
-** Single-pair chord
+*** Single-pair chord
 
 A chord that only involves one modifier, such as C-f.
 
-** Mixed-modifier sequence
+*** Mixed-modifier sequence
 
 A key sequence that involves more than one modifier, such as C-c M-o or C-M-w (which is also a multi-chord).
 
-** Key
+*** Key
 
 In Emacs vocabulary, a "key" can mean a chord such as C-M-f, which in my opinion is best thought of as three keys.  Until we come up with a new term for what it is that's happening thrice in C-M-f ("key presses"?), it's worth paying attention to how the term is used.
 
-** Stem and leaf
+*** Stem and leaf
 # :CUSTOM_ID: stemleaf
 
 The source code makes a lot of references to "stem" and "leaf".  See =dei--get-leaf=.  In human language, the leaf is the last part of a key description (the kind of string you'd pass to =kbd=) that can correspond to an event.  The way Emacs thinks of it is different, and a necessity from the realities of keyboards: to our keyboards, or at least to some of the OS' plumbing, a key like ~C-<return>~ can be considered a /single/ event, not two.  A control-modified character is simply a different character altogether.  This is impractical for me to work with, since it maps poorly to how I think about hotkeys.
@@ -641,56 +555,8 @@ If you dive into the source, be aware of what a "stem" is.  A full key descripti
 
 If programming against this library, always wrap a key description in =(key-description (kbd KEY))= to safeguard against odd descriptions like =C-<M-return>=: the other functions expect a normalized key description, in this case =C-M-<return>=.
 
-** Quitter
-** Pseudo-quitter
-* Imagined FAQ
-** Can I keep which-key?
-Yes.
-
-** What if you just use sticky keys and repeaters instead of all this crap?
-Look, man --- try it.
-
-** Can you use this without the drastic "homogenizing" remapping?
-No.  Or there will be a lot of keys you can't reach from hydra, and the paradigm is broken.  Worse, if we have /bastard sequences/ (see terminology) or differing definitions between chord-once and perma-chord sequences (see terminology), it introduces a layer of doubt that interferes with you memorizing the sequence -- as your muscle memory can't "cross-train" between what happens inside the hydra and what happens outside it.
-
-Note that we remap only in a structural way, according to a few fixed rules.  Sometimes these rules poke us in the eye, but aside from them, we're carefully non-opinionated.  In another package, ergoemacs-mode, they move ~M-x~ to ~M-a~, a wonderful improvement but the kind of decision Deianira doesn't involve itself in.
-
-** Why do you hate Shift?  Shift is great!
-Shift has some surprising utilities.  But to understand what makes it unique, first consider a thought experiment where you have another key replace all its use cases.  Let's say we choose the ~s~ key, as a short for "Shift" because we're sentimental.
-
-Now instead of binding anything to say, ~<f1> K~, you bind ~<f1> s k~.  You'll note it's the same number of key presses (3), and probably more comfortable.
-
-It's more comfortable than Shift because Shift has flaws:
-
-- Shift needs to be held down.  (You can solve this with the "sticky keys" feature on many OSes.)
-- Shift is typically hit with the pinky finger.  (You can solve this with a non-standard keyboard that gives it to a thumb.)
-
-Even after solving both of these issues, the Shift-involved key sequence will only approach the comfort of the Shift-free key sequence, not meaningfully exceed it.
-
-So why ever involve Shift in a hotkey?  Especially considering you may not always have sticky keys, nor a specialty keyboard?  Reasons I've found:
-
-1. Mnemonics
-2. /Because/ it chords
-
-Reason 1 doesn't by itself stand up to the drawbacks (just my opinion), so let's look at Reason 2.  It's subtle.
-
-With Deianira, the ~<f1> s ...~ keys get collected into a new hydra.  This much you know.
-
-Now if we want that hydra to faithfully reflect the Shift experience, we have to make a tradeoff.  Should it reflect Shift-with-Sticky-Keys, or chord-Shift?  The latter case is easy, it's just Deianira's default behavior (sort of).
-
-For the former, we'd need a new type of "temporary" hydra where once you execute any key in it, you exit, but /you go up only one level/, i.e. you come back to the ~<f1> ...~ hydra rather than exiting fully.
-
-If instead of the ~s~ key, you use the actual Shift key like a normal person, you get to /choose/ depending on the context.  Sticky Shift does not preclude chord-Shift on occasion.  So you can hold down Shift and spam something while sitting in the ~<f1> ...~ hydra.
-
-/That/ is the unique utility of Shift.  It's not much, but it's there.  Know thy reasons for using it.
-
-** Why is this package so complex?  It seems simple what it does?
-
-1. KEYMAPS. Like a lot of software, Emacs binds keyboard keys to commands.  Unlike most software, Emacs doesn't just have one static list of key-bindings, but keeps hundreds of separate lists which it calls "keymaps".  Each may bind the same keys to different commands!  To determine what a given key should /in fact/ do, Emacs consults a composite of all the relevant keymaps for the current context, considering rules of precedence.  One problem is that this composite changes rapidly, and we use a technology (hydra) that defines keys in a static way.  A technical challenge then becomes to continuously update these hydras to reflect the current composite.
-2. KEY SEQUENCES.  Also unusual among software, Emacs has key sequences.  We want to make hydras to reflect /in which step/ of the sequence we are sitting.  This is one of the raisons d'etre, but increases complexity, as we must now make the hydras refer to each other in a predictable way.
-3. AVOIDING MODIFIERS  Having solved 1 and 2, we've done a lot already to avoid modifiers.  However there may be bound two sequences C-x f and C-x C-f to different commands.  And we don't want to press Ctrl again.  So we instead bash together the sublists of keys, some involving a chord and some not, into chord-free lists, so that we won't need to type C-f in that example.  However, there's a horrific amount of edge cases, such as when one keymap binds a single key and another keymap binds the same key to a sub-keymap, and we must resolve this conflict neatly, and plug in the user's preferences along the way.
-4. PERFORMANCE.  The package does a lot of work to cotinuously update things -- not just the hydras (1) but the bashing together of key bindings (3).  Since it may do so as often as every keystroke, and we don't want any input latency. performance becomes a challenge, and we must devise ways to let the computer avoid working.
-
+*** Quitter
+*** Quasi-quitter
 * Known issues
 ** Hydra does not update instantly
 Deianira updates hydras every time you (a) exit a hydra or (b) enter a different hydra, since that entails exiting the previous hydra.  It generates hydras in a pseudo-async fashion, and only if the keymap has changed and only for the prefixes that changed, so you should usually not detect lag or input latency.  If you do, compiling the package makes a tremendous difference.
@@ -714,12 +580,64 @@ If you've chosen to clone all Control keys to Super keys with =(add-hook 'dei-ke
 - s-x C-k C-t
 - s-x C-k s-t
 
-The reason: it's because ~s-x~ is bound simply to =Control-X-prefix=, a keymap.  In addition, ~C-x~ is also bound to that keymap. Looking inside that keymap, you can find the key ~C-k~ and now also ~s-k~...
+It's annoying in =describe-keymap= output, but they will be hidden the =which-key= popup, if you apply the fix in [[which-key][Fix which-key]].  It doesn't affect the user, so it's a low priority.
 
-The way keymaps are designed, it's hard for us to bind /only/ ~C-x C-k C-t~ and ~s-x s-k s-t~.  Binding both of these key sequences means binding every possible combination.  It's annoying in =describe-keymap= output, but they will be hidden the =which-key= popup, if you apply the fix in [[Fix which-key][Fix which-key]].  So the issue shouldn't get in anyone's way, but I can fix it in theory by using =copy-keymap= to avoid operating in the same keymaps.
+The technical reason this happens: it's because ~s-x~ is bound simply to =Control-X-prefix=, a keymap.  In addition, ~C-x~ is also bound to that keymap. Looking inside that keymap, you can find the key ~C-k~ and now also ~s-k~...  The way keymaps are designed, it's hard for us to bind /only/ ~C-x C-k C-t~ and ~s-x s-k s-t~.  Binding both of these key sequences means binding every possible combination.  In theory, it can be done by using =copy-keymap= to avoid operating in the same keymaps.
+
+* Vision
+** Which engine?
+
+Despite the name, Deianira is not necessarily a Hercules killer, but could be remade to run on top of it.  In fact, there's a range of potential engines for the Deianira paradigm:
+
+1. Hydra
+2. Hercules
+3. define-repeat-map
+4. Transient
+
+(I'd like an engine-agnostic term for the concept shared by all these.  Please hit me up.  For now, the term "hydra" is short and useful: it can become verbs and adjectives like "hydraize", "hydrable", even other nouns like "hydratics".  In addition, you can speak of "flocks" of hydras and of "spawning" and "slaying" them.)
+
+While it looks straightforward enough to rewire the package to use the other options, I'm not convinced we get any important benefit from options 2 or 3.  What about option 4, tarsius' Transient package?  It may have a ton of potential, which I dare not imagine because I've spent enough years thinking about hotkeys and if I'm right, that would blaze a new path full of new questions.
+
+Let me explain.
+
+The famous collection of Transients known as Magit is a discoverable way to subtly modify any =git= command, beating the command line even for command line aficionados.  So sayeth Internet Truth.
+
+If we represent all of Emacs' key bindings in Transients, the same way Magit swallowed all of Git's commands, the benefit is unclear compared to doing it just with Hydra, because most of the time, you do not want to modify a command anyway.  But that very fact may boil down to us now having separate commands for all of the following, as a result of not having had Transient in the distant past of 1980:
+
+- transpose-chars (C-t)
+- transpose-words (M-t)
+- transpose-sexps (C-M-t)
+- transpose-lines (C-x t)
+- transpose-sentences
+- transpose-paragraphs
+- transpose-regions
+- avy-transpose-lines-in-region
+- crux-transpose-windows
+
+These commands speak of one *verb,* the verb "transpose", together with a variety of targets or *objects* "char", "word", "sexp", "line" and so on.  We see a similar pattern for the verb "kill":
+
+- kill-word (M-d)
+- kill-line (C-k)
+- kill-sexp (C-M-k)
+- kill-buffer (C-x k)
+- kill-comment
+- kill-whole-line
+- kill-process
+- kill-emacs
+- ....
+
+And so on it goes; the pattern is everywhere in Emacs.  With such a cornucopia of predefined commands, it's natural that they rarely need modifying.
+
+Deianira cooperates with this; it just uncreatively brings in existing key bindings under a hydra, so you get precisely the subset of Emacs commands that had key bindings (a few hundred).  By contrast, to properly use Transient's potential, you'd find ways to call every one of Emacs' 3,000+ commands, and maybe by accident create whole crops of new commands that don't yet exist.
+
+It's easy to imagine a Transient that has just one key for the verb "transpose", one key for the verb "kill", one key for the object "char", one key for the object "word" and so on, and then you add adverbs and adjectives.  Once you get to this point, you've reinvented Vim.  But with the masterpiece that is Transient, maybe we could do better than Vim, beating the "Vim paradigm" even for Vim paradigm aficionados, like Magit beats the command line paradigm?
+
+As heady as that vision sounds, I'm skeptical whether it'd manage to do much better.  That's where I suggest Deianira can come in, as one of a set of twins that together beats Vim at Vimgolf.  Maybe I'm just dreaming.
+
+** How easy would it be to change engine?
+
+I don't know, but it would not become any simpler.  If you imagine that using the Emacs 28 repeat-maps would uncomplicate the code -- no, it would still be 2k lines of code, maybe more.
 
 * Thanks
 
-I owe thanks to [[https://github.com/abo-abo][abo-abo]] and the other contributors to Hydra.  If I'd had to wrangle =god-mode= or =which-key= to my purposes, I would have needed to know a lot more about the Emacs hotkey internals than I did starting out.  With Hydra, I could just hack and experiment, and incrementally arrive to where I am.  It's a friendly API for doing whatever you want, so it's a fine example of the Emacs spirit.
-
-There's something right about the hydra API, something that allows you to iteratively learn as you bend it more and more towards your needs.  Even if certain minimalists among us transition to more of these shiny techs like Emacs 28's repeat-maps and tarsius' excellent transient library, not to mention Hercules, my experience makes a case that Hydra has a QWAN and it's worth thinking about why.
+I owe thanks to [[https://github.com/abo-abo][abo-abo]] and the other contributors to Hydra.  If I'd had to wrangle =god-mode= or =which-key= to my purposes, I would have needed to know a lot more about the Emacs hotkey internals than I did starting out.  With Hydra, I could just hack and experiment, and incrementally arrive to where I am.  There's something right about it, it's a friendly API that allows you to iteratively learn as you bend it towards your needs, so it's a fine member of the Emacs ecosystem.
