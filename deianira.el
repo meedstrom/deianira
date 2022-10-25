@@ -741,6 +741,8 @@ you want to be able to type nccnccnccncc."
     (dei-ersatz-meta . dei-M/body)
     (dei-ersatz-super . dei-s/body)))
 
+(defvar dei--hidden-obarray (obarray-make))
+
 (defun dei--set-ersatz-key (var newkey)
   "Bind VAR to NEWKEY, and help other code cope with the change."
   (require 'map)
@@ -1348,8 +1350,6 @@ however many potentially co-occurring hooks you like, such as
 `window-buffer-change-functions' and
 `window-selection-change-functions'."
   (named-timer-run 'deianira-c .1 nil #'dei-async-make-hydras))
-
-(defvar dei--hidden-obarray (obarray-make))
 
 ;; TODO: check if last hash&width are the same, and do nothing
 (defun dei-async-make-hydras ()
