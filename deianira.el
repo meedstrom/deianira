@@ -120,6 +120,15 @@ string and start a new search on the cut string.")
   :group 'deianira
   :type 'boolean)
 
+(defun dei--debug-buffer ()
+  (let ((bufname (concat (unless dei-debug " ") "*Deianira debug*")))
+    (or (get-buffer bufname)
+        (with-current-buffer (get-buffer-create bufname)
+          (setq-local truncate-lines t)
+          (setq-local buffer-read-only nil)
+          (setq-local tab-width 12)
+          (current-buffer)))))
+
 (defun dei--echo (&rest args)
   "Write a message to the debug buffer.
 Arguments same as for `format'."
@@ -130,15 +139,6 @@ Arguments same as for `format'."
                                  (car args))
                          (cdr args))))
     (newline)))
-
-(defun dei--debug-buffer ()
-  (let ((bufname (concat (unless dei-debug " ") "*Deianira debug*")))
-    (or (get-buffer bufname)
-        (with-current-buffer (get-buffer-create bufname)
-          (setq-local truncate-lines t)
-          (setq-local buffer-read-only nil)
-          (setq-local tab-width 12)
-          (current-buffer)))))
 
 (defun dei-debug-show ()
   "Show debug buffers."

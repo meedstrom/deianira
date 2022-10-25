@@ -2,6 +2,10 @@
 #+AUTHOR: Martin Edström
 #+EMAIL: meedstrom@teknik.io
 #+LANGUAGE: en
+# Copying and distribution of this file, with or without modification,
+# are permitted in any medium without royalty provided the copyright
+# notice and this notice are preserved.  This file is offered as-is,
+# without any warranty.
 
 [[https://img.shields.io/badge/license-GPL3+-blue.png]]
 
@@ -62,7 +66,7 @@ No "paradigm lock-in"
 
 # - It should be possible to create a half-Deianira that relies on sticky keys and a whole lot of repeat maps, but I suspect it won't be the same.  The full Deianira is simple in end use because you can expect the interface to be regular and uniform.
 
-* Setup
+* Necessary setup
 If you have a question, welcome to file a GitHub issue or send a message to https://reddit.com/u/meedstrom.
 # or Matrix username?
 
@@ -314,7 +318,6 @@ The variable comes with some defaults, but I advise overriding them with your ow
 #+end_src
 
 *** Superfluous entries in which-key
-:CUSTOM_ID: which-key
 
 If you want to keep which-key for the occasional use-case, this snippet will hide the superfluous entries.
 
@@ -324,6 +327,9 @@ If you want to keep which-key for the occasional use-case, this snippet will hid
   (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist))
 #+end_src
 
+** Training wheels
+** Out of GNOME hell :noexport:
+* Optional setup
 ** C-g alternative
 
 Since ~C-g~ is normally bound to keyboard-quit, pressing ~g~ in the Control hydra will do what you'd expect (the same thing as ~C-g~), but I advise against getting in the habit of using it.  It's so prone to muscle-memorization and when you're in the Meta hydra or any other hydra, ~g~ /will do something else/.  Some naive recourses could be:
@@ -340,7 +346,7 @@ Everyone's got a different origin story with Emacs, but when you first learned ~
 
 I picked Escape.  I put the following in my init file.  After a short period of feeling like I was committing sacrilege, it felt natural like I'd been waiting to do it this way all my life.  Try it!
 
-: (define-key function-key-map (kbd "<escape>") (kbd "C-g"))
+: (define-key input-decode-map (kbd "<escape>") (kbd "C-g"))
 
 Note that when Emacs freezes up, you cannot break the freeze with ~<escape>~, and all of a sudden ~C-g~ is what you must type to break it, no other key will do.  Maybe ~C-g~ is hardcoded for that.  Try for yourself: eval =(sleep-for 5)= and try to break out of it.  Escape won't work.  But this is the only inconsistency I've experienced.
 
@@ -424,9 +430,7 @@ Some packages override M-1234567890.  Prevent that:
   (define-key magit-section-mode-map (kbd "M-4") nil))
 #+end_src
 
-
-** Training wheels
-** Out of GNOME hell :noexport:
+** Mass-remapping
 * Imagined FAQ
 ** Can I keep which-key?
 Yes.
@@ -478,18 +482,59 @@ If instead of the ~s~ key, you use the actual Shift key like a normal person, yo
 2. KEY SEQUENCES.  Also unusual among software, Emacs has key sequences.  We want to make hydras to reflect /in which step/ of the sequence we are sitting.  This is half the package's raison d'etre, and increases complexity as we must now make the hydras refer to each other in a predictable way.
 3. AVOIDING MODIFIERS  Having solved 1 and 2, we've done a lot already to avoid modifiers.  However there may be bound two sequences C-x f and C-x C-f to different commands.  And we don't want to press Ctrl again.  So we instead bash together the sublists of keys, some involving a chord and some not, into chord-free lists, so that we won't need to type C-f in that example.  However, there's a horrific amount of edge cases, such as when one keymap binds a single key and another keymap binds the same key to a sub-keymap, and we must resolve this conflict neatly, and plug in the user's preferences along the way.
 4. PERFORMANCE.  The package must continuously keep its state matching the truth of the context -- not just the hydras (1) but the bashing together of key bindings (3).  Since it may do so as often as every keystroke, and we don't want any input latency. performance becomes a challenge, and we must devise ways to let the computer work as little as possible.
+* Vision
+** Which engine?
 
-* Surprising powers
+Despite the name, Deianira is not necessarily a Hercules killer, but could be remade to run on top of it.  In fact, there's a range of potential engines for the Deianira paradigm:
 
-Power 1. You can use digit arguments on commands bound to the same digit, by backspacing out of the prefix-argument-adapted hydra. Here we assume that <print> is your universal argument key, what normies call C-u:
-: <ctl> x <print> 3 <backspace> 3  ;; calls C-x 3 with argument 3
+1. Hydra
+2. Hercules
+3. [[https://tildegit.org/acdw/define-repeat-map.el][define-repeat-map]]
+4. Transient
 
-Power 2. You can insert prefix arguments anywhere inside a key sequence rather than only at the start.  These are all equivalent:
-: <ctl> x <print> 3 <backspace> 3
-: <ctl> <print> 3 <backspace> x 3
-: <print> 3 <ctl> x 3
+(I'd like an engine-agnostic term for the concept shared by all these.  Please hit me up.  For now, the term "hydra" is short and useful: it can become verbs and adjectives like "hydraize", "hydrable", even other nouns like "hydratics".  In addition, you can speak of "flocks" of hydras and of "spawning" and "slaying" them.)
 
-Power 3. When a desktop environment like GNOME clobbers your ~s-a~ chord, you can still access it by typing ~<super> a~. Similarly, on many systems Alt+F4 tries to kill your Emacs, but you can type ~<meta> <f4>~ to reach its real binding, if you gave it one.
+While it looks straightforward enough to rewire the package to use the other options, I'm not convinced we get any important benefit from options 2 or 3.  What about option 4, tarsius' Transient package?  It may have a ton of potential, which I dare not imagine because I've spent enough years thinking about hotkeys and if I'm right, that would blaze a new path full of new questions.
+
+Let me explain.
+
+The famous collection of Transients known as Magit is a discoverable way to subtly modify any =git= command, beating the command line even for command line aficionados.  So sayeth Internet Truth.
+
+If we represent all of Emacs' key bindings in Transients, the same way Magit swallowed all of Git's commands, the benefit is unclear compared to doing it just with Hydra, because most of the time, you do not want to modify a command anyway.  But that very fact may boil down to us now having separate commands for all of the following, as a result of not having had Transient in the distant past of 1980:
+
+- transpose-chars (C-t)
+- transpose-words (M-t)
+- transpose-sexps (C-M-t)
+- transpose-lines (C-x t)
+- transpose-sentences
+- transpose-paragraphs
+- transpose-regions
+- avy-transpose-lines-in-region
+- crux-transpose-windows
+
+These commands speak of one *verb* "transpose", together with a variety of targets or *objects* "char", "word", "sexp", "line" and so on.  We see a similar pattern for the verb "kill":
+
+- kill-word (M-d)
+- kill-line (C-k)
+- kill-sexp (C-M-k)
+- kill-buffer (C-x k)
+- kill-comment
+- kill-whole-line
+- kill-process
+- kill-emacs
+- ....
+
+And so on it goes; the pattern is everywhere in Emacs.  With such a cornucopia of predefined commands, it's natural that they rarely need modifying.
+
+Deianira cooperates with this; it just uncreatively brings in existing key bindings under a hydra, so you get precisely the subset of Emacs commands that had key bindings (a few hundred).  By contrast, to properly use Transient's potential, you'd find ways to call every one of Emacs' 3,000+ commands, and maybe by accident create whole crops of new commands that don't yet exist.
+
+It's easy to imagine a Transient that has just one key for the verb "transpose", one key for the verb "kill", one key for the object "char", one key for the object "word" and so on, and then you add adverbs and adjectives.  Once you get to this point, you've reinvented Vim.  But with the masterpiece that is Transient, maybe we could do better than Vim, beating the "Vim paradigm" even for Vim paradigm aficionados, like Magit beats the command line paradigm?
+
+As heady as that vision sounds, I'm skeptical whether it'd manage to do much better.  That's where I suggest Deianira can come in, as one of a set of twins that together beats Vim at Vimgolf.  Maybe I'm just dreaming.
+
+** How easy would it be to change engine?
+
+I don't know, but it would not become any simpler.  If you imagine that using the Emacs 28 repeat-maps would uncomplicate the code -- no, it would still be 2k lines of code, maybe more.
 
 * Notes
 ** Note on extra modifiers
@@ -561,6 +606,18 @@ If programming against this library, always wrap a key description in =(key-desc
 
 *** Quitter
 *** Quasi-quitter
+* Surprising powers
+
+Power 1. You can use digit arguments on commands bound to the same digit, by backspacing out of the prefix-argument-adapted hydra. Here we assume that <print> is your universal argument key, what normies call C-u:
+: <ctl> x <print> 3 <backspace> 3  ;; calls C-x 3 with argument 3
+
+Power 2. You can insert prefix arguments anywhere inside a key sequence rather than only at the start.  These are all equivalent:
+: <ctl> x <print> 3 <backspace> 3
+: <ctl> <print> 3 <backspace> x 3
+: <print> 3 <ctl> x 3
+
+Power 3. When a desktop environment like GNOME clobbers your ~s-a~ chord, you can still access it by typing ~<super> a~. Similarly, on many systems Alt+F4 tries to kill your Emacs, but you can type ~<meta> <f4>~ to reach its real binding, if you gave it one.
+
 * Known issues
 ** Hydra does not update instantly
 If you run a command such as =next-buffer= from within a hydra, getting a different buffer with potentially different major mode and keymaps, the hydra will not reflect this, but continue to reflect the buffer where it was first called.
@@ -582,63 +639,9 @@ If you've chosen to clone all Control keys to Super keys with =(add-hook 'dei-ke
 - s-x C-k C-t
 - s-x C-k s-t
 
-It's annoying in =describe-keymap= output, but they will be hidden the =which-key= popup, if you apply the fix in [[which-key][Fix which-key]].  It doesn't affect the user, so it's a low priority.
+It's annoying in =describe-keymap= output, but they will be hidden the =which-key= popup, if you apply the fix in [[#superfluous-entries-in-which-key][Superfluous entries in which-key]].  It doesn't affect the user, so it's a low priority.
 
 The technical reason this happens: it's because ~s-x~ is bound simply to =Control-X-prefix=, a keymap.  In addition, ~C-x~ is also bound to that keymap. Looking inside that keymap, you can find the key ~C-k~ and now also ~s-k~...  The way keymaps are designed, it's hard for us to bind /only/ ~C-x C-k C-t~ and ~s-x s-k s-t~.  Binding both of these key sequences means binding every possible combination.  In theory, it can be done by using =copy-keymap= to avoid operating in the same keymaps.
-
-* Vision
-** Which engine?
-
-Despite the name, Deianira is not necessarily a Hercules killer, but could be remade to run on top of it.  In fact, there's a range of potential engines for the Deianira paradigm:
-
-1. Hydra
-2. Hercules
-3. [[https://tildegit.org/acdw/define-repeat-map.el][define-repeat-map]]
-4. Transient
-
-(I'd like an engine-agnostic term for the concept shared by all these.  Please hit me up.  For now, the term "hydra" is short and useful: it can become verbs and adjectives like "hydraize", "hydrable", even other nouns like "hydratics".  In addition, you can speak of "flocks" of hydras and of "spawning" and "slaying" them.)
-
-While it looks straightforward enough to rewire the package to use the other options, I'm not convinced we get any important benefit from options 2 or 3.  What about option 4, tarsius' Transient package?  It may have a ton of potential, which I dare not imagine because I've spent enough years thinking about hotkeys and if I'm right, that would blaze a new path full of new questions.
-
-Let me explain.
-
-The famous collection of Transients known as Magit is a discoverable way to subtly modify any =git= command, beating the command line even for command line aficionados.  So sayeth Internet Truth.
-
-If we represent all of Emacs' key bindings in Transients, the same way Magit swallowed all of Git's commands, the benefit is unclear compared to doing it just with Hydra, because most of the time, you do not want to modify a command anyway.  But that very fact may boil down to us now having separate commands for all of the following, as a result of not having had Transient in the distant past of 1980:
-
-- transpose-chars (C-t)
-- transpose-words (M-t)
-- transpose-sexps (C-M-t)
-- transpose-lines (C-x t)
-- transpose-sentences
-- transpose-paragraphs
-- transpose-regions
-- avy-transpose-lines-in-region
-- crux-transpose-windows
-
-These commands speak of one *verb* "transpose", together with a variety of targets or *objects* "char", "word", "sexp", "line" and so on.  We see a similar pattern for the verb "kill":
-
-- kill-word (M-d)
-- kill-line (C-k)
-- kill-sexp (C-M-k)
-- kill-buffer (C-x k)
-- kill-comment
-- kill-whole-line
-- kill-process
-- kill-emacs
-- ....
-
-And so on it goes; the pattern is everywhere in Emacs.  With such a cornucopia of predefined commands, it's natural that they rarely need modifying.
-
-Deianira cooperates with this; it just uncreatively brings in existing key bindings under a hydra, so you get precisely the subset of Emacs commands that had key bindings (a few hundred).  By contrast, to properly use Transient's potential, you'd find ways to call every one of Emacs' 3,000+ commands, and maybe by accident create whole crops of new commands that don't yet exist.
-
-It's easy to imagine a Transient that has just one key for the verb "transpose", one key for the verb "kill", one key for the object "char", one key for the object "word" and so on, and then you add adverbs and adjectives.  Once you get to this point, you've reinvented Vim.  But with the masterpiece that is Transient, maybe we could do better than Vim, beating the "Vim paradigm" even for Vim paradigm aficionados, like Magit beats the command line paradigm?
-
-As heady as that vision sounds, I'm skeptical whether it'd manage to do much better.  That's where I suggest Deianira can come in, as one of a set of twins that together beats Vim at Vimgolf.  Maybe I'm just dreaming.
-
-** How easy would it be to change engine?
-
-I don't know, but it would not become any simpler.  If you imagine that using the Emacs 28 repeat-maps would uncomplicate the code -- no, it would still be 2k lines of code, maybe more.
 
 * Thanks
 
