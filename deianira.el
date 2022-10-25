@@ -2348,35 +2348,5 @@ Interactively, use the value of `dei--remap-actions'."
   (setq dei--homogenized-keymaps nil)
   (message "remap actions wiped"))
 
-
-;;; User config
-
-;; Note that lv had(has?) a horrific bug that cleared the buffer of text
-;; without possibility of undo, by way of delete-region, because lv-message
-;; called (with-current-buffer (lv-window)) which sometimes didn't do the
-;; expected thing.  I'd like to patch in an extra safety clause before the
-;; delete-region.  TODO: before publishing Deianira, patch in a safety
-;; clause. (learn how to submit PR upstream)
-
-(setq dei-debug "*Deianira Debug*")
-(setq hydra-is-helpful t)
-(setq dei-invisible-leafs
-      (seq-difference dei-invisible-leafs '("-" "=" "<menu>" "SPC")))
-(setq dei-extra-heads
-      '(("=" dei-universal-argument nil :exit t)
-        ("-" dei-negative-argument nil :exit t)
-        ("<f5>" hydra-repeat nil)))
-
-(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)
-;; (add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctlmeta-everywhere)
-
-;; Don't show permachords in which-key (unnecessary), only chord-onces
-(after! which-key
-  (push '((" .-." . nil) . t) which-key-replacement-alist))
-
-;; dev settings
-(general-auto-unbind-keys 'undo) ;; we shouldn't rely on general
-;; (remove-hook 'after-save-hook 'my-compile-and-drop)
-
 (provide 'deianira)
 ;;; deianira.el ends here

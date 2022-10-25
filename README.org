@@ -643,6 +643,21 @@ It's annoying in =describe-keymap= output, but they will be hidden the =which-ke
 
 The technical reason this happens: it's because ~s-x~ is bound simply to =Control-X-prefix=, a keymap.  In addition, ~C-x~ is also bound to that keymap. Looking inside that keymap, you can find the key ~C-k~ and now also ~s-k~...  The way keymaps are designed, it's hard for us to bind /only/ ~C-x C-k C-t~ and ~s-x s-k s-t~.  Binding both of these key sequences means binding every possible combination.  In theory, it can be done by using =copy-keymap= to avoid operating in the same keymaps.
 
+* Pre-release TODOs
+** Fix critical bug: data destruction
+
+Note that =lv= had(has?) a horrific bug that cleared the buffer of text without possibility of undo, by way of =delete-region=, because =lv-message= called =(with-current-buffer (lv-window))= which sometimes didn't do the expected thing.  I'd like to patch in an extra safety clause before the delete-region.  TODO: before publishing Deianira, patch in a safety clause. (learn how to submit PR upstream)
+** Training wheels
+
+It's REALLY hard to start using the keyboard differently while the modifiers still work, because
+- Muscle memory
+- I'm in the habit of absently pressing the modifiers for no reason, which then unexpectedly pops up hydras, and i might accidentally call commands and get a bit overwhelmed with all the unintentional things happening
+
+A few training wheels possible
+
+1. Disable the modifiers
+   - pure xmodmap for this -- the dual-fn.yaml apparently cannot do this
+   - Bonus: That system I had before of a transient hydra the first 300 ms
 * Thanks
 
 I owe thanks to [[https://github.com/abo-abo][abo-abo]] and the other contributors to Hydra.  If I'd had to wrangle =god-mode= or =which-key= to my purposes, I would have needed to know a lot more about the Emacs hotkey internals than I did starting out.  With Hydra, I could just hack and experiment, and incrementally arrive to where I am.  There's something right about it, it's a friendly API that allows you to iteratively learn as you bend it towards your needs, so it's a fine member of the Emacs ecosystem.
