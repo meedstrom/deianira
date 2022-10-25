@@ -31,7 +31,7 @@
 ;;; Code:
 
 (defgroup deianira nil
-  "Modifier-free pseudo-modal input."
+  "Hydra everywhere."
   :link '(info-link "(deianira)")
   :group 'keyboard)
 
@@ -114,6 +114,42 @@ string and start a new search on the cut string.")
 
 
 ;;;; User settings
+
+(defcustom dei-debug t
+  "Whether to show debug buffers by default."
+  :group 'deianira
+  :type 'boolean)
+
+(defun dei--echo (&rest args)
+  "Write a message to the debug buffer.
+Arguments same as for `format'."
+  (with-current-buffer (dei--debug-buffer)
+    (goto-char (point-min))
+    (insert (apply #'format
+                   (cons (concat (format-time-string "%T: ")
+                                 (car args))
+                         (cdr args))))
+    (newline)))
+
+(defun dei--debug-buffer ()
+  (let ((bufname (concat (unless dei-debug " ") "*Deianira debug*")))
+    (or (get-buffer bufname)
+        (with-current-buffer (get-buffer-create bufname)
+          (setq-local truncate-lines t)
+          (setq-local buffer-read-only nil)
+          (setq-local tab-width 12)
+          (current-buffer)))))
+
+(defun dei-debug-show ()
+  "Show debug buffers."
+  (interactive)
+  (with-current-buffer (dei--debug-buffer)
+    ;; Unhide them if they were hidden
+    (rename-buffer "*Deianira debug*")
+    (display-buffer (current-buffer)))
+  ;; (with-current-buffer " *Deianira remaps*"
+  ;;   (rename-buffer "*Deianira remaps*"))
+  (setq dei-debug t))
 
 (defun dei-xmodmap-reload ()
   "(Re-)apply the `dei-xmodmap-rules'."
@@ -576,42 +612,6 @@ If it's already that, return it unmodified."
 
 
 ;;;; Library of random stuff
-
-(defcustom dei-debug t
-  "Whether to show debug buffers by default."
-  :group 'deianira
-  :type 'boolean)
-
-(defun dei--echo (&rest args)
-  "Write a message to the debug buffer.
-Arguments same as for `format'."
-  (with-current-buffer (dei--debug-buffer)
-    (goto-char (point-min))
-    (insert (apply #'format
-                   (cons (concat (format-time-string "%T: ")
-                                 (car args))
-                         (cdr args))))
-    (newline)))
-
-(defun dei--debug-buffer ()
-  (let ((bufname (concat (unless dei-debug " ") "*Deianira debug*")))
-    (or (get-buffer bufname)
-        (with-current-buffer (get-buffer-create bufname)
-          (setq-local truncate-lines t)
-          (setq-local buffer-read-only nil)
-          (setq-local tab-width 12)
-          (current-buffer)))))
-
-(defun dei-debug-show ()
-  "Show debug buffers."
-  (interactive)
-  (with-current-buffer (dei--debug-buffer)
-    ;; Unhide them if they were hidden
-    (rename-buffer "*Deianira debug*")
-    (display-buffer (current-buffer)))
-  ;; (with-current-buffer " *Deianira remaps*"
-  ;;   (rename-buffer "*Deianira remaps*"))
-  (setq dei-debug t))
 
 ;; REVIEW: write test for it with a key-simulator
 (defun dei-universal-argument (arg)
