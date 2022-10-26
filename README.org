@@ -66,13 +66,13 @@ No "paradigm lock-in"
 
 # - It should be possible to create a half-Deianira that relies on sticky keys and a whole lot of repeat maps, but I suspect it won't be the same.  The full Deianira is simple in end use because you can expect the interface to be regular and uniform.
 
-* Necessary setup
+* Mandatory setup
 If you have a question, welcome to file a GitHub issue or send a message to https://reddit.com/u/meedstrom.
 # or Matrix username?
 
 ** Getting the package
 
-If you have [[https://github.com/raxod502/straight.el][straight.el]], you can install the package like so:
+With [[https://github.com/raxod502/straight.el][straight.el]], you can install the package like so:
 
 #+begin_src elisp
 (use-package deianira
@@ -87,13 +87,14 @@ Alternatively with Doom Emacs, this goes in =packages.el=:
 
 ** dual-function-keys
 
-You need [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] with its included plugin dual-function-keys.  If your distro does not package it, I'm sorry to say this step may take you some work.  On Arch and Guix it's easy.
+You need [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] with its official plugin dual-function-keys.  If your distro does not package it, I'm sorry to say this step may take you some work.  On Arch and Guix it's easy.
 
 The buggy and unmaintained [[https://github.com/alols/xcape][xcape]] is NOT an alternative.  Something so fundamental needs to be reliable.  In Deianira's youth, I tried it and found a glut of issues: it could work fine for a while and then develop a 2-second latency with keystrokes, whereupon the computer had to be rebooted.  This leads to giving up on Deianira.
 
 Possible alternatives:
-- QMK firmware -- if you always use a keyboard with it QMK firmware
+- QMK firmware -- if you always use a keyboard with QMK firmware
 - Hawck
+- xkeysnail
 - ...
 
 *** What is it for?
@@ -198,7 +199,7 @@ For users of Guix System: I don't yet know how to write an on-boot service, but 
                           " -g $DEVNODE | "
                           interception-dual-function-keys "/bin/dual-function-keys"
                           ;; NOTE: change this filesystem path to wherever you keep the file
-                          " -c /home/kept/system-config/dual-fn.yaml | "
+                          " -c /home/me/dual-fn.yaml | "
                           interception-tools "/bin/uinput"
                           " -d $DEVNODE\"
   DEVICE:
@@ -655,7 +656,9 @@ The technical reason this happens: it's because ~s-x~ is bound simply to =Contro
 * Pre-release TODOs
 ** Fix critical bug: data destruction
 
-Note that =lv= had(has?) a horrific bug that cleared the buffer of text without possibility of undo, by way of =delete-region=, because =lv-message= called =(with-current-buffer (lv-window))= which sometimes didn't do the expected thing.  I'd like to patch in an extra safety clause before the delete-region.  TODO: before publishing Deianira, patch in a safety clause. (learn how to submit PR upstream)
+Note that =lv= had (has? I haven't seen it in a while) a horrific bug that cleared the buffer of text without possibility of undo, by way of =delete-region=, because =lv-message= called =(with-current-buffer (lv-window))= which sometimes didn't do the expected thing.  I'd like to patch in an extra safety clause before the =delete-region=.  TODO: before publishing Deianira, patch in a safety clause. (learn how to submit PR upstream)
+** Instruct user on writing a custom .xkb file
+because xmodmap is obsolete and doesn't cooperate well with dual-function-keys, and also because custom .xkb works on wayland
 ** Training wheels
 
 It's REALLY hard to start using the keyboard differently while the modifiers still work, because

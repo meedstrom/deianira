@@ -287,6 +287,8 @@ probably."
     doom/escape
     isearch-forward
     isearch-backward
+    query-replace
+    query-replace-regexp
     doom/restart
     doom/restart-and-restore
     abort-recursive-edit
@@ -638,7 +640,7 @@ If it's already that, return it unmodified."
 (defun dei--call-and-return-to-root (keydesc)
   "Nice in some cases, like C-c C-c for which it's often
 desirable to end up in the Control root hydra rather than exit
-altogether. Say you want to call it for each item in a list of
+altogether.  Say you want to call it for each item in a list of
 Org headings, and `next-line' is bound to the standard C-n, then
 you want to be able to type nccnccnccncc."
   (interactive)
@@ -1366,7 +1368,7 @@ If no such hydras exist, start asynchronously making them."
   (setq dei--flocks
         (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
   ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
-  ;; up hydra's own uses of `set-transient-map', may risk mutual recursion.
+  ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
   (let* ((hash (sxhash (current-active-maps)))
          (some-flock (dei--first-flock-by-hash hash)))
     ;; (if (and (equal dei--last-hash hash)
@@ -1410,6 +1412,7 @@ If no such hydras exist, start asynchronously making them."
           (setq dei--async-chain dei--async-chain-template)
           (setq dei--async-chain-last-idle-value 0) ;; so chomp won't wait
           (dei--async-chomp)))
+      ;; Clean up after ourselves
       (unless dei--async-running
         (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
         (obarray-remove obarray "dei--flocks")))))
@@ -1869,10 +1872,10 @@ This simply evaluates `current-active-maps' and adds to
 (defcustom dei-permachord-wins-homogenizing nil
   "Non-nil if perma-chord should win over chord-once.
 This means that the behavior of a perma-chorded sequence such as
-C-x C-k C-e will be kept as is, and cloned to the chord-once
-sequence C-x k e, overwriting any binding there, so they both do
+C-x C-k C-e will be kept as is, and cloned to the chord-once
+sequence C-x k e, overwriting any binding there, so they both do
 what the former always did.  If the setting is nil, both will
-instead do what C-x k e always did.
+instead do what C-x k e always did.
 
 PLEASE NOTE that any calls to `define-key' or similar in your
 initfiles have to take this into account!  If this is t, all
@@ -1922,10 +1925,10 @@ a proper mode map)."
 
 (defun dei--key-seq-has-non-prefix-in-prefix (keymap keydesc)
   "Does KEYDESC contain a bound command in its prefix?
-For example: C-x C-v is bound to a command by default, so if you
-attempt to bind C-x C-v C-x to a command, you get an error.  So
-here we check for that.  If KEYDESC is C-x C-v C-x, we check if
-either C-x or C-x C-v are bound to anything.
+For example: C-x C-v is bound to a command by default, so if you
+attempt to bind C-x C-v C-x to a command, you get an error.  So
+here we check for that.  If KEYDESC is C-x C-v C-x, we check if
+either C-x or C-x C-v are bound to anything.
 
 Does not additionally check that KEYDESC is not itself a prefix
 map with children bound: that's another thing that can make KEYDESC
@@ -1954,32 +1957,32 @@ KEYMAP is the keymap in which to look."
 
 (defun dei--nightmare-p (keydesc)
   "Non-nil if homogenizing KEYDESC would cause bugs.
-This has to do with e.g. C-x \[ becoming C-x C-\[, which is the
-same as C-x ESC, which is the same as C-x M-anything.  You do
-this, then Magit tries to bind C-x M-g and complains it's not a
+This has to do with e.g. C-x \[ becoming C-x C-\[, which is the
+same as C-x ESC, which is the same as C-x M-anything.  You do
+this, then Magit tries to bind C-x M-g and complains it's not a
 prefix key and you can't even load Magit.  That's mild issue.  A
-more silent bug is C-x i becoming C-x C-i which goes ahead and
-overrides your C-x TAB binding without signaling anything even to
+more silent bug is C-x i becoming C-x C-i which goes ahead and
+overrides your C-x TAB binding without signaling anything even to
 the developer.
 
 The problem is anachronistic Unix control character behavior,
-which Emacs could deprecate but has so far chosen not to, for the
-sake of functioning inside basic terminal emulators.  I'm not
-saying they should deprecate it, we have a clean solution in
-`dei-define-super-like-ctl-everywhere' and never typing another
-control character.
+which Emacs has chosen not to deprecate, for the sake of
+functioning inside basic terminal emulators.  We have a clean
+solution in `dei-define-super-like-ctl-everywhere' and never
+typing another control character.
 
-If you don't, it pays to know this: always bind <tab> instead of
-TAB, <return> instead of RET, and <escape> instead of ESC.  GUI
-Emacs always looks up these if bound, and only falls back to the
-control character if these function keys are unbound.  They do
-not work on the terminal/TTY, but neither does Super or many
-other niceties.  This will still not let you use C-\[ as anything
-other than an ESC shorthand, but you'll be able to bind C-m and
-C-i without clobbering the Tab or Return keys.  You may still
-encounter issues with packages either binding RET/TAB, ruining
-your C-m/C-i, and/or not thinking to bind <return>/<tab> so that
-you have to add them yourself.
+If you don't apply the solution, it pays to know this: always
+bind <tab> instead of TAB, <return> instead of RET, and <escape>
+instead of ESC.  GUI Emacs always looks up these if bound, and
+only falls back to the control character if these function keys
+are unbound.  They do not work on the terminal/TTY, but neither
+does Super or many other niceties.  This will still not let you
+use C-\[ as anything other than an ESC shorthand, but you'll be
+able to bind C-m and C-i without clobbering the Tab or Return
+keys.  You may still encounter issues with packages either
+binding RET/TAB directly, ruining your C-m/C-i, and such packages
+are typically not thinking to bind <return>/<tab>, so you have to
+add them yourself.
 
 As an additional nicety, we avoid touching key sequences
 involving Control and \"g\" so as to prevent clobbering the
