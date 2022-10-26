@@ -739,7 +739,10 @@ you want to be able to type nccnccnccncc."
     (dei-ersatz-control . dei-C/body)
     (dei-ersatz-hyper . dei-H/body)
     (dei-ersatz-meta . dei-M/body)
-    (dei-ersatz-super . dei-s/body)))
+    (dei-ersatz-super . dei-s/body))
+  "Table associating the ersatz keys with root hydras.
+Never expected to change.  Customize `dei-ersatz-alt' & co
+instead.")
 
 (defvar dei--hidden-obarray (obarray-make))
 
@@ -758,31 +761,31 @@ you want to be able to type nccnccnccncc."
   (define-key deianira-mode-map (kbd newkey) (map-elt dei--ersatz-keys-alist var))
   (set-default var newkey))
 
-(defcustom dei-ersatz-alt "<f20>"
+(defcustom dei-ersatz-alt "<hiragana-katakana>"
   "Key that represents Alt."
   :type 'key
   :group 'deianira
   :set #'dei--set-ersatz-key)
 
-(defcustom dei-ersatz-control "<f21>"
+(defcustom dei-ersatz-control "<katakana>"
   "Key that represents Control."
   :type 'key
   :group 'deianira
   :set #'dei--set-ersatz-key)
 
-(defcustom dei-ersatz-hyper "<f22>"
+(defcustom dei-ersatz-hyper "<hiragana>"
   "Key that represents Hyper."
   :type 'key
   :group 'deianira
   :set #'dei--set-ersatz-key)
 
-(defcustom dei-ersatz-meta "<f23>"
+(defcustom dei-ersatz-meta "<muhenkan>"
   "Key that represents Meta."
   :type 'key
   :group 'deianira
   :set #'dei--set-ersatz-key)
 
-(defcustom dei-ersatz-super "<f24>"
+(defcustom dei-ersatz-super "<henkan>"
   "Key that represents Super."
   :type 'key
   :group 'deianira
@@ -1885,27 +1888,13 @@ matter the direction since there is no contest."
   :type 'boolean
   :group 'deianira)
 
-(defcustom dei-homogenizing-winners
-  '(("C-c C-c")
-    ("C-x C-f")
-    ("C-x C-s")
-    ("C-x C-;")
-    ("C-x a")
-    ("C-x g")
-    ("C-x b")
-    ("C-x n")
-    ("C-x p")
-    ("C-g")
-    ("C-h C-g")
-    ;; ("C-x r") ;; FIXME: why C-x C-r not getting copied?
-    ;; ("C-x v")
-    ("M-g")
-    ("C-c C-c" . org-mode-map)
-    ("C-c C-," . org-mode-map))
+(defcustom dei-homogenizing-winners '()
   "Alist of keys that always win the homogenizing battle.
-See `dei-permachord-wins-homogenizing' for explanation.
+See `dei-permachord-wins-homogenizing' for an explanation of
+homogenizing.
 
-Each item has the format (KEY-OR-COMMAND . KEYMAP).
+Each item has the format (KEY-OR-COMMAND . KEYMAP).  See the
+package readme for how a full alist may look.
 
 KEY-OR-COMMAND can be either a `kbd'-compatible key description
 or a symbol which is assumed to refer to a command.

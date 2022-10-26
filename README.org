@@ -124,42 +124,40 @@ Fill them with copypasta from the following sections.  This won't have any effec
 **** dual-fn.yaml
 
 #+begin_src yaml
+
 TIMING:
-  DOUBLE_TAP_MILLISEC: 0
-  # TAP_MILLISEC: 200 # default 200
+  DOUBLE_TAP_MILLISEC: 0  # default 150
+  # TAP_MILLISEC: 200  # default 200
 
 MAPPINGS:
-  # Control
+  # Control  
   - KEY: KEY_LEFTCTRL
-    TAP: KEY_F21
+    TAP: KEY_KATAKANA
     HOLD: KEY_LEFTCTRL
-
+    
   - KEY: KEY_RIGHTCTRL
-    TAP: KEY_F21
+    TAP: KEY_KATAKANA
     HOLD: KEY_RIGHTCTRL
 
   # Emacs calls this "Meta"
+
   - KEY: KEY_LEFTALT
-    TAP: KEY_F23
+    TAP: KEY_MUHENKAN
     HOLD: KEY_LEFTALT
 
   - KEY: KEY_RIGHTALT
-    TAP: KEY_F23
+    TAP: KEY_MUHENKAN
     HOLD: KEY_RIGHTALT
 
   # Emacs calls this "Super"
+
   - KEY: KEY_LEFTMETA
-    TAP: KEY_F24
+    TAP: KEY_HENKAN
     HOLD: KEY_LEFTMETA
 
   - KEY: KEY_RIGHTMETA
-    TAP: KEY_F24
+    TAP: KEY_HENKAN
     HOLD: KEY_RIGHTMETA
-
-  # The kernel doesn't name syms for what Emacs calls Alt or Hyper. I don't know
-  # which keycodes would be recognized as such on Wayland, if any.  On Xorg it's
-  # easy enough to use xmodmap to make a keycode-to-keysym or keysym-to-keysym
-  # mapping.
 #+end_src
 
 **** Test
@@ -168,79 +166,21 @@ To test, execute this shell command in some terminal.  You can stop the effect b
 
 : sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
 
-With the program active, you should expect that pressing Ctrl, Alt or Super in Emacs will yield a message like "<f21> is undefined".  Make sure you see that sort of message for all three modifier keys, both the left and right variants, so you know they all work.
+With the program active, you should expect that tapping Ctrl, Alt or Super in Emacs will yield a message like "<muhenkan> is undefined".  Make sure you see that sort of message for all three modifier keys, both the left and right variants, so you know they all work.
 
 After verifying the above, type =M-x deianira-mode RET= and see what now happens when you press Ctrl, Alt or Super.  You get hydras?  Great!
 
 Please mind that this is just a test -- later on, I'll recommend some more lisp in your initfiles.
 
-*** If you wish to change the keys
+(Aside: If you want Alt and Hyper, see the appendix.)
 
-The keys we've chosen to represent presses of Control/Meta/Super must be listed doubly -- once in the file =dual-fn.yaml=, and once in the following Customizable variables.
+(Aside: If you want to use other keysyms than Muhenkan, Katakana and friends to represent your key-presses, see the appendix.)
 
-- =dei-ersatz-alt= (default ="<f20>"= )
-- =dei-ersatz-control= (default ="<f21>"= )
-- =dei-ersatz-hyper= (default ="<f22>"= )
-- =dei-ersatz-meta= (default ="<f23>"= )
-- =dei-ersatz-super= (default ="<f24>"= )
-
-If you wish to change a keysym, change it in both places!
-
-In addition, though it can be superfluous, ensure that the keysyms exist in your current Xkb keymap table, by also customizing =dei-xmodmap-rules= -- see the current value, I expect it's self-explanatory what to do.
-
-**** Which keysyms?
-
-Here's a small selection of choices.  I tried to find ones that alliterate.
-
-| Kernel keysym | Xkb keysym    | Emacs keysym    | Kernel code | Xkb code |
-|---------------+---------------+-----------------+-------------+----------|
-| KEY_F20       | F20           | <f20>           |         190 |      198 |
-| KEY_F21       | F21           | <f21>           |         191 |      199 |
-| KEY_F22       | F22           | <f22>           |         192 |      200 |
-| KEY_F23       | F23           | <f23>           |         193 |      201 |
-| KEY_F24       | F24           | <f24>           |         194 |      202 |
-| KEY_FRONT     | SunFront      |                 |         132 |      140 |
-| KEY_CANCEL    | Cancel        |                 |         223 |      231 |
-| KEY_HELP      | Help          |                 |         138 |      146 |
-| KEY_SEARCH    | XF86Search    | <XF86Search>    |         217 |      225 |
-| KEY_CUT       | XF86Cut       | <XF86Cut>       |         137 |      145 |
-| KEY_MAIL      | XF86Mail      | <XF86Mail>      |         155 |      163 |
-| KEY_HOMEPAGE  | XF86HomePage  | <XF86HomePage>  |         172 |      180 |
-| KEY_NEXTSONG  | XF86AudioNext | <XF86AudioNext> |         163 |      171 |
-| KEY_KATAKANA  | Katakana      | <katakana>      |          90 |       98 |
-| KEY_HIRAGANA  | Hiragana      | <hiragana>      |          91 |       99 |
-| KEY_HENKAN    | Henkan        | <henkan>        |          92 |      100 |
-| KEY_MUHENKAN  | Muhenkan      | <muhenkan>      |          94 |      102 |
-
-- More kernel keysyms: https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h
-- More Xorg keysyms: run =xmodmap -pke= or see https://gist.github.com/siarie/61247ee2bb70f1146484f852f845c1b7
-
-**** Wayland
-
-Under Wayland, you most likely *have to* change the keys.
-
-The problem is you don't get fully free choice of keysym as you do on Xorg, and the default tables rarely have wild keysyms like ~F20~ through ~F24~ or ~Mail~ that would be safe to use.   (Yes, xmodmap can seem to work, but only momentarily.  Under Sway, the keymap table quickly reverts to some original determined by the Xkb settings you've set in the Sway config file.)
-
-I've found a few keys that do tend to work:  =<katakana>=, =<muhenkan>=, =<henkan>=, and =<hiragana>=.  If you write Japanese, you'll have to find some other keys -- I wish you luck.
-
-To find other choices, print out the full table via =xmodmap -pke= and pick some keysyms you don't need, test those.
-
-Unfortunately, while many syms look like they should work, surprisingly many did not for me.  (If someone can help: they existed both in the [[https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h][Linux kernel keymap]] and my =xmodmap -pke=, with the correct difference of +8 in the scancode, and still Emacs saw absolutely no key event!)
-
-***** Custom Xkb layout
-
-It seems that wlroots-based compositors like Sway use the Xkb system, even if programs like xmodmap do not work.
-
-Most common layouts under Xkb have neither Alt nor Hyper, so even on X11 you'd use xmodmap to bring them into existence.   In lieu of xmodmap, it should be possible to just load a .xkb file that contains Hyper and Alt.  Basically start by generating a =custom.xkb= with xkbcomp and modify, as per:
-https://wiki.archlinux.org/title/X_keyboard_extension#Meta,_Super_and_Hyper
-
-Then =sway input xkbfile custom.xkb= should do it.
-
-I expect this will also let you get F20-F24 and whatever other keys you like.
+(Aside: Running this program temporarily resets my Xkb settings -- I have no idea why, but don't be surprised if this happens to you.  There are no Gitlab issues about it so maybe I missed something.)
 
 *** Guix System
 
-I don't yet know how to write an on-boot service, but creating =udevmon.yaml= inside the system declaration allows you to hardcode the store paths, as per Guix standard practice.  After that, you have all you need to run an oneliner.
+For users of Guix System: I don't yet know how to write an on-boot service, but here is how to create =udevmon.yaml= inside the system declaration with hardcoded store paths.
 
 #+begin_src scheme
 (packages
@@ -658,6 +598,74 @@ A few training wheels possible
 1. Disable the modifiers
    - pure xmodmap for this -- the dual-fn.yaml apparently cannot do this
    - Bonus: That system I had before of a transient hydra the first 300 ms
+* Appendix
+** If you wish to change the keys
+
+We default to Henkan, Katakana and friends because all alternatives I've found needs the user to put in some elbow grease to make them work.  Of course, if you write Japanese, it's necessary to use something else.
+
+The keys we've chosen to represent presses of Control/Meta/Super must be listed doubly -- once in the file =dual-fn.yaml=, and once in the following Customizable variables.
+
+- =dei-ersatz-alt= (default "<f20>")
+- =dei-ersatz-control= (default "<f21>")
+- =dei-ersatz-hyper= (default "<f22>")
+- =dei-ersatz-meta= (default "<f23>")
+- =dei-ersatz-super= (default "<f24>")
+
+If you wish to change a keysym, change it in both places!
+
+In addition, though it can be superfluous, ensure that the keysyms exist in your current Xkb keymap table, by also customizing =dei-xmodmap-rules= -- see the current value, I expect it's self-explanatory what to do.
+
+*** Which keysyms?
+
+In my testing, these exist by default on Xkb's =us= layout on the standard pc105 geometry.  In other words the config you get with =setxkbmap -layout 'us'=.  It seems likely these keys are defined under many (all?) other configs too.
+
+| KEY_SEARCH           | XF86Search    | <XF86Search>        |         217 |      225 |
+| KEY_MAIL             | XF86Mail      | <XF86Mail>          |         155 |      163 |
+| KEY_HOMEPAGE         | XF86HomePage  | <XF86HomePage>      |         172 |      180 |
+| KEY_NEXTSONG         | XF86AudioNext | <XF86AudioNext>     |         163 |      171 |
+| KEY_KATAKANA         | Katakana      | <katakana>          |          90 |       98 |
+| KEY_HIRAGANA         | Hiragana      | <hiragana>          |          91 |       99 |
+| KEY_HENKAN           | Henkan        | <henkan>            |          92 |      100 |
+| KEY_KATAKANAHIRAGANA |               | <hiragana-katakana> |          93 |          |
+| KEY_MUHENKAN         | Muhenkan      | <muhenkan>          |          94 |      102 |
+| KEY_HANGEUL          |               | <Hangul>            |         122 |          |
+| KEY_HANJA            |               | <Hangul_Hanja>      |         123 |          |
+| KEY_PAUSE            |               | <pause>             |             |          |
+
+- More kernel keysyms: https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h
+- More Xorg keysyms: run =xmodmap -pke= or see https://gist.github.com/siarie/61247ee2bb70f1146484f852f845c1b7
+
+
+*** Wayland
+
+Under Wayland, you most likely *have to* change the keys.
+
+The problem is you don't get fully free choice of keysym as you do on Xorg, and the default tables rarely have wild keysyms like ~F20~ through ~F24~ or ~Mail~ that would be safe to use.   (Yes, xmodmap can seem to work, but only momentarily.  Under Sway, the keymap table quickly reverts to some original determined by the Xkb settings you've set in the Sway config file.)
+
+I've found a few keys that do tend to work:  =<katakana>=, =<muhenkan>=, =<henkan>=, and =<hiragana>=.  If you write Japanese, you'll have to find some other keys -- I wish you luck.
+
+To find other choices, print out the full table via =xmodmap -pke= and pick some keysyms you don't need, test those.
+
+Unfortunately, while many syms look like they should work, surprisingly many did not for me.  (If someone can help: they existed both in the [[https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h][Linux kernel keymap]] and my =xmodmap -pke=, with the correct difference of +8 in the scancode, and still Emacs saw absolutely no key event!)
+
+**** Custom Xkb layout
+
+It seems that wlroots-based compositors like Sway use the Xkb system, even if programs like xmodmap do not work.
+
+Most common layouts under Xkb have neither Alt nor Hyper, so even on X11 you'd use xmodmap to bring them into existence.   In lieu of xmodmap, it should be possible to just load a .xkb file that contains Hyper and Alt.  Basically start by generating a =custom.xkb= with xkbcomp and modify, as per:
+https://wiki.archlinux.org/title/X_keyboard_extension#Meta,_Super_and_Hyper
+
+Then =sway input xkbfile custom.xkb= should do it.
+
+I expect this will also let you get F20-F24 and whatever other keys you like.
+
+** Alt and Hyper
+
+I thought it was just Wayland that lacked Alt and Hyper, but even Xkb layouts don't come with them normally.
+
+The kernel itself doesn't define any syms for what Emacs calls Alt or Hyper, and I currently doubt that you can find any keycodes that would be automagically recognized as such.  It needs an Xkb modification, fairly easy on Xorg with xmodmap, but xmodmap is actually obsolete and doesn't seem to cooperate well with interception-tools IME.  So use the xkbcomp shenanigans described above, it's also more portable.
+
 * Thanks
 
 I owe thanks to [[https://github.com/abo-abo][abo-abo]] and the other contributors to Hydra.  If I'd had to wrangle =god-mode= or =which-key= to my purposes, I would have needed to know a lot more about the Emacs hotkey internals than I did starting out.  With Hydra, I could just hack and experiment, and incrementally arrive to where I am.  There's something right about it, it's a friendly API that allows you to iteratively learn as you bend it towards your needs, so it's a fine member of the Emacs ecosystem.
+
