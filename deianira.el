@@ -720,7 +720,10 @@ you want to be able to type nccnccnccncc."
         (add-hook 'window-buffer-change-functions #'dei--react 56)
         (add-hook 'window-selection-change-functions #'dei--react)
         (add-hook 'after-change-major-mode-hook #'dei--react)
-        (add-variable-watcher 'local-minor-modes #'dei--react))
+        (add-variable-watcher 'local-minor-modes #'dei--react)
+        (when (null dei-homogenizing-winners)
+          (deianira-mode 0)
+          (user-error "dei-homogenizing-winners is un-customized, disabling Deianira")))
     (named-timer-cancel 'deianira-at-work)
     (named-timer-cancel 'deianira-b)
     (named-timer-cancel 'deianira-c)
@@ -1887,7 +1890,24 @@ can always bind both while you experiment with this setting.)
 This variable sets the default approach, but you can override
 specific cases in `dei-homogenizing-winners'; and if only one
 variety is bound but not the other, the binding will be cloned no
-matter the direction since there is no contest."
+matter the direction since there is no contest.
+
+Recommend leaving this variable at nil, for two reasons.
+
+- You can define keys in initfiles as \"C-x k e\" instead of
+  \"C-x C-k C-e\", which looks more neat.
+
+- While almost every sequence can be typed in perma-chord
+  fashion, not all can.  Take for example is Org-mode's
+  C-c C-e l o, which is actually just the command C-c C-e, which
+  spawns a new buffer wherein you type l o to trigger a second
+  command.  As a consequence, you can still effectively type the
+  chord-once variant C-c e l o if this variable is nil, but we
+  don't (yet) have code to make C-c C-e C-l C-o a thing.  So for
+  psychological reasons, you'll be less misled if you think of
+  chord-once as the 'authoritative version'.
+
+Rather than write that code, I'm soft-deprecating this variable."
   :type 'boolean
   :group 'deianira)
 

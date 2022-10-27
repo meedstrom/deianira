@@ -228,15 +228,13 @@ If you have =(setq hydra-is-helpful nil)= somewhere in your initfiles, you'll no
 
 ** Homogenizing
 
-You saw the initfile line that homogenizes your key bindings, =(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)=. (If you don't know what that is, go to section Paradigm.)
-
-To see what it's doing, you can check the buffer =*Deianira remaps*=.  Note that there is no way to revert these bindings except by restarting Emacs, but you can use that buffer as a lookup table for what you /used/ to have on a key.
-
-*** Choose what to keep
+You saw the initfile line that homogenizes your key bindings, =(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)=. (If you don't know what that means, go to section Paradigm.)
 
 Let me introduce you to the most important variable, =dei-homogenizing-winners=.  You'll want to customize it gradually over time.   Do you use ~C-x f~ or ~C-x C-f~ more?  It's hard to know when thinking about it, only experience will tell you.  But this is *absolutely key* to becoming comfortable.
 
-I used to give it a default value, but I'm afraid someone will actually leave it at that and neglect to take ownership of the variable, so now the default is nil.  But here is my config, feel free to copy-paste it to get started:
+To see what the homogenizer has done, check the buffer =*Deianira remaps*=.  There is no way to revert these bindings except by restarting Emacs, but you can use that buffer as a lookup table for what you /used/ to have on a key, if you need a reminder.
+
+I used to give =dei-homogenizing-winners= a default value, but I'm afraid someone will neglect to take ownership of the variable, so now the default is nil and deianira-mode refuses to start until it has a value.  Here is a config, feel free to copy-paste it to get started:
 
 #+begin_src elisp
 (setq dei-homogenizing-winners
@@ -244,19 +242,13 @@ I used to give it a default value, but I'm afraid someone will actually leave it
     ("C-x C-f")
     ("C-x C-s")
     ("C-x C-;")
-    ("C-x a")
-    ("C-x g")
-    ("C-x b")
-    ("C-x n")
-    ("C-x p")
-    ("C-g")
     ("C-h C-g")
-    ("M-g")
+    (find-file)
     ("C-c C-c" . org-mode-map)
     ("C-c C-," . org-mode-map)))
 #+end_src
 
-For details, see its documentation -- type =<f1> v dei-homogenizing-winners RET=.
+For details, see the variable's documentation -- type =<f1> v dei-homogenizing-winners RET=.
 
 *** Superfluous entries in which-key
 
