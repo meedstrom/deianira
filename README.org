@@ -165,13 +165,15 @@ MAPPINGS:
 
 **** Test
 
-To test, execute this shell command in some terminal.  You can stop the effect by interrupting the terminal with Ctrl-C.
+*Step 1.* To test, execute this shell command in some terminal.  You can stop the effect by interrupting the terminal with Ctrl-C.
 
 : sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
 
-With the program active, you should expect that tapping Ctrl, Alt or Super in Emacs will yield a message like "<muhenkan> is undefined".  Make sure you see that sort of message for all three modifier keys, both the left and right variants, so you know they all work.
+*Step 2.* With the program active, you should expect that tapping Ctrl, Alt or Super in Emacs will yield a message like "<muhenkan> is undefined".  Make sure you see that sort of message for all three modifier keys, both the left and right variants, so you know they all work.
 
-After verifying the above, type =M-x deianira-mode RET= and see what now happens when you press Ctrl, Alt or Super.  You get hydras?  Great!
+*Step 3*. After verifying the above, type =M-x deianira-mode RET= and see what now happens when you press Ctrl, Alt or Super.  You get hydras?  Great!
+
+All done, proceed.
 
 Please mind that this is just a test -- later on, I'll recommend some more lisp in your initfiles.
 
@@ -182,29 +184,13 @@ Please mind that this is just a test -- later on, I'll recommend some more lisp 
 (Aside: Running this program temporarily resets my Xkb settings -- I have no idea why, but don't be surprised if this happens to you.  There are no Gitlab issues about it so maybe I missed something.)
 
 
-
 ** Basic initfile snippet
+
+Put this in initfiles.
 
 #+begin_src elisp
 (require 'deianira)
 (add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)
-(deianira-mode)
-#+end_src
-
-If you have =(setq hydra-is-helpful nil)= somewhere in your initfiles, you'll now probably want to remove that and let it be =t=.
-# TODO: code in a check+warning instead of readme, people don't read instructions.  Let user disable the check if they insist on keeping it nil.
-
-** Homogenizing
-
-You saw the initfile line that homogenizes your key bindings, =(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)=. (If you don't know what that means, go to section Paradigm.)
-
-Let me introduce you to the most important variable, =dei-homogenizing-winners=.  You'll want to customize it gradually over time.   Do you use ~C-x f~ or ~C-x C-f~ more?  It's hard to know when thinking about it, only experience will tell you.  But this is *absolutely key* to becoming comfortable.
-
-To see what the homogenizer has done, check the buffer =*Deianira remaps*=.  There is no way to revert these bindings except by restarting Emacs, but you can use that buffer as a lookup table for what you /used/ to have on a key, if you need a reminder.
-
-I used to give =dei-homogenizing-winners= a default value, but I'm afraid someone will neglect to take ownership of the variable, so now the default is nil and deianira-mode refuses to start until it has a value.  Here is a config, feel free to copy-paste it to get started:
-
-#+begin_src elisp
 (setq dei-homogenizing-winners
   '(("C-c C-c")
     ("C-x C-f")
@@ -214,7 +200,20 @@ I used to give =dei-homogenizing-winners= a default value, but I'm afraid someon
     (find-file)
     ("C-c C-c" . org-mode-map)
     ("C-c C-," . org-mode-map)))
+(deianira-mode)
 #+end_src
+
+If you have =(setq hydra-is-helpful nil)= somewhere in your initfiles, you'll probably want to remove that and let it be =t=.
+
+** Homogenizing
+
+You saw the initfile line that homogenizes your key bindings, =(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)=. (If you don't know what that means, go to section Paradigm.)
+
+You also saw the most important variable, =dei-homogenizing-winners=.  You'll want to customize it gradually over time.   Do you use ~C-x f~ or ~C-x C-f~ more?  It's hard to know when thinking about it, only experience will tell you.  But this is *absolutely key* to becoming comfortable.
+
+To see what the homogenizer has done, check the buffer =*Deianira remaps*=.  There is no way to revert these bindings except by restarting Emacs, but you can use that buffer as a lookup table for what you /used/ to have on a key, if you need a reminder.
+
+I used to give =dei-homogenizing-winners= a default value, but I'm afraid someone will neglect to take ownership of the variable, so now the default is nil and deianira-mode refuses to start until it has a value.
 
 For details, see the variable's documentation -- type =<f1> v dei-homogenizing-winners RET=.
 
@@ -230,31 +229,13 @@ If you keep which-key for whatever reason, this snippet will hide the superfluou
 #+end_src
 
 ** Training wheels
-** Out of GNOME hell
+** Desktop-specific configuration
+See the appendix sections:
 
-For users on GNOME or Ubuntu.
-
-Okay, GNOME's behavior when you press the Super key, addictive right?  But Super-S does the same thing, there's no need for it to clobber Super itself!  Win back your Super key:
-
-: gsettings set org.gnome.mutter overlay-key ''
-
-In case you didn't know, you can install Gnome Tweaks to access many hidden settings.  However it's not so helpful in discovering the setting responsible for a misbehavior, like the above mentioned.
-
-GNOME overrides anything you do with =setxkbmap= and many other commands, but there will be a =gsettings= command to do the same thing.
-
-Instead of =setxkbmap -option 'caps:menu'=:
-
-: gsettings set org.gnome.desktop.input-sources xkb-options 'caps:menu'
-
-Instead of =xset r rate 200 30=:
-
-: gsettings set org.gnome.desktop.peripherals.keyboard repeat-interval 30
-: gsettings set org.gnome.desktop.peripherals.keyboard delay 200
-
-** EXWM
-
-If you want access to the hydras from EXWM buffers, configure either =exwm-input-prefix-keys= or =exwm-input-global-keys= so that they passthrough the keys defined in =dei-ersatz-control=, =dei-ersatz-meta= etc.
-
+- [[#out-of-gnome-hell][Out of GNOME hell]] (for users of GNOME or Ubuntu)
+- [[#for-exwm-users][For EXWM users]]
+- [[#for-users-of-guix-system][For users of Guix System]]
+  
 * Optional setup
 ** C-g alternative
 
@@ -373,7 +354,7 @@ Ensure Deianira reflects your choice. (TODO: Automate this step for the user by 
       (seq-difference dei-invisible-leafs '("-" "=")))
 #+end_src
 
-If you want to use a dedicated key like =<print>= instead, replace occurrences of ~=~ so far with =<print>= and add another line:
+If you want to use a dedicated key like =<print>= instead, replace lal occurrences of ~=~ with ~<print>~ in the code snippets so far, and add another line:
 #+begin_src elisp
 (define-key global-map (kbd "<print>") #'universal-argument)
 #+end_src
@@ -451,9 +432,10 @@ If instead of the ~s~ key, you use the actual Shift key like a normal person, yo
 ** I'm a layman.  Why did this program take you years to write?  It seems simple, what it does?
 
 1. KEYMAPS. Like a lot of software, Emacs binds keyboard keys to commands.  Unlike most software, Emacs doesn't just have one static list of key-bindings, but keeps hundreds of separate lists which it calls "keymaps".  Each may bind the same keys to different commands!  To determine what a given key should /in fact/ do, Emacs consults a composite of all the relevant keymaps for the current context, considering rules of precedence.  One problem is that this composite changes rapidly, and we use a technology (hydra) that defines keys in a static way.  A technical challenge then becomes to continuously update these hydras to reflect the current composite.
-2. KEY SEQUENCES.  Also unusual among software, Emacs has key sequences.  Aside from reflecting the keymap composite, we want to make hydras to reflect /in which step/ of any sequence we are sitting.  This is half the package's raison d'etre.  We must now connect the hydras to each other in a predictable way.
-3. AVOIDING MODIFIERS  Having solved 1 and 2, we've done a lot already to avoid modifiers.  However, there may be bound two different sequences C-x f and C-x C-f to different commands.  And not only do we want to avoid holding down Ctrl, we want to tap it no more than once.  So we bash together the lists of keys, into chord-free lists, so that we won't need to type C-f in that example.  Kind of simple, but there's a horrific amount of edge cases, such as when one keymap binds a single command at a given location and another keymap binds a sub-keymap instead, and it takes some thinking to understand what's appropriate here, and we must plug in the user's preferences along the way.
-4. PERFORMANCE.  The package must continuously keep its state in sync with the truth of the context -- not just the hydras (points 1 and 2) but the bashing together of key bindings (point 3).  Since it may do so as often as every keystroke, and we don't want any input latency. performance becomes a challenge, and we must devise ways to let the computer skip work without breaking the sync.
+2. KEY SEQUENCES.  Also unusual among software, Emacs has key sequences.  Aside from reflecting the keymap composite, we want to make hydras to reflect /in which step/ of any sequence we are sitting.  This is half the package's /raison d'etre/.  We must now connect the hydras to each other in a predictable way.
+3. AVOIDING MODIFIERS  Having solved 1 and 2, we've done a lot already to avoid modifiers.  However, there may be bound two different sequences ~C-x f~ and ~C-x C-f~ to different commands.  And not only do we want to avoid holding down Ctrl, we want to tap it no more than once.  So we bash together the lists of keys, into chord-free lists, so that we won't need to type ~C-f~ in that example.  Kind of simple, but there's a horrific amount of edge cases, such as when one keymap binds a single command at a given location and another keymap binds a sub-keymap instead, and it takes some thinking to understand what's appropriate here, and we must plug in the user's preferences along the way.
+4. PERFORMANCE.  The package must continuously keep its state in sync with the truth of the context -- not just the hydras (points 1 and 2) but the bashing together of key bindings (point 3).  Since it may do so as often as every keystroke, and we don't want any input latency, performance becomes a challenge, and we must devise ways to let the computer skip work without breaking the sync.
+   
 * Vision
 ** Which engine?
 
@@ -602,6 +584,30 @@ A few training wheels possible
    - pure xmodmap for this -- the dual-fn.yaml apparently cannot do this
    - Bonus: That system I had before of a transient hydra the first 300 ms
 * Appendix
+** Out of GNOME hell
+
+For users on GNOME or Ubuntu.
+
+Okay, GNOME's behavior when you press the Super key, addictive right?  But Super-S does the same thing, there's no need for it to clobber Super itself!  Win back your Super key:
+
+: gsettings set org.gnome.mutter overlay-key ''
+
+In case you didn't know, you can install Gnome Tweaks to access many hidden settings.  However it's not so helpful in discovering the setting responsible for a misbehavior, like the above mentioned.
+
+GNOME overrides anything you do with =setxkbmap= and many other commands, but there will be a =gsettings= command to do the same thing.
+
+Instead of =setxkbmap -option 'caps:menu'=:
+
+: gsettings set org.gnome.desktop.input-sources xkb-options 'caps:menu'
+
+Instead of =xset r rate 200 30=:
+
+: gsettings set org.gnome.desktop.peripherals.keyboard repeat-interval 30
+: gsettings set org.gnome.desktop.peripherals.keyboard delay 200
+
+** For EXWM users
+
+If you want access to the hydras from EXWM buffers, configure either =exwm-input-prefix-keys= or =exwm-input-global-keys= so that they passthrough the keys defined in =dei-ersatz-control=, =dei-ersatz-meta= etc.
 ** For users of Guix System
 
 I don't yet know how to write an on-boot service, but here is how to create =udevmon.yaml= inside the system declaration with hardcoded store paths.
