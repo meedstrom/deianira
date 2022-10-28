@@ -358,7 +358,6 @@ keystrokes <Ctrl> x TAB calls the binding of C-x TAB."
 ;;;; Background facts
 
 (defun dei--all-shifted-symbols-list-recalc ()
-  "."
   (split-string dei-all-shifted-symbols "" t))
 
 (defvar dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
@@ -366,7 +365,6 @@ keystrokes <Ctrl> x TAB calls the binding of C-x TAB."
 Customize `dei-all-shifted-symbols' instead.")
 
 (defun dei--hydra-keys-list-recalc ()
-  "."
   (split-string dei-hydra-keys "" t))
 
 (defvar dei--hydra-keys-list (dei--hydra-keys-list-recalc)
@@ -721,6 +719,8 @@ you want to be able to type nccnccnccncc."
         (add-hook 'window-selection-change-functions #'dei--react)
         (add-hook 'after-change-major-mode-hook #'dei--react)
         (add-variable-watcher 'local-minor-modes #'dei--react)
+        (when (not hydra-is-helpful)
+          (warn "hydra-is-helpful is nil, you probably want t"))
         (when (null dei-homogenizing-winners)
           (deianira-mode 0)
           (user-error "dei-homogenizing-winners is un-customized, disabling Deianira")))
@@ -2219,9 +2219,10 @@ AVOID-PREFIXES is a list of prefixes to leave out of the result."
            collect key))
 
 ;; TODO: some way to catch when this doesn't do anything and it should
+;; TODO: return how many overridden and how many new bindings
 (defun dei--homogenize-keymap (map)
   "Homogenize most of keymap MAP."
-  (message "Keys rebound: %s"
+  (message "Keys (re)bound: %s"
            (cl-loop for key in (dei--unnest-keymap-for-homogenizing map)
                     when (dei--homogenize-key-in-keymap key map)
                     count key)))
@@ -2236,22 +2237,28 @@ AVOID-PREFIXES is a list of prefixes to leave out of the result."
                       :key (lambda (x) (nth 0 x)))))
         (dolist (item sorted-actions)
           (seq-let (keydesc cmd map hint old) item
-            (insert
-             (if (symbolp map)
-                 (concat "(" (symbol-name map) ")\t\t ")
-               "")
-             hint
-             " Bind  " keydesc
-             "\tto  " (if (symbolp cmd)
-                          (symbol-name cmd)
-                        (if (keymapp cmd)
-                            (if-let ((named (help-fns-find-keymap-name cmd)))
-                                (symbol-name named)
-                              "(some sub-keymap)")
-                          cmd))
-             (if (and old (symbolp old))
-                 (concat "\t ... was " (symbol-name old))
-               "")))
+            (let ((cmd-string (if (symbolp cmd)
+                                  (symbol-name cmd)
+                                (if (keymapp cmd)
+                                    (if-let ((named (help-fns-find-keymap-name cmd)))
+                                        (symbol-name named)
+                                      "(some sub-keymap)")
+                                  cmd)))
+                  (old-string (if (symbolp old)
+                                  (symbol-name old)
+                                (if (keymapp old)
+                                    (if-let ((named (help-fns-find-keymap-name old)))
+                                        (symbol-name named)
+                                      "(some sub-keymap)")
+                                  old))))
+              (insert
+               (if (symbolp map)
+                   (concat "(" (symbol-name map) ")\t\t ")
+                 "")
+               hint
+               " Bind  " keydesc
+               "\tto  " cmd-string
+               "\t ... was " old-string)))
           (newline))))))
 
 (defun dei-homogenize-all-keymaps ()
