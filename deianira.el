@@ -1872,49 +1872,15 @@ This simply evaluates `current-active-maps' and adds to
 
 ;;; Homogenizing
 
-(defcustom dei-permachord-wins-homogenizing nil
-  "Non-nil if perma-chord should win over chord-once.
-This means that the behavior of a perma-chorded sequence such as
-C-x C-k C-e will be kept as is, and cloned to the chord-once
-sequence C-x k e, overwriting any binding there, so they both do
-what the former always did.  If the setting is nil, both will
-instead do what C-x k e always did.
-
-PLEASE NOTE that any calls to `define-key' or similar in your
-initfiles have to take this into account!  If this is t, all
-sequences have to be written in perma-chord style to be sure the
-choice sticks.  If this is nil, they have to be written in the
-chord-once style to be sure the choice sticks.  (Of course, you
-can always bind both while you experiment with this setting.)
-
-This variable sets the default approach, but you can override
-specific cases in `dei-homogenizing-winners'; and if only one
-variety is bound but not the other, the binding will be cloned no
-matter the direction since there is no contest.
-
-Recommend leaving this variable at nil, for two reasons.
-
-- You can define keys in initfiles as \"C-x k e\" instead of
-  \"C-x C-k C-e\", which looks more neat.
-
-- While almost every sequence can be typed in perma-chord
-  fashion, not all can.  Take for example is Org-mode's
-  C-c C-e l o, which is actually just the command C-c C-e, which
-  spawns a new buffer wherein you type l o to trigger a second
-  command.  As a consequence, you can still effectively type the
-  chord-once variant C-c e l o if this variable is nil, but we
-  don't (yet) have code to make C-c C-e C-l C-o a thing.  So for
-  psychological reasons, you'll be less misled if you think of
-  chord-once as the 'authoritative version'.
-
-Rather than write that code, I'm soft-deprecating this variable."
-  :type 'boolean
-  :group 'deianira)
-
 (defcustom dei-homogenizing-winners '()
   "Alist of keys that always win the homogenizing battle.
-See `dei-permachord-wins-homogenizing' for an explanation of
-homogenizing.
+Normally, the behavior of a chord-once sequence such as C-x k e
+will be kept as is, and cloned to the perma-chord sequence
+C-x C-k C-e, overwriting any binding there, so they both do what
+the former always did.
+
+If this list contains the member (\"C-x C-k C-e\"), the opposite
+will happen in that particular case.
 
 Each item has the format (KEY-OR-COMMAND . KEYMAP).  See the
 package readme for how a full alist may look.
@@ -1925,13 +1891,12 @@ In the event that you add e.g. both (\"C-x C-f\") and
 (set-fill-column), normally a binding of C-x f, the first item
 wins, so C-x f will be bound to find-file regardless.
 
-If KEYMAP is nil, apply the winner in whichever keymap where it
-or its (perma-chord or chord-once) sibling is found.  If non-nil,
-it should be a major or minor mode map.  It will likely have no
-effect if it is a named so-called prefix command such as
-Control-X-prefix or kmacro-keymap (you can find these with
-describe-function, whereas you can't find org-mode-map, as that's
-a proper mode map)."
+If KEYMAP is nil, designate the winner in whichever keymap where
+it is found.  If non-nil, it should be a major or minor mode map.
+It will likely have no effect if it is a named so-called prefix
+command such as Control-X-prefix or kmacro-keymap (you can find
+these with `describe-function', whereas you can't find
+org-mode-map, as that's a proper mode map)."
   :type '(repeat (cons sexp symbol))
   :group 'deianira
   :set
@@ -2017,7 +1982,7 @@ to the same, creating a situation when C-g is not available for
 ;; external variables if they wish.
 (defun dei--homogenize-key-in-keymap (this-key keymap)
   "In KEYMAP, homogenize THIS-KEY.
-See `dei-permachord-wins-homogenizing' for explanation.
+See `dei-homogenizing-winners' for explanation.
 
 Actually just pushes an action onto `dei--remap-actions', which
 you can preview with \\[dei-remap-actions-preview] and execute
@@ -2131,20 +2096,10 @@ with \\[dei-remap-actions-execute]."
                                keymap
                                "Clone this winner to overwrite sibling    "
                                sibling-cmd)))
-                  ;; Neither key and neither command is rigged to win, so fall
-                  ;; back on some simple rule.
-                  ;;
-                  ;; NOTE that here is the only place where this user option
-                  ;; comes into play!  You'd think it'd affect more code, but
-                  ;; this monster defun would be necessary even without the
-                  ;; user option.
-                  (dei-permachord-wins-homogenizing
-                   (setq action
-                         (list chordonce-key
-                               permachord-cmd
-                               keymap
-                               "Clone perma-chord to chord-once           "
-                               chordonce-cmd)))
+                  ;; Neither key and neither command is rigged to win, so take
+                  ;; the default action.  (Back when we had the boolean
+                  ;; dei-permachord-wins-homogenizing, this was the only place
+                  ;; it'd apply)
                   (t
                    (setq action
                          (list permachord-key

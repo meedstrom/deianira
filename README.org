@@ -526,37 +526,35 @@ The rule of homogenized keymaps imply the following:
 3. ~C-x k C-e~ is illegal
 4. ~C-x C-k C-e~ is legal, but must be bound the same as #1.
 
-I call the variant at #1 a /chord-once sequence/ and the variant at #4 a /permachord sequence/.  The act of "homogenizing" a binding is just making sure #1 and #4 are bound to the same command.  By default, =dei-permachord-wins-homogenizing= is nil, meaning that the command bound at #1 will be copied to #4, overriding what was on #4.
+I call the variant at #1 a /chord-once sequence/ and the variant at #4 a /permachord sequence/.  The act of "homogenizing" a binding is just making sure #1 and #4 are bound to the same command.  By default, the command bound at #1 will be copied to #4, overriding what was on #4.  There used to be a variable to control which way it would go by default, but experience showed some problems with the opposite default.
 
-As for the middle variants, #2 and #3, I call them 'bastard sequences', because they result from a copulation no one wanted.  These among others are unbound by =dei--unbind-illegal-keys=.
-
-Aside: 
+As for the middle variants, #2 and #3, I call them 'bastard sequences', because they result from a copulation no one wanted.  These among others can optionally be unbound with =(add-hook 'dei-keymap-found-hook #'dei--unbind-illegal-keys)=, but it doesn't really change anything.
 
 *** Bastard sequence
-- C-c p 4 C-d  (projectile)
-- C-c C-e l o  (org)
+- ~C-c p 4 C-d~  (projectile)
+- ~C-c C-e l o~  (org)
 
-These are examples of bastard sequences.  Basically those that have you hit a modifier, release it halfway and maybe hit it again at different points.  I suspect they arise accidentally due to history; I worry about whoever knowingly binds such a key sequence.
+I call the above bastard sequences.  Basically those that have you hit a modifier, release it halfway and maybe hit it again at different points.  I suspect they arise accidentally or from historical reasons -- at least I hope so.
 
 *** Key sequence
 
-Standard Emacs term.  A sequence of keys of any number of steps, any of which may include chords.  Technically, a single key such as <f3>, or a chord such as C-M-f, is a key sequence of one step.
+Standard Emacs term.  A sequence of keys of any number of steps, any of which may include chords.  Technically, a single key such as ~<f3>~, or a chord such as ~C-M-f~, is a key sequence of one step.
 
 *** Multi-chord
 
-A chord involving more than one modifier, such as C-M-f.
+A chord involving more than one modifier, such as ~C-M-f~.
 
 *** Single-pair chord
 
-A chord that only involves one modifier, such as C-f.
+A chord that only involves one modifier, such as ~C-f~.
 
 *** Mixed-modifier sequence
 
-A key sequence that involves more than one modifier, such as C-c M-o or C-M-w (which is also a multi-chord).
+A key sequence that involves more than one modifier, such as ~C-c M-o~ or ~C-M-w~ (which is also a multi-chord).
 
 *** Key
 
-In Emacs vocabulary, a "key" can mean a chord such as C-M-f, which in my opinion is best thought of as three keys.  Until we come up with a new term for what it is that's happening thrice in C-M-f ("key presses"?), it can reduce confusion to pay attention to what is actually meant.
+In Emacs vocabulary, a "key" can mean a chord such as ~C-M-f~, which in my opinion is best thought of as three keys.  Until we come up with a new term for what it is that's happening thrice in ~C-M-f~ ("key presses"?), it can reduce confusion to pay attention to what is actually meant when someone uses this word.
 
 *** Quitter
 *** Quasi-quitter
