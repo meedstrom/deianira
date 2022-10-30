@@ -691,6 +691,13 @@ you want to be able to type nccnccnccncc."
     (call-interactively #'hydra-keyboard-quit))
   args)
 
+(defun dei--on-which-keys (command &optional keymap)
+  "Find to which keys COMMAND is bound.
+Optional argument KEYMAP means look only in that keymap."
+  (->> (where-is-internal command (when keymap (list keymap)))
+       (-map #'key-description)
+       (--remove (string-match-p dei--ignore-keys-regexp it))))
+
 ;;;###autoload
 (define-minor-mode deianira-mode
   "Set switch-window hooks to make hydras and in the darkness bind them."
@@ -710,6 +717,19 @@ you want to be able to type nccnccnccncc."
         (if (version<= "29" emacs-version)
             (define-key hydra-base-map (kbd "C-u") nil t)
           (define-key hydra-base-map (kbd "C-u") nil))
+        ;; REVIEW: I may prefer to just instruct the user to set this stuff
+        ;; themselves, so they get familiar with the variables
+        (cl-loop for key in (dei--on-which-keys #'hydra--universal-argument hydra-base-map)
+                 do
+                 (cl-pushnew `( ,key dei-universal-argument nil :exit t) dei-extra-heads)
+                 (setq dei-invisible-leafs (remove key dei-invisible-leafs)))
+        (cl-loop for key in (dei--on-which-keys #'hydra--negative-argument hydra-base-map)
+                 do
+                 (cl-pushnew `( ,key dei-negative-argument nil :exit t) dei-extra-heads)
+                 (setq dei-invisible-leafs (remove key dei-invisible-leafs)))
+        ;; REVIEW: Still necessary?
+        (cl-loop for key in (dei--on-which-keys #'hydra-repeat hydra-base-map)
+                 do (cl-pushnew `( ,key hydra-repeat nil) dei-extra-heads))
         (advice-add #'completing-read :before #'dei--slay)
         (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED

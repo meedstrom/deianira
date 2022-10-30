@@ -381,9 +381,19 @@ You will not mind the fact that Magit binds ~M-2~ in magit-section-mode-map if y
   (define-key magit-section-mode-map (kbd "M-4") nil))
 #+end_src
 
+** Where is repeat?
+
+Do you use the =repeat= command?  Please also bind =hydra-repeat= as follows to ensure it works.
+
+If your key binding is ~<f5>~:
+#+begin_src elisp
+(with-eval-after-load 'hydra
+  (define-key hydra-base-map (kbd "<f5>") #'hydra-repeat))
+#+end_src
+
 ** Quitters and quasiquitters
 
-These variables allow you to specify which keys or commands should always slay the active hydra, and in what way.  See their documentations.  As with =dei-homogenizing-winners=, you may find reason to customize these gradually over time.
+The following variables allow fine-grained control of which keys and commands should always exit the hydra.  As with =dei-homogenizing-winners=, experuence will tell you over time how to customize these.
 
 - =dei-quitter-keys=
 - =dei-quitter-commands=
