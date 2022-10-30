@@ -175,11 +175,11 @@ All done, proceed to next chapter.
 
 Please mind that this is just a test -- later on, I'll recommend some more lisp in your initfiles.
 
-(Aside: If you want Alt and Hyper, see the appendix.)
+(ASIDE: If you want Alt and Hyper, see the appendix.)
 
-(Aside: To use other keysyms than Katakana and friends, see the appendix.)
+(ASIDE: To use other keysyms than Katakana and friends, see the appendix.)
 
-(Aside: Running this program temporarily resets my Xkb settings -- I have no idea why, but don't be surprised if this happens to you.  There are no Gitlab issues about it so maybe I missed something.)
+(ASIDE: Running this program temporarily resets my Xkb settings -- I have no idea why, but don't be surprised if this happens to you.  There are no Gitlab issues about it so maybe I missed something.)
 
 ** Basic initfile snippet
 
@@ -215,8 +215,8 @@ For more info, look up the variable's documentation -- type =<f1> v dei-homogeni
 If you keep which-key for whatever reason, this snippet will hide the superfluous entries.
 
 #+begin_src elisp
-;; Hide any key sequence involving more than one chord.  We do not need to see
-;; them after using `dei-homogenize-all-keymaps'.
+;; Hide any key sequence involving more than one chord.  We have no reason to
+;; see them after using `dei-homogenize-all-keymaps'.
 (with-eval-after-load 'which-key
   (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist))
 #+end_src
@@ -242,24 +242,24 @@ If you use a non-US keyboard layout, you may want to customize these variables.
 Since ~C-g~ is normally bound to keyboard-quit, pressing ~g~ in the Control hydra will do what you'd expect (the same thing as ~C-g~), but I advise against getting in the habit of using it.  It's so prone to muscle-memorization and when you're in the Meta hydra or any other hydra, ~g~ /will do something else/.  Some naive recourses could be:
 
 - 1. Bind ~g~ to keyboard-quit in every hydra, i.e. bind ~M-g~, ~s-g~, ~M-s g~, ~C-x g~ and so on, or:
-- 2. Avoid pressing ~g~ in the Control hydra; press ~C-g~ always
-- 3. Press Control and ~g~ sequentially.
+- 2. Don't get in the habit of pressing ~g~ in the Control hydra; press ~C-g~ always
+- 3. Always press Control and ~g~ sequentially.
 
-All three have issues. #1 still will need ~C-g~ when no hydra is active. With #2, it's a chord, and we wanted to be free of chords (and I'd realistically never keep up that discipline). Perhaps more natural is #3, but if Emacs freezes up it won't work, so if I may recommend a bold alternative:
+All three have issues. #1 still will need ~C-g~ when no hydra is active. With #2, it's a chord, and we wanted to be free of chords (and I'd realistically never keep up that discipline). Perhaps more natural is #3, but I find using it this way invites the question why it was ever on a two-key chord in the first place.  If I may recommend a bold alternative:
 
 - 4. Bind some other key to do what ~C-g~ did.
 
-Everyone's got a different origin story with Emacs, but when you first learned ~C-g~ in the tutorial, I expect you must have been bemused.  Maybe you got used to it and haven't thought about it since, but it's a bizarre binding.  Such a fundamental action should only take one keystroke -- maybe even a convenient place like Tab or Return.
+Everyone's got a different origin story with Emacs, but when you first learned ~C-g~ in the tutorial, I expect you must have been bemused.  Maybe you got used to it and haven't thought about it since, but it's a bizarre binding.  Such a fundamental action should only take one keystroke -- on a convenient key such as Return or Escape.
 
 I picked Escape.  I put the following in my init file.  After a short period of feeling like I was committing sacrilege, it felt natural like I'd been waiting to do it this way all my life.  Try it!
 
 : (define-key input-decode-map (kbd "<escape>") (kbd "C-g"))
 
-Note that when Emacs freezes up, you cannot break the freeze with ~<escape>~, and all of a sudden ~C-g~ is what you must type to break it, no other key will do.  I suspect it's because input-decode-map stops working while it's frozen and the only thing Emacs will react to is a true =^G= character, much like a traditional terminal program can be interrupted with =^C= character.  Try for yourself: eval =(sleep-for 5)= and try to break out of it.  Escape won't work.
+Note that when Emacs freezes up, you cannot break the freeze with ~<escape>~, and all of a sudden ~C-g~ is what you must type to break it, no other key will do.  I suspect it's because input-decode-map stops working while it's frozen and the only thing Emacs will react to is a true =^G= character, much like a traditional terminal program can be interrupted with a =^C= character.  Try for yourself: eval =(sleep-for 5)= and try to break out of it.  Escape won't work, and ~C-g~ will, /even if you bound ~C-g~ to something else so it isn't supposed to be sending a keyboard-quit/.
 
-(Another thing disregards Escape: the M-x save-some-buffers prompt ... because it calls =map-y-or-n-p= which uses =read-event= rather than the more appropriate =read-key=.  Bug report https://debbugs.gnu.org/cgi/bugreport.cgi?bug=58808.  But very few things use =map-y-or-n-p=.)
+(ASIDE: Another thing disregards Escape: the M-x save-some-buffers prompt.  This is a bug (https://debbugs.gnu.org/cgi/bugreport.cgi?bug=58808): it calls =map-y-or-n-p= which uses =read-event= rather than the more appropriate =read-key=.  But very few things use =map-y-or-n-p=, and most of the time you'd type ~y~ or ~n~, not ~C-g~, so you don't think about it.  You may be glad to know it hardcodes ~q~ as an alternative cancel key.)
 
-So C-g remains your "unfreeze Emacs" key.  You can argue it actually should be on a separate key anyway.  However, if that bothers you, the final solution is to use an external program like interception-tools to remap the Escape key to send C-g long before Emacs or even Xkb is involved.  This deprives non-Emacs apps of a functioning Escape, but the trick is to use =exwm-input-simulation-keys= to translate C-g /back/ into Escape!  Alternatively, interception's xswitch plugin should be able to carry out the remap only for Emacs.
+So ~C-g~ remains your "unfreeze Emacs" key.  You can argue it actually should be on a separate key anyway.  However, if that bothers you, the final solution is to use an external program like interception-tools to remap the Escape key to send ~C-g~ long before Emacs or even Xkb is involved.  This deprives non-Emacs apps of a functioning Escape, but the trick is to use =exwm-input-simulation-keys= to translate ~C-g~ /back/ into Escape!  Alternatively, interception's =xswitch= plugin should be able to carry out the remap only for Emacs.
 
 ** Mass remapping
 *** Super as Control
@@ -279,7 +279,7 @@ If there's any inconsistency,
 
 1. Luxury for an EXWM user: you can set all your =exwm-input-prefix-keys=, =exwm-input-global-keys= and =exwm-input-simulation-keys= to work only on Super bindings, ceding to other apps full control of Control.
 
-2. You can liberate the "nightmare keys" (see docstring =dei--nightmare-p=): C-i, C-[, C-m, C-g.  Because s-i, s-[, s-m, s-g are not special, you can rebind them at will, buying yourself more real estate.
+2. You can liberate the "nightmare keys" (see docstring of =dei--nightmare-p=): ~C-i~, ~C-[~, ~C-m~, ~C-g~.  Because ~s-i~, ~s-[~, ~s-m~, ~s-g~ are not special, you can rebind them at will, buying yourself more real estate.
 
 *** Super as Control-Meta
 
@@ -289,9 +289,9 @@ An alternative if you didn't buy my kool-aid above.  This hook copies all Contro
 (add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctlmeta-everywhere)
 #+end_src
 
-Of course it's only relevant if you hate typing Control-Meta keys, like me.  It is possible to make it so that pressing Control and Meta together pops up a special hydra for Control-Meta bindings, but in my opinion that's a nasty complication: with three modifiers to start from already, you shouldn't be lacking for available key sequences anyway.  And if you do, upgrading the hardware (get a keyboard with thumb keys) is the way to go, not contrive software to do things like this.  Chords are the enemy, why would you /start/ a key sequence with one?
+Of course it's only relevant if you hate typing Control-Meta keys, like me.  It is possible to make it so that pressing Control and Meta together pops up a special hydra for Control-Meta bindings, but in my opinion that's a nasty complication: with three modifiers to start from already, you shouldn't be lacking for available key sequences anyway.  And if you do, upgrading the hardware (get a keyboard with thumb keys) is the way to go, not contrive software to do things like this.  [[http://xahlee.info/kbd/banish_key_chords.html][Chords are the enemy]], why would you /start/ a key sequence with one?
 
-** Universal argument: ~C-u M-d~, Brutus?
+** Prefix arguments: ~C-u M-d~, Brutus?
 
 The bindings for =universal-argument=, =digit-argument= and =negative-argument= present a conundrum.
 
@@ -350,6 +350,8 @@ If you want to use a dedicated key like =<print>= instead, replace all occurrenc
 (define-key global-map (kbd "<print>") #'universal-argument)
 #+end_src
 
+Finally note that the Org setting =org-replace-disputed-keys= overrides ~M--~, so you may want to leave it at nil.
+
 *** Community packages override my M-1234567890!
 
 Some packages override M-1234567890.  If you want to prevent that, you can use snippets such as the one posted below.  Although a cleaner strategy would be to:
@@ -400,6 +402,9 @@ The following variables let you specify keys and commands that should always exi
 * Imagined FAQ
 ** Can I keep which-key?
 Yes.
+
+** Can I keep xah-fly-keys?
+In theory, but I don't know.
 
 ** What if you just use sticky keys and thoughtfully crafted repeat-maps instead of all this crap?
 Not the same thing -- you'd need something like god-mode, and you'd still need to setup dual-function-keys or similar software so as to make the Control and Meta keys into entry-points for god-mode's modes.  Then we can compare.  If you do that, I'll link your blog post here!
@@ -576,9 +581,9 @@ If you run buffer-switching commands such as =next-buffer= from within a hydra, 
 
 Aside from confusion, it's usually not a problem because
 - in a supermajority of cases, the difference is only visual: it's the hydra /hint/ that reflects the wrong buffer's bindings.  The keys still do what they should, since they are not bound to specific commands but to =(call-interactively (key-binding KEY))=, which results in the correct action.
-- by default, =next-buffer= is under the Control-X-prefix (=C-x <right>=), which is static and unchanging anyway
+- by default, =next-buffer= is under the Control-X-prefix (=C-x <right>=), which is static and unchanging
 
-If you do this under a prefix that changes a lot between major modes, like C-c, the next key can behave unexpectedly:
+If you do this under a prefix that changes a lot between major modes, like C-c, the next key can behave unexpectedly because:
 - It can happen that the command should be bound to a sub-hydra but isn't.
 - The heads' individual =:exit= flags also do not change, so they can be inappropriate for the current buffer, not reflecting =dei-quitter-keys= or related variables.
 
