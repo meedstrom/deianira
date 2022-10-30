@@ -151,47 +151,6 @@ Arguments same as for `format'."
   ;;   (rename-buffer "*Deianira remaps*"))
   (setq dei-debug t))
 
-(defun dei-xmodmap-reload ()
-  "(Re-)apply the `dei-xmodmap-rules'."
-  (interactive)
-  (let* ((shell-command-dont-erase-buffer t)
-         (rules (string-join dei-xmodmap-rules "' -e '"))
-         (cmd (concat "xmodmap -e '" rules "'")))
-    (if (executable-find "xmodmap")
-        (start-process-shell-command cmd (dei--debug-buffer) cmd)
-      (message "(deianira) Executable not found: xmodmap"))))
-
-(defcustom dei-xmodmap-rules
-  '("keycode any = F20"
-    "keycode any = F21"
-    "keycode any = F22"
-    "keycode any = F23"
-    "keycode any = F24")
-  "Rules to pass to xmodmap.
-The Linux kernel defines KEY_F24 as scancode 194 and doesn't
-define higher function keys (i.e. there is no F25 or above).
-However, at kernel level these names don't mean anything and
-could equally as well be called KEY_FNORD.  We only need to know
-them because of how they match up to Xorg: Xorg adds 8 to the
-number.  So when Linux emits scancode 194, Xorg calls that
-keycode 202.  Depending on your Xkb keymap table it may not be
-mapped to what Xorg calls the keysym F24 but something like
-XF86Launch7.
-
-See also https://unix.stackexchange.com/questions/364641/mapping-scancodes-to-keycodes
-
-Incidentally, /usr/include/X11/keysymdef.h tells us Xorg has
-keysyms up to F35: \"We've not found a keyboard with more than 35
-function keys total.\" So if you do have actual physical function
-keys up to F24, you could migrate to F31-F35 instead for our
-purposes.  The kernel codes are found here (don't forget to add 8):
-https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes"
-  :type '(repeat string)
-  :group 'deianira
-  :set (lambda (var new)
-         (set-default var new)
-         (dei-xmodmap-reload)))
-
 (defcustom dei-hydra-keys
   "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
   "Keys to show in hydra hint\; default reflects an US keyboard.
@@ -743,7 +702,7 @@ Optional argument KEYMAP means look only in that keymap."
           (warn "hydra-is-helpful is nil, you probably want t"))
         (when (null dei-homogenizing-winners)
           (deianira-mode 0)
-          (user-error "dei-homogenizing-winners is un-customized, disabling Deianira")))
+          (user-error "Disabling Deianira, please customize dei-homogenizing-winners")))
     (named-timer-cancel 'deianira-at-work)
     (named-timer-cancel 'deianira-b)
     (named-timer-cancel 'deianira-c)
@@ -1286,6 +1245,7 @@ the same thing.")
 
 (defvar dei--async-running nil)
 
+;; TODO: spin out as a separate package, maybe "simple-thread"?
 (defun dei--async-chomp (&optional politely)
   "Pop the next function off `dei--async-chain' and call it.
 Rinse and repeat until user does something, in which case defer
@@ -1307,20 +1267,23 @@ To start, see `dei-async-make-hydras'."
               (setq dei--async-running t)
               (dei--echo "Running: %s" fun)
               (funcall fun t) ;; Real work happens here
-              ;; Now that we know it exited without error, pop it off the queue
+              ;; If we're here, we know the above funcall exited without error,
+              ;; and we can safely pop that step off the queue.
               (pop dei--async-chain)
+              ;; Schedule the next step
               (when dei--async-chain
+                ;; Note to reader: draw a flowchart...
                 (let ((polite-delay 1.0)
                       (idled-time (or (current-idle-time) 0)))
                   (if (or (and politely
                                (time-less-p polite-delay idled-time))
                           (and (not politely)
-                               (time-less-p idled-time polite-delay) ;; unneccessary?
+                               (time-less-p idled-time polite-delay)
                                (time-less-p dei--async-chain-last-idle-value idled-time)))
-                      ;; If user hasn't done anything since last chomp, go go go.
+                      ;; If user hasn't done any I/O since last chomp, go go go.
                       (named-timer-run 'deianira-at-work
                         0 nil #'dei--async-chomp)
-                    ;; Otherwise allow time for user input.
+                    ;; Otherwise give Emacs a moment to respond to user input.
                     ;; (cl-incf dei--async-chain-last-idle-value .7)
                     (named-timer-idle-run 'deianira-at-work
                       polite-delay nil #'dei--async-chomp 'politely))
@@ -1517,6 +1480,7 @@ Trivial function, but useful for `mapcar' and friends."
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)))
 
+;; TODO: Make it simpler to read, unnecessarily programmy
 (defun dei--async-2-check-settings (&optional _)
   "Signal error if any two user settings overlap.
 Otherwise we could end up with two heads in one hydra both bound
@@ -1900,23 +1864,24 @@ C-x C-k C-e, overwriting any binding there, so they both do what
 the former always did.
 
 If this list contains the member (\"C-x C-k C-e\"), the opposite
-will happen in that particular case.
+will happen in that particular case, overwriting C-x k e.
 
-Each item has the format (KEY-OR-COMMAND . KEYMAP).  See the
-package readme for how a full alist may look.
+Each item in the list has the format (KEY-OR-COMMAND . KEYMAP).
+See the package readme for how a full list may look.
 
 KEY-OR-COMMAND can be either a `kbd'-compatible key description
-or a symbol which is assumed to refer to a command.
-In the event that you add e.g. both (\"C-x C-f\") and
-(set-fill-column), normally a binding of C-x f, the first item
-wins, so C-x f will be bound to find-file regardless.
+or a symbol assumed to refer to a command.  In the event that you
+add e.g. both (\"C-x C-f\") and (set-fill-column -- normally a
+binding of C-x f -- to the list, then the first item wins.
+If (\"C-x C-f\") was first, then C-x f will be bound to find-file.
 
-If KEYMAP is nil, designate the winner in whichever keymap where
-it is found.  If non-nil, it should be a major or minor mode map.
-It will likely have no effect if it is a named so-called prefix
-command such as Control-X-prefix or kmacro-keymap (you can find
-these with `describe-function', whereas you can't find
-org-mode-map, as that's a proper mode map)."
+If KEYMAP is nil, make KEY-OR-COMMAND win in whichever keymap
+where it is found.  If non-nil, KEYMAP should be a major or minor
+mode map.  It will likely have no effect if it is a so-called
+named prefix command such as Control-X-prefix or
+kmacro-keymap (you can find these with `describe-function',
+whereas you can't find org-mode-map, as that's a proper mode
+map)."
   :type '(repeat (cons sexp symbol))
   :group 'deianira
   :set
@@ -1930,10 +1895,10 @@ org-mode-map, as that's a proper mode map)."
 
 (defun dei--key-seq-has-non-prefix-in-prefix (keymap keydesc)
   "Does KEYDESC contain a bound command in its prefix?
-For example: C-x C-v is bound to a command by default, so if you
-attempt to bind C-x C-v C-x to a command, you get an error.  So
-here we check for that.  If KEYDESC is C-x C-v C-x, we check if
-either C-x or C-x C-v are bound to anything.
+For example: C-x C-v is bound to a simple command by default, so
+if you attempt to bind C-x C-v C-x to a command, you get an
+error.  So here we check for that.  If KEYDESC is C-x C-v C-x, we
+check if either C-x or C-x C-v are bound to anything.
 
 Does not additionally check that KEYDESC is not itself a prefix
 map with children bound: that's another thing that can make KEYDESC
@@ -1942,9 +1907,10 @@ unbindable.
 KEYMAP is the keymap in which to look."
   (let ((steps (dei--key-seq-split keydesc))
         (ret nil))
-    ;; Don't proceed if no subseqs
     (when (> (length steps) 1)
-      ;; TODO: don't use dotimes, but some "until" structure
+      ;; TODO: don't use dotimes, but some sort of "until" pattern.  This
+      ;; function is very un-Lispy right now.  You can tell, because it takes
+      ;; time to understand wtf it's doing.
       (dotimes (i (- (length steps) 1))
         (let ((subseq (string-join (-take (1+ i) steps) " ")))
           (when (lookup-key-ignore-too-long keymap (kbd subseq)))
@@ -1995,8 +1961,11 @@ meaning of \"C-g\".  Otherwise, homogenizing C-h g binds C-h C-g
 to the same, creating a situation when C-g is not available for
 `keyboard-quit'."
   (declare (pure t) (side-effect-free t))
-  (and (string-prefix-p "C-" keydesc)
-       (string-match-p (rx (any "[" "m" "i" "g")) keydesc)))
+  (or (and (string-prefix-p "C-" keydesc)
+           (string-match-p (rx (any "[" "m" "i" "g")) keydesc))
+      ;; this bit is unnecessary because `dei--ignore-keys-regexp' filters them out
+      ;; (string-match-p (eval-when-compile (regexp-opt "ESC" "TAB" "RET")) keydesc)
+      ))
 
 ;; TODO: Maybe just return the action, and let the caller push onto
 ;; external variables if they wish.
