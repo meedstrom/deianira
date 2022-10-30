@@ -351,17 +351,7 @@ Here is an example fix including moving universal-argument to ~C-=~, ~M-=~ and c
       (define-key universal-argument-map (kbd (concat mod d)) #'digit-argument))))
 #+end_src
 
-Ensure Deianira reflects your choice. (TODO: Automate this step for the user by inspecting hydra-base-map?)
-#+begin_src elisp
-(setq dei-extra-heads
-  '(("=" dei-universal-argument)
-    ("-" dei-negative-argument)))
-
-(setq dei-invisible-leafs
-      (seq-difference dei-invisible-leafs '("-" "=")))
-#+end_src
-
-If you want to use a dedicated key like =<print>= instead, replace lal occurrences of ~=~ with ~<print>~ in the code snippets so far, and add another line:
+If you want to use a dedicated key like =<print>= instead, replace all occurrences of ~=~ with ~<print>~ in the code snippets so far, and add another line:
 #+begin_src elisp
 (define-key global-map (kbd "<print>") #'universal-argument)
 #+end_src
