@@ -1740,16 +1740,29 @@ to `dei--known-keymaps' anything not already added.  Also trigger
                  (push (list map cm-key nil) dei--reflect-actions)))))))
      raw-map)))
 
-;; TODO: Ideally, we would
-;; also react to every package that binds e.g. RET, and relocate that binding
-;; to <return>, but it's impossible to see after the fact whether the package
-;; author wrote it as RET or as C-m and therefore how they thought of it.  I
-;; guess we can count both as intended for the Return key.  Then, on
-;; keymap-found-hook, we always move this binding to <return>.  Only if
-;; <return> already exists within the same keymap, and C-m is bound to
-;; something different, we might consider duplicating C-m to s-m.  Otherwise,
-;; whatever the user chooses for C-m or s-m in the global map should tend to
-;; stick.
+;; TODO: A minimal alternative.  React to every package that binds C-m or RET
+;; (synonyms for the same event), and copy that binding to <return>.  That way,
+;; the Return key works as expected even if user then changes C-m to something
+;; else.  Ditto for TAB/C-i, copied to <tab>.  However, user has to hold off on
+;; binding C-m until on keymap-found-hook, after the function that does this.
+(defun dei--protect-ret-and-tab (map)
+  (cl-loop for key being the key-seqs of map
+           with retkeys
+           with tabkeys
+           if (or (string-search "C-m" key)
+                  (string-search "RET" key))
+           collect key into retkeys
+           else if (or (string-search "C-i" key)
+                       (string-search "TAB" key))
+           collect key into tabkeys
+           finally do
+           (cl-loop for retkey in retkeys
+                    do
+                    (define-key map (kbd (string-replace
+                                          "C-m" "<return>" (string-replace
+                                                            "RET" "<return>" retkey)))
+                      (lookup-key map key)))
+           ))
 
 (defun dei-define-super-like-ctl-everywhere ()
   (cl-loop for map in (-difference dei--known-keymaps
