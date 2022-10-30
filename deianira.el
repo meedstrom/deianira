@@ -972,8 +972,8 @@ the same thing.")
 
 (defvar dei--async-chain-last-idle-value 0)
 (defvar dei--async-chain-template
-  #'(dei--async-2-check-settings
-     dei--async-1-model-the-world
+  #'(dei--async-1-check-settings
+     dei--async-2-model-the-world
      dei--async-3-draw-blueprint
      dei--async-4-birth-hydra
      dei--async-5-register))
@@ -1146,7 +1146,7 @@ Trivial function, but useful for `mapcar' and friends."
 
 (defvar dei--changed-stems nil)
 
-(defun dei--async-1-model-the-world (&optional _)
+(defun dei--async-2-model-the-world (&optional _)
   "Calculate things."
   (with-current-buffer dei--buffer-under-analysis
     ;; Cache settings
@@ -1215,13 +1215,17 @@ Trivial function, but useful for `mapcar' and friends."
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)))
 
-;; TODO: Make it simpler to read, unnecessarily programmy
-(defun dei--async-2-check-settings (&optional _)
+(defun dei--async-1-check-settings (&optional _)
   "Signal error if any two user settings overlap.
 Otherwise we could end up with two heads in one hydra both bound
 to the same key, no bueno."
   (unless (--all-p (equal (symbol-value (car it)) (cdr it))
                    dei--last-settings-alist)
+    ;; Record the newest setting values, so we can skip the relatively
+    ;; expensive calculations next time if nothing changed.
+    (setq dei--last-settings-alist
+          (cl-loop for cell in dei--last-settings-alist
+                   collect (cons (car cell) (symbol-value (car cell)))))
     (let ((vars
            (list (cons 'dei-hydra-keys dei--hydra-keys-list)
                  (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
@@ -1236,12 +1240,7 @@ to the same key, no bueno."
            do (when-let ((overlap (-intersection (cdr var)
                                                  (cdr remaining-var))))
                 (error "Found %s in both %s and %s"
-                       overlap (car var) (car remaining-var)))))))
-    ;; Record the newest setting values, so we can skip the relatively
-    ;; expensive calculations next time if nothing changed.
-    (setq dei--last-settings-alist
-          (cl-loop for cell in dei--last-settings-alist
-                   collect (cons (car cell) (symbol-value (car cell)))))))
+                       overlap (car var) (car remaining-var)))))))))
 
 (defun dei--async-3-draw-blueprint (&optional chainp)
   "Draw blueprint for one of `dei--stems'.

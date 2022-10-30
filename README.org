@@ -186,7 +186,8 @@ Please mind that this is just a test -- later on, I'll recommend some more lisp 
 Put this in initfiles.
 
 #+begin_src elisp
-(require 'deianira)
+(require 'deianira-mass-remap)
+(add-hook 'window-buffer-change-functions #'dei--record-keymap-maybe -70)
 (add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)
 (setq dei-homogenizing-winners
   '(("C-c C-c")
@@ -197,6 +198,8 @@ Put this in initfiles.
     (find-file)
     ("C-c C-c" . org-mode-map)
     ("C-c C-," . org-mode-map)))
+
+(require 'deianira)
 (deianira-mode)
 #+end_src
 
