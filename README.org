@@ -108,19 +108,15 @@ On Arch, install like so:
 
 : sudo pacman -S interception-dual-function-keys
 
-Let there be two config files, with the following filenames.
-
-- =/etc/interception/udevmon.yaml=
-- =/etc/interception/dual-fn.yaml=
-
-Fill them with copypasta from the following sections.  Don't worry, this won't have any effect on your system right now.
+Let there be two config files, named =udevmon.yaml= and =dual-fn.yaml=.  Fill them with copypasta from the following sections. 
 
 ([[#for-users-of-guix-system][Users of Guix System]] have some alternate instructions)
 
 **** udevmon.yaml
 
 #+begin_src yaml
-- JOB: "intercept -g $DEVNODE | dual-function-keys -c /etc/interception/dual-fn.yaml | uinput -d $DEVNODE"
+# note -- change the file path in here if necessary!
+- JOB: "intercept -g $DEVNODE | dual-function-keys -c /home/me/dual-fn.yaml | uinput -d $DEVNODE"
   DEVICE:
     EVENTS:
       EV_KEY: [ KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTMETA, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_RIGHTMETA ]
@@ -169,7 +165,7 @@ MAPPINGS:
 
 *Step 1.* To test, execute this shell command in some terminal.  You can stop the effect by interrupting the terminal with Ctrl-C.
 
-: sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
+: sudo nice -n -20 udevmon -c ~/udevmon.yaml
 
 *Step 2.* With the program active, you should expect that tapping Ctrl, Alt or Super in Emacs will yield a message like "<muhenkan> is undefined".  Make sure you see that sort of message for all three modifier keys, both the left and right variants, so you know they all work.
 
