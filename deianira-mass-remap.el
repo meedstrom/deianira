@@ -566,12 +566,4 @@ Interactively, use the value of `dei--remap-actions'."
            do (seq-let (map keydesc old-def) x
                 (define-key (dei--raw-keymap map) keydesc old-def))))
 
-;; DEPRECATED: doesn't need to be a mode when it just involves one hook
-(define-minor-mode deianira-watch-keymaps-mode
-  :global t
-  :group 'deianira
-  (if deianira-watch-keymaps-mode
-      (progn
-        (add-hook 'window-buffer-change-functions #'dei--record-keymap-maybe -68))))
-
 (provide 'deianira-mass-remap)
