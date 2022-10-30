@@ -1981,7 +1981,7 @@ with \\[dei-remap-actions-execute]."
   (and
    (not (dei--key-seq-steps=1 this-key)) ;; nothing to homogenize if length 1
    (not (dei--nightmare-p this-key))
-   (not (equal keymap 'widget-global-map)) ;; REVIEW: good to ignore?
+   (not (equal keymap 'widget-global-map)) ;; REVIEW: good?
    (dei--key-starts-with-modifier this-key)
    (let* ((raw-keymap (dei--raw-keymap keymap))
           (this-cmd (lookup-key-ignore-too-long raw-keymap (kbd this-key))))
@@ -2226,6 +2226,8 @@ AVOID-PREFIXES is a list of prefixes to leave out of the result."
                             "Inspect with dei-remap-actions-preview and"
                             "make a wet-run with dei-remap-actions-execute.")))
 
+(defvar dei--remap-revert-list nil)
+
 ;; (define-key doom-leader-map (kbd "o b j") #'self-insert-command)
 (defun dei-remap-actions-execute (actions)
   "Carry out remaps specified by ACTIONS.
@@ -2248,7 +2250,15 @@ Interactively, use the value of `dei--remap-actions'."
             ;; known working in emacs 29
             ;; (define-key raw-keymap (kbd conflict-prefix) nil t)
             ))
+        (push '(map keydesc old-def) dei--remap-revert-list)
         (define-key raw-keymap (kbd keydesc) cmd)))))
+
+;; Experimental
+(defun dei-remap-revert ()
+  (interactive)
+  (cl-loop for x in dei--remap-revert-list
+           do (seq-let (map keydesc old-def) x
+                (define-key (dei--raw-keymap map) keydesc old-def))))
 
 
 ;;;; Debug toolkit
@@ -2256,6 +2266,7 @@ Interactively, use the value of `dei--remap-actions'."
 ;; FIXME
 (defun dei-regenerate-hydras-for-this-buffer ()
   (interactive)
+  (require 'map)
   (let ((hash (sxhash (current-active-maps))))
     (setq dei--flocks (map-delete dei--flocks hash))
     (dei-async-make-hydras)))
