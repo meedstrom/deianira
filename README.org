@@ -56,7 +56,7 @@ The consequences are:
 
 My motivations were:
 
-- I wanted a genuinely modifier-free life (even dropping Shift), and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  As a happy side effect of implementing the vision, I found we need surprisingly little extra typing this way, and sometimes even /less/, because are the strict rules we impose on the keymap open for several exploitations.
+- I wanted a modifier-free life (even dropping Shift unlike Vim), and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  As a happy side effect of implementing the vision, I found we need surprisingly little extra typing this way, and sometimes even /less/, because the strict rules we impose on the keymap open for several exploitations.
 - I asked myself as a thought experiment how one would use Emacs with an [[https://olkb.com/][OLKB Planck]] or other tiny keyboard.  This constraint sprouted many ideas.  Among other things, I wanted to bind all commands to lowercase letters, and with Deianira you can.  The Planck won't ever have to use its "Raise" or "Lower" hardware modes just to access a command.  Please observe that no part of the design was sacrificed to support tiny keyboards -- I actually prefer [[https://geekhack.org/index.php?topic=116622][enormous]] keyboards -- and the good fit is a side effect.
 
 No "paradigm lock-in"
@@ -100,7 +100,7 @@ Possible alternatives:
 - ...
 
 *** What is it for?
-Emacs cannot detect the fact that you held down and released Control, Meta or Super, so some software lower in the stack needs to tell Emacs about it.  Thus, we configure dual-function-keys to send separate key events when this happens.  It does not matter which key events will represent this as the user almost never sees them printed in the echo area -- the default is F20, F21, F22, F23 and F24.
+Emacs cannot detect the fact that you held down and released Control, Meta or Super, so some software lower in the stack needs to tell Emacs about it.  Thus, we configure dual-function-keys to send separate key events when this happens.  It does not matter which key events will represent this as the user almost never sees them printed in the echo area.  The default choices are discussed in the appendix.
 
 *** Installation
 
@@ -177,7 +177,7 @@ Please mind that this is just a test -- later on, I'll recommend some more lisp 
 
 (Aside: If you want Alt and Hyper, see the appendix.)
 
-(Aside: If you want to use other keysyms than Muhenkan, Katakana and friends to represent your key-presses, see the appendix.)
+(Aside: To use other keysyms than Katakana and friends, see the appendix.)
 
 (Aside: Running this program temporarily resets my Xkb settings -- I have no idea why, but don't be surprised if this happens to you.  There are no Gitlab issues about it so maybe I missed something.)
 
@@ -203,8 +203,6 @@ Put this in initfiles.
 If you have =(setq hydra-is-helpful nil)= somewhere in your initfiles, you'll probably want to remove that and let it be =t=.
 
 ** Homogenizing
-
-You saw the initfile line that homogenizes your key bindings, =(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)=.  (If you don't know what that means, go to section Paradigm.)
 
 Let me introduce you to the most important variable, =dei-homogenizing-winners=.  Take ownership of it; Deianira refuses to start if it's nil.  You'll want to customize it gradually over time.   Do you use ~C-x f~ or ~C-x C-f~ more?  It's hard to know when thinking about it, only experience will tell you.  But this is *absolutely key* to becoming comfortable.
 
@@ -274,7 +272,7 @@ If I've successfully sold you on deprecating the Control key, this hook setting 
 
 If there's any inconsistency,
 
-- check your initfiles too see if you had directly bound any Super keys
+- check your initfiles to see if you had directly bound any Super keys
 - otherwise, please open a GitHub issue
 
 **** Benefits
@@ -299,7 +297,7 @@ Unimplemented as yet: an override that tells the above hooks what to bind /diffe
 
 ** Universal argument: ~C-u M-d~, Brutus?
 
-The bindings for =universal-argument=, =digit-argument= and =negative-argument= present hard problems.
+The bindings for =universal-argument=, =digit-argument= and =negative-argument= present a conundrum.
 
 1. C-123456890 and M-123456890 are a huge waste of good keys.
   - Why are the ten keys M-1234567890 bound to =digit-argument=, but we're too stingy to bind one more key, ~M-u~, to =universal-argument=?
@@ -387,13 +385,14 @@ Do you use the =repeat= command?  Please also bind =hydra-repeat= as follows to 
 
 If your key binding is ~<f5>~:
 #+begin_src elisp
+(define-key global-map (kbd "<f5>") #'repeat)
 (with-eval-after-load 'hydra
   (define-key hydra-base-map (kbd "<f5>") #'hydra-repeat))
 #+end_src
 
 ** Quitters and quasiquitters
 
-The following variables allow fine-grained control of which keys and commands should always exit the hydra.  As with =dei-homogenizing-winners=, experuence will tell you over time how to customize these.
+The following variables let you specify keys and commands that should always exit the hydra.  Consult the docstrings.  As with =dei-homogenizing-winners=, experuence will tell you over time how to customize these.
 
 - =dei-quitter-keys=
 - =dei-quitter-commands=
@@ -433,7 +432,7 @@ So why ever involve Shift in a hotkey?  Especially considering you may not alway
 1. Mnemonics
 2. /Because/ it chords
 
-I find reason 1 insufficient (just my subjective sense of aesthetics---I'd rather have more nested sequences if that means they can all be all-lowercase), so let's look at Reason 2.  It's subtle.
+I find Reason 1 insufficient (just my subjective sense of aesthetics---I'd rather have more nested sequences if that means they can all be all-lowercase), so let's look at Reason 2.  It's subtle.
 
 (The below is probably easier to understand after you've used Deianira)
 
@@ -466,7 +465,7 @@ Despite the name, Deianira is not necessarily a Hercules killer, but could be re
 3. [[https://tildegit.org/acdw/define-repeat-map.el][define-repeat-map]]
 4. Transient
 
-(I'd like an engine-agnostic term for the concept shared by all these.  Please hit me up.  For now, the term "hydra" is short and useful: it can become verbs and adjectives like "hydraize", "hydrable", even other nouns like "hydratics".  A "head" is meaningfully different from a "key" and it's nice to have that word.  In addition, you can speak of "flocks" of hydras, of "spawning" and "slaying" them.)
+(I'd like an engine-agnostic term for the concept shared by all these.  Please hit me up.  For now, the term "hydra" is short and useful: it can become verbs and adjectives like "hydraize", "hydrable", even other nouns like "hydratics".  A "head" is meaningfully different from a "key" and it's nice to have that word.  In addition, you can speak of "flocks" of hydras, and of "spawning" and "slaying" them.)
 
 While it looks perfectly possible to rewire the package to use the other options, I doubt we get any important benefit from options 2 or 3.  What about option 4, tarsius' Transient package?  It may have a ton of potential, which I dare not imagine because I've spent enough years thinking about hotkeys and if I'm right, that would blaze a new path full of new questions.
 
@@ -533,7 +532,7 @@ The rule of homogenized keymaps imply the following:
 
 I call the variant at #1 a /chord-once sequence/ and the variant at #4 a /permachord sequence/.  The act of "homogenizing" a binding is just making sure #1 and #4 are bound to the same command.  By default, the command bound at #1 will be copied to #4, overriding what was on #4.  There used to be a variable to control which way it would go by default, but experience showed some problems with the opposite default.
 
-As for the middle variants, #2 and #3, I call them 'bastard sequences', because they result from a copulation no one wanted.  These among others can optionally be unbound with =(add-hook 'dei-keymap-found-hook #'dei--unbind-illegal-keys)=, but it doesn't really change anything.
+As for the middle variants, #2 and #3, I call them 'bastard sequences', because they result from a copulation no one wanted.  These among others can optionally be unbound with =(add-hook 'dei-keymap-found-hook #'dei--unbind-illegal-keys)=, but it doesn't change much for the user.
 
 *** Bastard sequence
 - ~C-c p 4 C-d~  (projectile)
@@ -577,11 +576,13 @@ Power 3. When a desktop environment like GNOME clobbers your ~s-a~ chord, you ca
 
 * Known issues
 ** Hydra does not update instantly
-If you run a command such as =next-buffer= from within a hydra, getting a different buffer with potentially different major mode and keymaps, the hydra will not reflect this, but continue to reflect the buffer where it was first called.
+If you run buffer-switching commands such as =next-buffer= from within a hydra, getting a different major mode and keymaps, the hydra will not reflect this, but continue to reflect the buffer where it was first called.
 
-Aside from confusion, it's usually not a problem because in a supermajority of cases, the difference is only visual: it's the hydra /hint/ that reflects the wrong buffer's bindings.  The keys still do what they should, since they are not bound to specific commands but to =(call-interactively (key-binding KEY))=, which results in the correct action.
+Aside from confusion, it's usually not a problem because
+- in a supermajority of cases, the difference is only visual: it's the hydra /hint/ that reflects the wrong buffer's bindings.  The keys still do what they should, since they are not bound to specific commands but to =(call-interactively (key-binding KEY))=, which results in the correct action.
+- by default, =next-buffer= is under the Control-X-prefix (=C-x <right>=), which is static and unchanging anyway
 
-In some cases, the behavior is different:
+If you do this under a prefix that changes a lot between major modes, like C-c, the next key can behave unexpectedly:
 - It can happen that the command should be bound to a sub-hydra but isn't.
 - The heads' individual =:exit= flags also do not change, so they can be inappropriate for the current buffer, not reflecting =dei-quitter-keys= or related variables.
 
