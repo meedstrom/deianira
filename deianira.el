@@ -1981,11 +1981,12 @@ with \\[dei-remap-actions-execute]."
   (and
    (not (dei--key-seq-steps=1 this-key)) ;; nothing to homogenize if length 1
    (not (dei--nightmare-p this-key))
+   (not (equal keymap 'widget-global-map)) ;; REVIEW: good to ignore?
    (dei--key-starts-with-modifier this-key)
    (let* ((raw-keymap (dei--raw-keymap keymap))
           (this-cmd (lookup-key-ignore-too-long raw-keymap (kbd this-key))))
       ;; REVIEW: what do if this-cmd is another keymap?
-      (when (functionp this-cmd)
+     (when (functionp this-cmd)
         (let* (;; NOTE: we are assuming there exist no "bastard sequences",
                ;; so we don't bother to ensure the alternative is a chordonce.
                (this-is-permachord (dei--key-seq-is-permachord this-key))
