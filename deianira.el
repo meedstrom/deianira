@@ -1666,20 +1666,24 @@ and one, but obviously ONLY ONE, of:
 
 (defun dei--record-keymap-maybe (&optional _)
   "If Emacs has seen new keymaps, record them in a variable.
-This simply evaluates `current-active-maps' and adds to
-`dei--known-keymaps' anything not already there."
+This simply checks the output of `current-active-maps' and adds
+to `dei--known-keymaps' anything not already added.  Also trigger
+`keymap-found-hook' every time a new keymap is found."
   (let ((maps (current-active-maps))
-        (remembered-maps (gethash (buffer-name) dei--buffer-keymaps)))
+        (remembered-maps-for-buffer (gethash (buffer-name) dei--buffer-keymaps)))
     ;; Make sure we only run the expensive `help-fns-find-keymap-name' once for
     ;; this buffer, unless the keymaps actually have changed.  In addition, use
     ;; the buffer name as a reference (instead of a buffer-local variable as
-    ;; might be more logical), because some packages work by creating and
+    ;; might be more natural), because some packages work by creating and
     ;; destroying the same buffer repeatedly.
-    (unless (and remembered-maps
-                 (equal maps remembered-maps))
+    ;; TODO: Maybe deprecate dei--buffer-keymaps, don't even look at buffer
+    ;; name, just (sxhash (current-active-maps))?
+    (unless (and remembered-maps-for-buffer
+                 (equal maps remembered-maps-for-buffer))
       (puthash (buffer-name) maps dei--buffer-keymaps)
       (when-let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
                   (new-maps (-difference named-maps dei--known-keymaps)))
+        ;; (unless (member 'widget-global-map new-maps)
         (setq dei--known-keymaps (append new-maps dei--known-keymaps))
         (run-hooks 'dei-keymap-found-hook)))))
 
@@ -1694,109 +1698,49 @@ This simply evaluates `current-active-maps' and adds to
 (defvar dei--ctlmeta-reflected-keymaps nil
   "List of keymaps worked on by `dei-define-super-like-ctlmeta-everywhere'.")
 
-;; NOTE: Below function creates many superfluous mixed bindings like
-;; C-x s-k C-t
-;; C-x s-k s-t
-;; s-x s-k C-t
-;; s-x C-k C-t
-;; s-x C-k s-t
-;;
-;; The reason: it's because s-x is bound simply to Control-X-prefix, a keymap.
-;; In addition, C-x is also bound to that keymap. Inside that keymap you can
-;; find the key C-k and now also s-k...
-;;
-;; The way keymaps are designed, it's not possible to bind only C-x C-k C-t and
-;; s-x s-k s-t, at least when the prefixes within these key descriptions bind
-;; to the same subkeymaps.  Binding both of these keys means binding every
-;; possible combination.  It's annoying in describe-keymap output, but it is
-;; possible to hide the strange combinations from the which-key popup, see
-;; README.  It may be possible to use `copy-keymap' in order to avoid this, but
-;; it has no impact on the user so I'll let it be.
-(defun dei--define-super-like-ctl-in-keymap* (map)
-  (map-keymap
-   (lambda (event definition)
-     (let ((key (key-description (vector event))))
-       (when (string-search "C-" key)
-         (unless (string-search "s-" key)
-           (push (list map (string-replace "C-" "s-" key) definition)
-                 dei--reflect-actions)
-           (when (keymapp definition)
-             ;; Recurse!
-             ;; TODO: use `copy-keymap'
-             (dei--define-super-like-ctl-in-keymap definition))))))
-   (dei--raw-keymap map)))
-
-;; (defun dei--define-super-like-ctl-in-keymap (map)
-;;   (cl-loop
-;;    for key being the key-seqs of (dei--raw-keymap map)
-;;    do (if (string-search " " key)
-;;           )
-;;            ))
-
-;; A variant that uses `copy-keymap' trick.
-;; Q: Should we use map inheritance? See `copy-keymap'.
 (defun dei--define-super-like-ctl-in-keymap (map &optional preserve)
-  (map-keymap
-   (lambda (event definition)
-     (let ((key (key-description (vector event))))
-       (when (string-search "C-" key)
-         (unless (string-search "s-" key)
-           (let ((ctlkey key)
-                 (superkey (string-replace "C-" "s-" key)))
-             (if (keymapp definition)
-                 (let ((new-submap (copy-keymap definition)))
-                   ;; Recurse!
-                   (dei--define-super-like-ctl-in-keymap new-submap)
-                   (push (list map superkey new-submap) dei--reflect-actions))
-               (push (list map superkey definition) dei--reflect-actions))
-             (unless preserve
-               (push (list map ctlkey nil) dei--reflect-actions)))))))
-   (dei--raw-keymap map)))
+  (let ((raw-map (dei--raw-keymap map)))
+    (map-keymap
+     (lambda (event ctl-definition)
+       (let ((key (key-description (vector event))))
+         (when (string-search "C-" key)
+           (unless (string-search "s-" key)
+             (let ((ctl-key key)
+                   (superkey (string-replace "C-" "s-" key)))
+               (if (lookup-key raw-map (kbd superkey))
+                   (message "User bound key, leaving it alone: %s" superkey)
+                 (if (keymapp ctl-definition)
+                     (let ((new-submap (make-sparse-keymap)))
+                       (set-keymap-parent new-submap ctl-definition)
+                       (dei--define-super-like-ctl-in-keymap new-submap) ;; Recurse!
+                       (push (list map superkey new-submap) dei--reflect-actions))
+                   (push (list map superkey ctl-definition) dei--reflect-actions)))
+               (unless preserve
+                 (push (list map ctl-key nil) dei--reflect-actions)))))))
+     raw-map)))
 
-;; (dei--define-super-like-ctl-in-keymap vertico-map t)
-;; (dei--reflect-actions-execute)
-;; (setq dei--reflect-actions nil)
+(defun dei--define-super-like-ctlmeta-in-keymap (map &optional preserve)
+  (let ((raw-map (dei--raw-keymap map)))
+    (map-keymap
+     (lambda (event cm-def)
+       (let ((key (key-description (vector event))))
+         (when (string-search "C-M-" key)
+           (unless (string-search "s-" key)
+             (let ((cm-key key)
+                   (superkey (string-replace "C-M-" "s-" key)))
+               (if (lookup-key raw-map (kbd superkey))
+                   (message "User bound key, leaving it alone: %s" superkey)
+                 (if (keymapp cm-def)
+                     (let ((new-submap (make-sparse-keymap)))
+                       (set-keymap-parent new-submap cm-def)
+                       (dei--define-super-like-ctl-in-keymap new-submap) ;; Recurse!
+                       (push (list map superkey new-submap) dei--reflect-actions))
+                   (push (list map superkey cm-def) dei--reflect-actions)))
+               (unless preserve
+                 (push (list map cm-key nil) dei--reflect-actions)))))))
+     raw-map)))
 
-;; Variant that uses map inheritance.
-(defun dei--define-super-like-ctl-in-keymap (map &optional preserve)
-  (map-keymap
-   (lambda (event definition)
-     (let ((key (key-description (vector event))))
-       (when (string-search "C-" key)
-         (unless (string-search "s-" key)
-           (let ((ctlkey key)
-                 (superkey (string-replace "C-" "s-" key)))
-             (if (keymapp definition)
-                 (let ((new-submap (make-sparse-keymap))
-                       (map-name (help-fns-find-keymap-name definition)))
-                   (set-keymap-parent new-submap definition)
-                   ;; Give it a new name
-                   ;;(when map-name
-                   ;;  (set (intern (concat "dei-super-" (symbol-name map-name)))
-                   ;;       new-submap))
-                   ;; Recurse!
-                   (dei--define-super-like-ctl-in-keymap new-submap)
-                   (push (list map superkey new-submap) dei--reflect-actions))
-               (push (list map superkey definition) dei--reflect-actions))
-             (unless preserve
-               (push (list map ctlkey nil) dei--reflect-actions)))))))
-   (dei--raw-keymap map)))
-
-(defun dei--define-super-like-ctlmeta-in-keymap (map)
-  (map-keymap
-   (lambda (event definition)
-     (let ((key (key-description (vector event))))
-       (when (string-search "C-M-" key)
-         (unless (string-search "s-" key)
-           (push (list map (string-replace "C-M-" "s-" key) definition)
-                 dei--reflect-actions)
-           (when (keymapp definition)
-             ;; Recurse!
-             (dei--define-super-like-ctlmeta-in-keymap definition))))))
-   (dei--raw-keymap map)))
-
-;; TODO: Insert customizable exceptions such that we don't bring over
-;; TAB/RET/ESC/g as s-i/s-m/s-[/s-g unless user chooses it. Ideally, we would
+;; TODO: Ideally, we would
 ;; also react to every package that binds e.g. RET, and relocate that binding
 ;; to <return>, but it's impossible to see after the fact whether the package
 ;; author wrote it as RET or as C-m and therefore how they thought of it.  I
@@ -1806,12 +1750,7 @@ This simply evaluates `current-active-maps' and adds to
 ;; something different, we might consider duplicating C-m to s-m.  Otherwise,
 ;; whatever the user chooses for C-m or s-m in the global map should tend to
 ;; stick.
-;;
-;; Note that using Super also has the comes-for-free benefit of allowing you to
-;; homogenize s-x g to s-x s-g without making you go woops i typed C-g
-;; (keyboard-quit), ditto for m, i and [.  Mind you that homogenizing should be
-;; done directly on the Super bindings /after/ making them reflect the Control
-;; bindings.
+
 (defun dei-define-super-like-ctl-everywhere ()
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--super-reflected-keymaps)

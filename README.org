@@ -291,10 +291,6 @@ An alternative if you didn't buy my kool-aid above.  This hook copies all Contro
 
 Of course it's only relevant if you hate typing Control-Meta keys, like me.  It is possible to make it so that pressing Control and Meta together pops up a special hydra for Control-Meta bindings, but in my opinion that's a nasty complication: with three modifiers to start from already, you shouldn't be lacking for available key sequences anyway.  And if you do, upgrading the hardware (get a keyboard with thumb keys) is the way to go, not contrive software to do things like this.  Chords are the enemy, why would you /start/ a key sequence with one?
 
-*** Note
-
-Unimplemented as yet: an override that tells the above hooks what to bind /different/.  Currently if you want to bind e.g. ~s-d~ to =dired-jump=, you must bind ~C-d~ to =dired-jump= and let the change propagate to ~s-d~.
-
 ** Universal argument: ~C-u M-d~, Brutus?
 
 The bindings for =universal-argument=, =digit-argument= and =negative-argument= present a conundrum.
