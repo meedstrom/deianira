@@ -245,6 +245,12 @@ sub-keymap.  As such, both of these return the same parent: \"C-\"."
         nil
       (string-join (butlast steps) " "))))
 
+(defun dei--prefix-to-stem (keydesc)
+  "Add a space to the end of KEYDESC.
+Trivial function, but useful for `mapcar' and friends."
+  (declare (pure t) (side-effect-free t))
+  (concat keydesc " "))
+
 ;; heh, when i made this a separate function, i found my code never did what i
 ;; wanted.  now fixed.  score one for small testable functions.
 (defun dei--ensure-chordonce (keydesc)

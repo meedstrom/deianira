@@ -1001,7 +1001,7 @@ To start, see `dei-async-make-hydras'."
                 (error "Timer was not cancelled before `dei--async-chomp'"))
               (setq dei--async-running t)
               (dei--echo "Running: %s" fun)
-              (funcall fun t) ;; Real work happens here
+              (funcall fun) ;; Real work happens here
               ;; If we're here, we know the above funcall exited without error,
               ;; and we can safely pop that step off the queue.
               (pop dei--async-chain)
@@ -1138,15 +1138,36 @@ If no such hydras exist, start asynchronously making them."
         (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
         (obarray-remove obarray "dei--flocks")))))
 
-(defun dei--prefix-to-stem (keydesc)
-  "Add a space to the end of KEYDESC.
-Trivial function, but useful for `mapcar' and friends."
-  (declare (pure t) (side-effect-free t))
-  (concat keydesc " "))
-
 (defvar dei--changed-stems nil)
 
-(defun dei--async-2-model-the-world (&optional _)
+(defun dei--async-1-check-settings ()
+  "Signal error if any two user settings overlap.
+Otherwise we could end up with two heads in one hydra both bound
+to the same key, no bueno."
+  (unless (--all-p (equal (symbol-value (car it)) (cdr it))
+                   dei--last-settings-alist)
+    ;; Record the newest setting values, so we can skip the relatively
+    ;; expensive calculations next time if nothing changed.
+    (setq dei--last-settings-alist
+          (cl-loop for cell in dei--last-settings-alist
+                   collect (cons (car cell) (symbol-value (car cell)))))
+    (let ((vars
+           (list (cons 'dei-hydra-keys dei--hydra-keys-list)
+                 (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
+                 (cons 'dei-invisible-leafs dei-invisible-leafs)
+                 (cons 'dei-stemless-quitters dei-stemless-quitters)
+                 (cons 'dei-inserting-quitters dei-inserting-quitters)
+                 (cons 'dei-extra-heads (mapcar #'car dei-extra-heads)))))
+      (while vars
+        (let ((var (pop vars)))
+          (cl-loop
+           for remaining-var in vars
+           do (when-let ((overlap (-intersection (cdr var)
+                                                 (cdr remaining-var))))
+                (error "Found %s in both %s and %s"
+                       overlap (car var) (car remaining-var)))))))))
+
+(defun dei--async-2-model-the-world ()
   "Calculate things."
   (with-current-buffer dei--buffer-under-analysis
     ;; Cache settings
@@ -1215,34 +1236,7 @@ Trivial function, but useful for `mapcar' and friends."
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)))
 
-(defun dei--async-1-check-settings (&optional _)
-  "Signal error if any two user settings overlap.
-Otherwise we could end up with two heads in one hydra both bound
-to the same key, no bueno."
-  (unless (--all-p (equal (symbol-value (car it)) (cdr it))
-                   dei--last-settings-alist)
-    ;; Record the newest setting values, so we can skip the relatively
-    ;; expensive calculations next time if nothing changed.
-    (setq dei--last-settings-alist
-          (cl-loop for cell in dei--last-settings-alist
-                   collect (cons (car cell) (symbol-value (car cell)))))
-    (let ((vars
-           (list (cons 'dei-hydra-keys dei--hydra-keys-list)
-                 (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
-                 (cons 'dei-invisible-leafs dei-invisible-leafs)
-                 (cons 'dei-stemless-quitters dei-stemless-quitters)
-                 (cons 'dei-inserting-quitters dei-inserting-quitters)
-                 (cons 'dei-extra-heads (mapcar #'car dei-extra-heads)))))
-      (while vars
-        (let ((var (pop vars)))
-          (cl-loop
-           for remaining-var in vars
-           do (when-let ((overlap (-intersection (cdr var)
-                                                 (cdr remaining-var))))
-                (error "Found %s in both %s and %s"
-                       overlap (car var) (car remaining-var)))))))))
-
-(defun dei--async-3-draw-blueprint (&optional chainp)
+(defun dei--async-3-draw-blueprint (&optional oneshot)
   "Draw blueprint for one of `dei--stems'.
 In other words, we compute all the arguments we'll later pass to
 `defhydra'.  Pop a stem off the list `dei--stems', transmute it into
@@ -1259,16 +1253,13 @@ the front of `dei--async-chain', until `dei--stems' is empty."
                  (h2 (dei--specify-hydra stem name)))
             (push h1 dei--hydra-blueprints)
             (push h2 dei--hydra-blueprints)
-            ;; Now we can pop the list. In the unlikely case a C-g interrupts
-            ;; execution before here, it'll lead to redundant computation but
-            ;; not break stuff.
             (pop dei--changed-stems))))
     ;; Run again if more to do
-    (and chainp
+    (and (not oneshot)
          dei--changed-stems
          (push #'dei--async-3-draw-blueprint dei--async-chain))))
 
-(defun dei--async-4-birth-hydra (&optional chainp)
+(defun dei--async-4-birth-hydra (&optional oneshot)
   "Pass a blueprint to `defhydra', turning dry-run into wet-run.
 Each invocation pops one blueprint off `dei--hydra-blueprints'.
 
@@ -1288,7 +1279,7 @@ the front of `dei--async-chain', so that we repeat until
               (set hint-sym (eval (eval hint-sym))))
             (pop dei--hydra-blueprints))))
     ;; Run again if more to do
-    (and chainp
+    (and (not oneshot)
          dei--hydra-blueprints
          (push #'dei--async-4-birth-hydra dei--async-chain))))
 
