@@ -1,6 +1,8 @@
+(require 'deianira-lib)
+
 (defcustom dei-keymap-found-hook nil
   "Run after adding one or more keymaps to `dei--known-keymaps'.
-See `dei--record-keymap-maybe', which runs this hook.
+See `dei-record-keymap-maybe', which runs this hook.
 
 You may be interested in adding some of these functions:
 
@@ -16,37 +18,35 @@ and one, but obviously ONLY ONE, of:
 (defvar dei--known-keymaps '(global-map)
   "List of named keymaps seen while `deianira-mode' was active.")
 
-(defvar dei--buffer-keymaps (make-hash-table))
+(defvar dei--known-keymap-composites nil)
 
-(defun dei--record-keymap-maybe (&optional _)
+(defun dei-record-keymap-maybe (&optional _)
   "If Emacs has seen new keymaps, record them in a variable.
 This simply checks the output of `current-active-maps' and adds
 to `dei--known-keymaps' anything not already added.  Also trigger
-`keymap-found-hook' every time a new keymap is found."
-  (let ((maps (current-active-maps))
-        (remembered-maps-for-buffer (gethash (buffer-name) dei--buffer-keymaps)))
-    ;; Make sure we only run the expensive `help-fns-find-keymap-name' once for
-    ;; this buffer, unless the keymaps actually have changed.  In addition, use
-    ;; the buffer name as a reference (instead of a buffer-local variable as
-    ;; might be more natural), because some packages work by creating and
-    ;; destroying the same buffer repeatedly.
-    ;; TODO: Maybe deprecate dei--buffer-keymaps, don't even look at buffer
-    ;; name, just (sxhash (current-active-maps))?
-    (unless (and remembered-maps-for-buffer
-                 (equal maps remembered-maps-for-buffer))
-      (puthash (buffer-name) maps dei--buffer-keymaps)
-      (when-let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
-                  (new-maps (-difference named-maps dei--known-keymaps)))
-        ;; (unless (member 'widget-global-map new-maps)
-        (setq dei--known-keymaps (append new-maps dei--known-keymaps))
-        (run-hooks 'dei-keymap-found-hook)))))
+`keymap-found-hook' every time a new keymap is found.
+
+Suitable on `window-buffer-change-functions'."
+  (require 'help-fns)
+  (let* ((maps (current-active-maps))
+         (combn-hash (sxhash maps)))
+    ;; Make sure we only iterate the expensive `help-fns-find-keymap-name' once
+    ;; for this keymap combination.
+    (unless (member combn-hash dei--known-keymap-composites)
+      (push combn-hash dei--known-keymap-composites)
+      (let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
+             (new-maps (-difference named-maps dei--known-keymaps)))
+        (setq new-maps (remove 'widget-global-map new-maps))
+        (when new-maps
+          (setq dei--known-keymaps (append new-maps dei--known-keymaps))
+          (run-hooks 'dei-keymap-found-hook))))))
 
 ;;; Reflecting one stem in another
 
 (defvar dei--reflect-actions nil
   "List of actions to pass to `define-key'.")
 
-(defvar dei--super-reflected-keymaps nil
+(defvar dei--ctl-reflected-keymaps nil
   "List of keymaps worked on by `dei-define-super-like-ctl-everywhere'.")
 
 (defvar dei--ctlmeta-reflected-keymaps nil
@@ -69,6 +69,7 @@ to `dei--known-keymaps' anything not already added.  Also trigger
                        (dei--define-super-like-ctl-in-keymap new-submap) ;; Recurse!
                        (push (list map superkey new-submap) dei--reflect-actions))
                    (push (list map superkey ctl-definition) dei--reflect-actions)))
+               ;; Eliminates many C- bindings... unbinds C-g, for example.  But does not clean up exwm-mode-map!
                (unless preserve
                  (push (list map ctl-key nil) dei--reflect-actions)))))))
      raw-map)))
@@ -120,17 +121,17 @@ to `dei--known-keymaps' anything not already added.  Also trigger
 
 (defun dei-define-super-like-ctl-everywhere ()
   (cl-loop for map in (-difference dei--known-keymaps
-                                   dei--super-reflected-keymaps)
+                                   dei--ctl-reflected-keymaps)
            do (progn
                 (dei--define-super-like-ctl-in-keymap map t)
-                (dei--reflect-actions-execute)
-                (push map dei--super-reflected-keymaps))))
+                (push map dei--ctl-reflected-keymaps))
+           finally (dei--reflect-actions-execute)))
 
 (defun dei-define-super-like-ctlmeta-everywhere ()
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--ctlmeta-reflected-keymaps)
            do (progn
-                (dei--define-super-like-ctlmeta-in-keymap map)
+                (dei--define-super-like-ctlmeta-in-keymap map t)
                 (push map dei--ctlmeta-reflected-keymaps))
            finally (dei--reflect-actions-execute)))
 
@@ -144,21 +145,8 @@ to `dei--known-keymaps' anything not already added.  Also trigger
                        ;; Remove the binding entirely
                        (and (null def)
                             (version<= "29" emacs-version)
-                            t))
-
-                ;; Known working in Emacs 29
-                ;; (define-key (dei--raw-keymap map)
-                ;;   (kbd key)
-                ;;   def
-                ;;   (when (null def)
-                ;;     t))
-
-                )
+                            t)))
            finally (setq dei--reflect-actions nil)))
-
-;; (dei-define-super-like-ctl-everywhere)
-;; (dei--update-super-reflection-2)
-;; (dei--record-keymap-maybe nil)
 
 ;;; Homogenizing
 
@@ -287,7 +275,7 @@ with \\[dei-remap-actions-execute]."
   (and
    (not (dei--key-seq-steps=1 this-key)) ;; nothing to homogenize if length 1
    (not (dei--nightmare-p this-key))
-   (not (equal keymap 'widget-global-map)) ;; REVIEW: good?
+   ;; (not (equal keymap 'widget-global-map))
    (dei--key-starts-with-modifier this-key)
    (let* ((raw-keymap (dei--raw-keymap keymap))
           (this-cmd (lookup-key-ignore-too-long raw-keymap (kbd this-key))))
@@ -556,7 +544,7 @@ Interactively, use the value of `dei--remap-actions'."
             ;; known working in emacs 29
             ;; (define-key raw-keymap (kbd conflict-prefix) nil t)
             ))
-        (push '(map keydesc old-def) dei--remap-revert-list)
+        (push (list map keydesc old-def) dei--remap-revert-list)
         (define-key raw-keymap (kbd keydesc) cmd)))))
 
 ;; Experimental

@@ -428,7 +428,7 @@ Optional argument KEYMAP means look only in that keymap."
         (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
-        (add-hook 'window-buffer-change-functions #'dei--record-keymap-maybe -68)
+        (add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe -68)
         (add-hook 'window-buffer-change-functions #'dei--react 56)
         (add-hook 'window-selection-change-functions #'dei--react)
         (add-hook 'after-change-major-mode-hook #'dei--react)
@@ -443,7 +443,7 @@ Optional argument KEYMAP means look only in that keymap."
     (named-timer-cancel 'deianira-c)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") dei--old-hydra-C-u)
-    (remove-hook 'window-buffer-change-functions #'dei--record-keymap-maybe)
+    (remove-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)
     (remove-hook 'window-buffer-change-functions #'dei--react)
     (remove-hook 'window-selection-change-functions #'dei--react)
     (remove-hook 'after-change-major-mode-hook #'dei--react)
