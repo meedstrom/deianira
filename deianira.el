@@ -49,6 +49,7 @@
 ;; our own subpackages
 (require 'deianira-lib)
 (require 'deianira-mass-remap)
+(require 'nbt)
 
 ;; muffle the compiler
 (declare-function #'dei-A/body "deianira" nil t)
@@ -438,12 +439,12 @@ Optional argument KEYMAP means look only in that keymap."
         (when (null dei-homogenizing-winners)
           (deianira-mode 0)
           (user-error "Disabling Deianira, please customize dei-homogenizing-winners")))
-    (named-timer-cancel 'deianira-at-work)
+    (named-timer-cancel (gethash 'dei--work nbt-table))
     (named-timer-cancel 'deianira-b)
     (named-timer-cancel 'deianira-c)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") dei--old-hydra-C-u)
-    (remove-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)
+    ;; (remove-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)
     (remove-hook 'window-buffer-change-functions #'dei--react)
     (remove-hook 'window-selection-change-functions #'dei--react)
     (remove-hook 'after-change-major-mode-hook #'dei--react)
@@ -943,7 +944,6 @@ out of the result, defaulting to the value of
 
 (defvar dei--buffer-under-analysis nil)
 (defvar dei--flock-under-operation nil)
-(defvar dei--async-chain nil)
 
 ;; REVIEW: Maybe just presuppose that the user sets things with Emacs 29's
 ;; `setopt'?  Lots of users won't, but we could detect a non-default value and
@@ -969,70 +969,6 @@ long as they don't change.")
 Actually it doesn't look at major or minor modes, but the
 composite of all enabled keymaps in the buffer, which is nearly
 the same thing.")
-
-(defvar dei--async-chain-last-idle-value 0)
-(defvar dei--async-chain-template
-  #'(dei--async-1-check-settings
-     dei--async-2-model-the-world
-     dei--async-3-draw-blueprint
-     dei--async-4-birth-hydra
-     dei--async-5-register))
-
-(defvar dei--async-running nil)
-
-;; TODO: spin out as a separate package, maybe "simple-thread"?
-(defun dei--async-chomp (&optional politely)
-  "Pop the next function off `dei--async-chain' and call it.
-Rinse and repeat until user does something, in which case defer
-to a short idle timer so that user is free to use Emacs.  Stop
-only when `dei--async-chain' is empty or a keyboard quit occurs
-during execution.
-
-To start, see `dei-async-make-hydras'."
-  (if (buffer-live-p dei--buffer-under-analysis)
-      (let ((fun (car-safe dei--async-chain)))
-        (condition-case err
-            (progn
-              ;; In case something called this function twice and it wasn't the
-              ;; timer that did it (if the timer ran the function, it won't be
-              ;; among the active timers while this body is executing, so the
-              ;; error isn't tripped).
-              (when (member (named-timer-get 'deianira-at-work) timer-list)
-                (error "Timer was not cancelled before `dei--async-chomp'"))
-              (setq dei--async-running t)
-              (dei--echo "Running: %s" fun)
-              (funcall fun) ;; Real work happens here
-              ;; If we're here, we know the above funcall exited without error,
-              ;; and we can safely pop that step off the queue.
-              (pop dei--async-chain)
-              ;; Schedule the next step
-              (when dei--async-chain
-                ;; Note to reader: draw a flowchart...
-                (let ((polite-delay 1.0)
-                      (idled-time (or (current-idle-time) 0)))
-                  (if (or (and politely
-                               (time-less-p polite-delay idled-time))
-                          (and (not politely)
-                               (time-less-p idled-time polite-delay)
-                               (time-less-p dei--async-chain-last-idle-value idled-time)))
-                      ;; If user hasn't done any I/O since last chomp, go go go.
-                      (named-timer-run 'deianira-at-work
-                        0 nil #'dei--async-chomp)
-                    ;; Otherwise give Emacs a moment to respond to user input.
-                    ;; (cl-incf dei--async-chain-last-idle-value .7)
-                    (named-timer-idle-run 'deianira-at-work
-                      polite-delay nil #'dei--async-chomp 'politely))
-                  (setq dei--async-chain-last-idle-value idled-time))))
-          ((error quit)
-           (dei--echo "Chain interrupted because: %s" err)
-           (setq dei--async-running nil)
-           (when (eq (car err) 'error)
-             (error "Function %s failed: %s" fun (cdr err))))))
-    (dei--echo "Canceling because buffer killed: %s" dei--buffer-under-analysis)
-    (setq dei--async-chain nil))
-  ;; The chain fully finished, so set nil.
-  (unless dei--async-chain
-    (setq dei--async-running nil)))
 
 (defvar dei--current-hash 0)
 (defvar dei--last-hash 0)
@@ -1065,82 +1001,9 @@ To start, see `dei-async-make-hydras'."
 (defvar dei--current-width (frame-width))
 (defvar dei--current-bindings nil)
 (defvar dei--last-bindings nil)
-
-;; TODO: Since even 100ms seems not enough, maybe just set a variable akin to
-;; dei--async-running.
-(defun dei--react (&rest _)
-  "Wait a moment, then call `dei-async-make-hydras' once.
-Calling this function repeatedly within the wait period will
-still only result in one call.  You can add this wrapper to
-however many potentially co-occurring hooks you like, such as
-`window-buffer-change-functions' and
-`window-selection-change-functions'."
-  (named-timer-run 'deianira-c .1 nil #'dei-async-make-hydras))
-
-;; TODO: check if last hash&width are the same, and do nothing
-(defun dei-async-make-hydras ()
-  "Set hydras to something appropriate for the buffer.
-If no such hydras exist, start asynchronously making them."
-  (interactive)
-  ;; Briefly reveal this monster variable.  (We keep it hidden in a separate
-  ;; obarray most of the time because eldoc chokes for minutes if the person
-  ;; reading this code accidentally places point on the symbol `dei--flocks'.
-  ;; Written 1995, eldoc is overdue for a timeout mechanism.)
-  (setq dei--flocks
-        (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
-  ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
-  ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
-  (let* ((hash (sxhash (current-active-maps)))
-         (some-flock (dei--first-flock-by-hash hash)))
-    ;; (if (and (equal dei--last-hash hash)
-    ;;          (equal dei--last-width (frame-width)))
-    ;;     (dei--echo "Same hash and frame width, doing nothing: %s" hash))
-    ;; If we already made hydras for this keymap composite, restore from cache.
-    (if some-flock
-        (let ((found (dei--flock-by-hash-and-width hash (frame-width))))
-          (if found
-              (dei--echo "Flock exists, making it current: %s" hash)
-            (dei--echo "Converting to %s chars wide: %s" (frame-width) hash)
-            (setq found (dei--rehint-flock some-flock))
-            (push found dei--flocks))
-          ;; Point names to already made values.  It's fucking beautiful.
-          (cl-loop for x in (dei--flock-funs found) do (fset (car x) (cdr x)))
-          (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
-          (setq dei--last-bindings (dei--flock-bindings found))
-          (setq dei--last-hash hash))
-      (if dei--async-running
-          (dei--echo "Already running chain, letting it continue")
-        (if (and dei--async-chain
-                 (not (equal dei--async-chain dei--async-chain-template))
-                 (buffer-live-p dei--buffer-under-analysis))
-            (if (<= dei--interrupt-counter 3)
-                (progn
-                  ;; NOTE: The counter decays via `dei--interrupt-decrement-ctr'
-                  (cl-incf dei--interrupt-counter)
-                  (dei--echo "Chain had been interrupted, resuming")
-                  (dei--async-chomp 'politely))
-              (deianira-mode 0)
-              (dei--echo
-               (message "3 interrupts last 5 min, disabling deianira-mode")))
-          (dei--echo "Launching new chain.  Previous value of `dei--async-chain': %s"
-                     dei--async-chain)
-          (named-timer-cancel 'deianira-at-work)
-          ;; TODO: Use the recorded frame width everywhere so we're
-          ;; consistent all the way to the last async stage.
-          (setq dei--current-width (frame-width))
-          (setq dei--buffer-under-analysis (current-buffer))
-          (setq dei--current-hash hash)
-          (setq dei--async-chain dei--async-chain-template)
-          (setq dei--async-chain-last-idle-value 0) ;; so chomp won't wait
-          (dei--async-chomp)))
-      ;; Clean up after ourselves
-      (unless dei--async-running
-        (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
-        (obarray-remove obarray "dei--flocks")))))
-
 (defvar dei--changed-stems nil)
 
-(defun dei--async-1-check-settings ()
+(defun dei--step-1-check-settings ()
   "Signal error if any two user settings overlap.
 Otherwise we could end up with two heads in one hydra both bound
 to the same key, no bueno."
@@ -1167,7 +1030,7 @@ to the same key, no bueno."
                 (error "Found %s in both %s and %s"
                        overlap (car var) (car remaining-var)))))))))
 
-(defun dei--async-2-model-the-world ()
+(defun dei--step-2-model-the-world ()
   "Calculate things."
   (with-current-buffer dei--buffer-under-analysis
     ;; Cache settings
@@ -1236,7 +1099,7 @@ to the same key, no bueno."
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)))
 
-(defun dei--async-3-draw-blueprint (&optional oneshot)
+(defun dei--step-3-draw-blueprint (&optional oneshot)
   "Draw blueprint for one of `dei--stems'.
 In other words, we compute all the arguments we'll later pass to
 `defhydra'.  Pop a stem off the list `dei--stems', transmute it into
@@ -1244,6 +1107,7 @@ a blueprint pushed onto the list `dei--hydra-blueprints'.
 
 With CHAINP non-nil, add another invocation of this function to
 the front of `dei--async-chain', until `dei--stems' is empty."
+  (require 'map)
   (unwind-protect
       (when dei--changed-stems
         (with-current-buffer dei--buffer-under-analysis
@@ -1254,34 +1118,23 @@ the front of `dei--async-chain', until `dei--stems' is empty."
             (push h1 dei--hydra-blueprints)
             (push h2 dei--hydra-blueprints)
             (pop dei--changed-stems))))
-    ;; Run again if more to do
-    (and (not oneshot)
-         dei--changed-stems
-         (push #'dei--async-3-draw-blueprint dei--async-chain))))
+    ;; Run again if more to do.
+    ;;
+    ;; FWIW, would be great if a problem in the user-written function didn't
+    ;; cause the thread to run forever. What we see here is essentially a
+    ;; while-loop pattern; it's safer to have a fixed list yielding a
+    ;; predetermined number of iterations.  Although you could just instruct the
+    ;; user of nbt to pop the list the first thing they do in a function like
+    ;; this.  Recover in different way, like through condition-case push the
+    ;; let-bound old value back on the list if that's needed for some reason.
+    ;;
+    ;; Point out it's not unlikely someone interrupts with C-g, precisely
+    ;; because the function will repeat many times until done, and user may be
+    ;; doing things.
+    (when dei--changed-stems
+      (unless oneshot
+        (push #'dei--step-3-draw-blueprint (nbt-chain 'dei--work))))))
 
-(defun dei--async-4-birth-hydra (&optional oneshot)
-  "Pass a blueprint to `defhydra', turning dry-run into wet-run.
-Each invocation pops one blueprint off `dei--hydra-blueprints'.
-
-With CHAINP non-nil, add another invocation of this function to
-the front of `dei--async-chain', so that we repeat until
-`dei--hydra-blueprints' empty."
-  (unwind-protect
-      (when dei--hydra-blueprints
-        (with-current-buffer dei--buffer-under-analysis
-          (let ((blueprint (car dei--hydra-blueprints)))
-            (unless blueprint
-              (error "Blueprint should not be nil"))
-            (dei--try-birth-hydra (car blueprint) (cdr blueprint))
-            ;; Turn the dynamic sexp into a static string, since there is
-            ;; nothing dynamic in the input anyway.
-            (let ((hint-sym (intern-soft (concat (car blueprint) "/hint"))))
-              (set hint-sym (eval (eval hint-sym))))
-            (pop dei--hydra-blueprints))))
-    ;; Run again if more to do
-    (and (not oneshot)
-         dei--hydra-blueprints
-         (push #'dei--async-4-birth-hydra dei--async-chain))))
 
 ;; TODO: figure out if it's necessary to respecify heads due to changed
 ;; dei--filler and if so how to get the effect here (theory: we don't need filler
@@ -1321,8 +1174,33 @@ the front of `dei--async-chain', so that we repeat until
 ;; (setq bar (dei--rehint-flock (car dei--flocks)))
 ;; (--filter (string-suffix-p "/hint" (symbol-name (car it)))
 ;;           (caddr bar))
+;;
 
-(defun dei--async-5-register (&optional _)
+(defun dei--step-4-birth-hydra (&optional oneshot)
+  "Pass a blueprint to `defhydra', turning dry-run into wet-run.
+Each invocation pops one blueprint off `dei--hydra-blueprints'.
+
+With CHAINP non-nil, add another invocation of this function to
+the front of `dei--async-chain', so that we repeat until
+`dei--hydra-blueprints' empty."
+  (unwind-protect
+      (when dei--hydra-blueprints
+        (with-current-buffer dei--buffer-under-analysis
+          (let ((blueprint (car dei--hydra-blueprints)))
+            (unless blueprint
+              (error "Blueprint should not be nil"))
+            (dei--try-birth-hydra (car blueprint) (cdr blueprint))
+            ;; Turn the dynamic sexp into a static string, since there is
+            ;; nothing dynamic in the input anyway.
+            (let ((hint-sym (intern-soft (concat (car blueprint) "/hint"))))
+              (set hint-sym (eval (eval hint-sym))))
+            (pop dei--hydra-blueprints))))
+    ;; Run again if more to do
+    (when dei--hydra-blueprints
+      (unless oneshot
+        (push #'dei--step-4-birth-hydra (nbt-chain 'dei--work))))))
+
+(defun dei--step-5-register (&optional _)
   "Record the hydras made under this keymap combination."
   ;; (when (assoc dei--current-hash dei--flocks)
     ;; (error "Hash already recorded: %s" dei--current-hash))
@@ -1351,16 +1229,83 @@ the front of `dei--async-chain', so that we repeat until
            :vars vars
            :bindings dei--current-bindings)
           dei--flocks)
-    (dei--echo "Flock #%s born: %s" (length dei--flocks) dei--current-hash)
+    (nbt-echo "Flock #%s born: %s" (length dei--flocks) dei--current-hash)
     (setq dei--last-bindings dei--current-bindings)
     (setq dei--last-hash dei--current-hash)
     ;; Now hide this monster variable.  See other use of `dei--hidden-obarray'.
     (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
     (obarray-remove obarray "dei--flocks")))
 
-
-;;;; Bonus functions for mass remaps
+(nbt-make 'dei--work
+          '(dei--step-1-check-settings
+            dei--step-2-model-the-world
+            dei--step-3-draw-blueprint
+            dei--step-4-birth-hydra
+            dei--step-5-register))
 
+(defun dei-make-hydras-maybe ()
+  (nbt-run 'dei--work
+
+    :on-interrupt-discovered
+    (defun dei--work-actions-on-interrupt ()
+      (if (<= dei--interrupt-counter 3)
+          (cl-incf dei--interrupt-counter)
+        (deianira-mode 0)
+        (nbt-echo
+         (message "3 interrupts last 5 min, disabling deianira-mode"))
+        'abort))
+
+    :on-start
+    (defun dei--work-actions-on-start ()
+      (setq dei--flocks
+            (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
+      ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
+      ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
+      (let* ((hash (sxhash (current-active-maps)))
+             (some-flock (dei--first-flock-by-hash hash)))
+        ;; (if (and (equal dei--last-hash hash)
+        ;;          (equal dei--last-width (frame-width)))
+        ;;     (nbt-echo "Same hash and frame width, doing nothing: %s" hash))
+        ;; If we already made hydras for this keymap composite, restore from cache.
+        (if some-flock
+            (let ((found (dei--flock-by-hash-and-width hash (frame-width))))
+              (if found
+                  (nbt-echo "Flock exists, making it current: %s" hash)
+                (nbt-echo "Converting to %s chars wide: %s" (frame-width) hash)
+                (setq found (dei--rehint-flock some-flock))
+                (push found dei--flocks))
+              ;; Point names to already made values.  It's fucking beautiful.
+              (cl-loop for x in (dei--flock-funs found) do (fset (car x) (cdr x)))
+              (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
+              (setq dei--last-bindings (dei--flock-bindings found))
+              (setq dei--last-hash hash)
+              'abort)
+          (setq dei--current-width (frame-width))
+          (setq dei--buffer-under-analysis (current-buffer))
+          (setq dei--current-hash hash))))
+
+    :per-stage
+    (defun dei--work-actions-per-stage ()
+      (unless (buffer-live-p dei--buffer-under-analysis)
+        (nbt-echo "Cancelling because buffer killed: %s" dei--buffer-under-analysis)
+        'abort))
+
+    :on-abort
+    (defun dei--work-actions-on-abort ()
+      ;; Hide monster variable
+      (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
+      (obarray-remove obarray "dei--flocks"))))
+
+;; TODO: Since even 100ms seems not enough, maybe just set a variable akin to
+;; dei--async-running.
+(defun dei--react (&rest _)
+  "Wait a moment, then call `dei-async-make-hydras' once.
+Calling this function repeatedly within the wait period will
+still only result in one call.  You can add this wrapper to
+however many potentially co-occurring hooks you like, such as
+`window-buffer-change-functions' and
+`window-selection-change-functions'."
+  (named-timer-run 'deianira-c .1 nil #'dei-make-hydras-maybe))
 
 
 ;;;; Debug toolkit
