@@ -429,7 +429,7 @@ Optional argument KEYMAP means look only in that keymap."
         (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
-        (add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe -68)
+        ;; (add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe -68)
         (add-hook 'window-buffer-change-functions #'dei--react 56)
         (add-hook 'window-selection-change-functions #'dei--react)
         (add-hook 'after-change-major-mode-hook #'dei--react)
@@ -702,7 +702,7 @@ heads suited for a nonum hydra, see `dei--convert-head-for-nonum'."
                     collect `(,key nil :exit t)))
        ,@extras))))
 
-;; Massive list of heads
+;; Grand merged list of heads
 
 (defun dei--specify-hydra (stem name &optional nonum-p)
   "Return a list of hydra heads, with NAME as first element.
@@ -730,7 +730,7 @@ instead of anything else they may have been bound to."
 ;; TODO: Make it even faster.  It's a bit slow because defhydra does a lot of
 ;; heavy lifting.  Approaches: 1. give up on the self-inserting quitters
 ;; (principally capital keys) since there are many of those heads. 2. Give up
-;; on nonum hydras. 3. Make a focused variant of defhydra (possible?).
+;; on nonum hydras. 3. Make a focused subset of defhydra (possible?).
 (defun dei--try-birth-hydra (name list-of-heads)
   "Create a hydra named NAME with LIST-OF-HEADS.
 This will probably be called by `dei--generate-hydras',
@@ -748,7 +748,8 @@ which see."
           t)))
 
 
-;;;; Keymap scanner and mess-up-er
+;;;; Keymap scanner used by async worker
+;; TODO: move clean-actions stuff to deianira-mass-remap.el
 
 ;;; Unbinding ugly keys
 
@@ -941,9 +942,14 @@ out of the result, defaulting to the value of
 ;; Persistent variables helpful for debugging
 (defvar dei--stems nil)
 (defvar dei--hydra-blueprints nil)
-
 (defvar dei--buffer-under-analysis nil)
 (defvar dei--flock-under-operation nil)
+(defvar dei--current-hash 0)
+(defvar dei--last-hash 0)
+(defvar dei--current-width (frame-width))
+(defvar dei--current-bindings nil)
+(defvar dei--last-bindings nil)
+(defvar dei--changed-stems nil)
 
 ;; REVIEW: Maybe just presuppose that the user sets things with Emacs 29's
 ;; `setopt'?  Lots of users won't, but we could detect a non-default value and
@@ -970,9 +976,6 @@ Actually it doesn't look at major or minor modes, but the
 composite of all enabled keymaps in the buffer, which is nearly
 the same thing.")
 
-(defvar dei--current-hash 0)
-(defvar dei--last-hash 0)
-
 (cl-defstruct (dei--flock
                (:constructor dei--flock-record)
                (:copier nil))
@@ -998,12 +1001,7 @@ the same thing.")
                      (eq width (dei--flock-width flock)))
            return flock))
 
-(defvar dei--current-width (frame-width))
-(defvar dei--current-bindings nil)
-(defvar dei--last-bindings nil)
-(defvar dei--changed-stems nil)
-
-(defun dei--step-1-check-settings ()
+(defun dei--step-1-check-settings (&rest _)
   "Signal error if any two user settings overlap.
 Otherwise we could end up with two heads in one hydra both bound
 to the same key, no bueno."
@@ -1030,7 +1028,7 @@ to the same key, no bueno."
                 (error "Found %s in both %s and %s"
                        overlap (car var) (car remaining-var)))))))))
 
-(defun dei--step-2-model-the-world ()
+(defun dei--step-2-model-the-world (&rest _)
   "Calculate things."
   (with-current-buffer dei--buffer-under-analysis
     ;; Cache settings
@@ -1154,9 +1152,9 @@ the front of `dei--async-chain', until `dei--stems' is empty."
            collect
            (let ((basename (substring (symbol-name (car pair)) 0 -5)))
              (cons (car pair)
-                   ;; NOTE: here we actually eval the output of hydra--format
-                   ;; to get a static string instead of a sexp, in hopes of
-                   ;; ameliorating the performance issue in `lv-message'.
+                   ;; Note that we eval for a static string, see also
+                   ;; `dei--step-4-birth-hydra'.  It's ok bc there is nothing
+                   ;; deterministic in the input.
                    (eval (hydra--format
                           ;; These arguments will be identical to what `defhydra'
                           ;; passed to `hydra--format' the first time around. The
@@ -1255,6 +1253,7 @@ the front of `dei--async-chain', so that we repeat until
          (message "3 interrupts last 5 min, disabling deianira-mode"))
         'abort))
 
+    ;; REVIEW: can this move to a Step 0 inside the chain?
     :on-start
     (defun dei--work-actions-on-start ()
       (setq dei--flocks

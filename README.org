@@ -590,6 +590,10 @@ If you do this under a prefix that changes a lot between major modes, like C-c, 
 - It can happen that the command should be bound to a sub-hydra but isn't.
 - The heads' individual =:exit= flags also do not change, so they can be inappropriate for the current buffer, not reflecting =dei-quitter-keys= or related variables.
 
+** Hydra hint width is wrong
+
+Can happen when you resize the frame.
+
 * Pre-release TODOs
 ** Fix critical bug: data destruction
 
