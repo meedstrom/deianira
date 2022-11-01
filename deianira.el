@@ -1091,7 +1091,7 @@ to the same key, no bueno."
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)))
 
-(defun dei--step-3-draw-blueprint (&optional chain-state oneshot)
+(defun dei--step-3-draw-blueprint (&optional chain-name oneshot)
   "Draw blueprint for first item of `dei--stems'.
 Specifically, pop a stem off the list `dei--stems', transmute it into
 a blueprint, and push that onto the list `dei--hydra-blueprints'.
@@ -1101,9 +1101,10 @@ precompute as much as possible, that we'll later pass to
 `defhydra', see `dei--step-4-birth-hydra'.
 
 Repeatedly add another invocation of this function to the front
-of CHAIN-STATE, so it will run again until `dei--stems' is
-empty.  With ONESHOT non-nil, don't do that (so the programmer
-can debug by running the function once by itself)."
+of chain identified by CHAIN-NAME, so it will run again until
+`dei--stems' is empty.  With ONESHOT non-nil, don't do that (so
+the programmer can debug by running the function once by
+itself)."
   (unwind-protect
       (when dei--changed-stems
         (with-current-buffer dei--buffer-under-analysis
@@ -1129,7 +1130,7 @@ can debug by running the function once by itself)."
     ;; doing things.
     (when dei--changed-stems
       (unless oneshot
-        (push #'dei--step-3-draw-blueprint chain-state)))))
+        (push #'dei--step-3-draw-blueprint (chain-state chain-name))))))
 
 ;; TODO: figure out if it's necessary to respecify heads due to changed
 ;; dei--filler and if so how to get the effect here (theory: we don't need filler
@@ -1171,14 +1172,15 @@ can debug by running the function once by itself)."
 ;;           (caddr bar))
 ;;
 
-(defun dei--step-4-birth-hydra (&optional chain-state oneshot)
+(defun dei--step-4-birth-hydra (&optional chain-name oneshot)
   "Pass a blueprint to `defhydra', wetting the dry-run.
 Each invocation pops one blueprint off `dei--hydra-blueprints'.
 
 Repeatedly add another invocation of this function to the front
-of CHAIN-STATE, so it will run again until `dei--hydra-blueprints' is
-empty.  With ONESHOT non-nil, don't do that (so the programmer
-can debug by running the function once by itself)."
+of chain identified by CHAIN-NAME, so it will run again until
+`dei--hydra-blueprints' is empty.  With ONESHOT non-nil, don't do
+that (so the programmer can debug by running the function once by
+itself)."
   (unwind-protect
       (when dei--hydra-blueprints
         (with-current-buffer dei--buffer-under-analysis
@@ -1194,7 +1196,7 @@ can debug by running the function once by itself)."
     ;; Run again if more to do
     (when dei--hydra-blueprints
       (unless oneshot
-        (push #'dei--step-4-birth-hydra chain-state)))))
+        (push #'dei--step-4-birth-hydra (chain-state chain-name))))))
 
 (defun dei--step-5-register (&optional _)
   "Record the hydras made under this keymap combination."
