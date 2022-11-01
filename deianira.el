@@ -24,7 +24,7 @@
 ;; Version: 0.1.0
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
+;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (chain "0.1.0"))
 
 ;;; Commentary:
 
@@ -45,11 +45,11 @@
 (require 'dash)
 (require 'hydra)
 (require 'named-timer) ;; emacs core when? just 70 lines
+(require 'chain) ;; was part of deianira.el
 
 ;; our own subpackages
 (require 'deianira-lib)
 (require 'deianira-mass-remap)
-(require 'chain)
 
 ;; muffle the compiler
 (declare-function #'dei-A/body "deianira" nil t)
@@ -1251,7 +1251,7 @@ itself)."
         (deianira-mode 0)
         (chain-echo
          (message "3 interrupts last 5 min, disabling deianira-mode"))
-        'abort))
+        'please-abort))
 
     ;; REVIEW: can this move to a Step 0 inside the chain?
     :on-start
@@ -1278,7 +1278,7 @@ itself)."
               (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
               (setq dei--last-bindings (dei--flock-bindings found))
               (setq dei--last-hash hash)
-              'abort)
+              'please-abort)
           (setq dei--current-width (frame-width))
           (setq dei--buffer-under-analysis (current-buffer))
           (setq dei--current-hash hash))))
@@ -1287,7 +1287,7 @@ itself)."
     (defun dei--work-actions-per-stage ()
       (unless (buffer-live-p dei--buffer-under-analysis)
         (chain-echo "Cancelling because buffer killed: %s" dei--buffer-under-analysis)
-        'abort))
+        'please-abort))
 
     :on-abort
     (defun dei--work-actions-on-abort ()
@@ -1309,20 +1309,20 @@ however many potentially co-occurring hooks you like, such as
 
 ;;;; Debug toolkit
 
-;; FIXME
-(defun dei-regenerate-hydras-for-this-buffer ()
-  (interactive)
-  (require 'map)
-  (let ((hash (sxhash (current-active-maps))))
-    (setq dei--flocks (map-delete dei--flocks hash))
-    (dei-async-make-hydras)))
+;; ;; FIXME
+;; (defun dei-regenerate-hydras-for-this-buffer ()
+;;   (interactive)
+;;   (require 'map)
+;;   (let ((hash (sxhash (current-active-maps))))
+;;     (setq dei--flocks (map-delete dei--flocks hash))
+;;     (dei-async-make-hydras)))
 
-;; FIXME
-(defun dei--reset ()
-  (interactive)
-  (setq dei--async-chain nil)
-  (setq dei--async-running nil)
-  (named-timer-cancel 'dei--work))
+;; ;; FIXME
+;; (defun dei--reset ()
+;;   (interactive)
+;;   (setq dei--async-chain nil)
+;;   (setq dei--async-running nil)
+;;   (named-timer-cancel 'dei--work))
 
 (defun dei-remap-actions-preview (&optional silently)
   "For convenience while debugging."
