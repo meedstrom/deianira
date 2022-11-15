@@ -402,8 +402,15 @@ Optional argument KEYMAP means look only in that keymap."
   :keymap (make-sparse-keymap)
   (if deianira-mode
       (progn
-        (setf (chain-running 'dei--work) nil)
-        (setf (chain-state 'dei--work) nil)
+        ;; (setf (chain-running 'dei--work) nil)
+        ;; (setf (chain-state 'dei--work) nil)
+        ;; Reinit state
+        (chain-define 'dei--work
+                      '(dei--step-1-check-settings
+                        dei--step-2-model-the-world
+                        dei--step-3-draw-blueprint
+                        dei--step-4-birth-hydra
+                        dei--step-5-register))
         (setq dei--interrupt-counter 0)
         (named-timer-run 'deianira-b 300 300 #'dei--interrupt-decrement-ctr)
         (setq dei--old-hydra-cell-format hydra-cell-format)
@@ -1233,13 +1240,6 @@ itself)."
     ;; Now hide this monster variable.  See other use of `dei--hidden-obarray'.
     (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
     (obarray-remove obarray "dei--flocks")))
-
-(chain-define 'dei--work
-              '(dei--step-1-check-settings
-                dei--step-2-model-the-world
-                dei--step-3-draw-blueprint
-                dei--step-4-birth-hydra
-                dei--step-5-register))
 
 (defun dei-make-hydras-maybe ()
   (chain-run 'dei--work

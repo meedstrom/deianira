@@ -74,17 +74,22 @@ If you have a question, welcome to file a GitHub issue or send a message to http
 
 ** Getting the package
 
+The package is not yet on (M)ELPA.
+
 With [[https://github.com/raxod502/straight.el][straight.el]], you can install the package like so:
 
 #+begin_src elisp
 (use-package deianira
   :straight (deianira :type git :host github :repo "meedstrom/deianira"))
+(use-package chain ;; dependency of deianira
+  :straight (deianira :type git :host github :repo "meedstrom/chain"))
 #+end_src
 
 Alternatively with Doom Emacs, this goes in =packages.el=:
 
 #+begin_src elisp
 (package! deianira :recipe (:host github :repo "meedstrom/deianira"))
+(package! chain :recipe (:host github :repo "meedstrom/chain"))
 #+end_src
 
 ** dual-function-keys
