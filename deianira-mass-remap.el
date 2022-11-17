@@ -1,32 +1,46 @@
+;;; deianira-mass-remap.el --- rebind keys systematically -*- lexical-binding: t -*-
+
+;;; Commentary:
+
+;; Will probably be spun out as a standalone package.
+
+;;; Code:
+
 (require 'deianira-lib)
+(require 'dash)
 
 (defcustom dei-keymap-found-hook nil
   "Run after adding one or more keymaps to `dei--known-keymaps'.
-See `dei-record-keymap-maybe', which runs this hook.
+See `dei-record-keymap-maybe', which triggers this hook.
 
 You may be interested in adding some of these functions:
 
 - `dei-homogenize-all-keymaps'
-
-and one, but obviously ONLY ONE, of:
-
+- `dei-define-alt-like-meta-everywhere'
 - `dei-define-super-like-ctl-everywhere'
 - `dei-define-super-like-ctlmeta-everywhere'"
   :type 'hook
   :group 'deianira)
 
+;; REVIEW: Can we get away without global-map as an initial member?
 (defvar dei--known-keymaps '(global-map)
-  "List of named keymaps seen while `deianira-mode' was active.")
+  "List of named keymaps seen active.
+This typically gets populated (by `dei-record-keymap-maybe') with
+just mode maps, rarely (never?) transient maps and never
+so-called prefix commands like Control-X-prefix nor the category
+of sub-keymaps like ctl-x-map or help-map.")
 
 (defvar dei--known-keymap-composites nil)
 
 (defun dei-record-keymap-maybe (&optional _)
   "If Emacs has seen new keymaps, record them in a variable.
 This simply checks the output of `current-active-maps' and adds
-to `dei--known-keymaps' anything not already added.  Also trigger
-`keymap-found-hook' every time a new keymap is found.
+to `dei--known-keymaps' anything not already added.  Every time
+we find one or more new keymaps, trigger `dei-keymap-found-hook'.
 
-Suitable on `window-buffer-change-functions'."
+Suitable to trigger from `window-buffer-change-functions':
+
+(add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)"
   (require 'help-fns)
   (let* ((maps (current-active-maps))
          (combn-hash (sxhash maps)))
@@ -36,104 +50,18 @@ Suitable on `window-buffer-change-functions'."
       (push combn-hash dei--known-keymap-composites)
       (let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
              (new-maps (-difference named-maps dei--known-keymaps)))
+        ;; idk what is widget-global-map, but ignoring it works on my machine
         (setq new-maps (remove 'widget-global-map new-maps))
         (when new-maps
           (setq dei--known-keymaps (append new-maps dei--known-keymaps))
           (run-hooks 'dei-keymap-found-hook))))))
+;; (dei-record-keymap-maybe)
 
+
 ;;; Reflecting one stem in another
 
 (defvar dei--reflect-actions nil
   "List of actions to pass to `define-key'.")
-
-(defvar dei--ctl-reflected-keymaps nil
-  "List of keymaps worked on by `dei-define-super-like-ctl-everywhere'.")
-
-(defvar dei--ctlmeta-reflected-keymaps nil
-  "List of keymaps worked on by `dei-define-super-like-ctlmeta-everywhere'.")
-
-(defun dei--define-super-like-ctl-in-keymap (map &optional preserve)
-  (let ((raw-map (dei--raw-keymap map)))
-    (map-keymap
-     (lambda (event ctl-definition)
-       (let ((key (key-description (vector event))))
-         (when (string-search "C-" key)
-           (unless (string-search "s-" key)
-             (let ((ctl-key key)
-                   (superkey (string-replace "C-" "s-" key)))
-               (if (lookup-key raw-map (kbd superkey))
-                   (message "User bound key, leaving it alone: %s" superkey)
-                 (if (keymapp ctl-definition)
-                     (let ((new-submap (make-sparse-keymap)))
-                       (set-keymap-parent new-submap ctl-definition)
-                       (dei--define-super-like-ctl-in-keymap new-submap) ;; Recurse!
-                       (push (list map superkey new-submap) dei--reflect-actions))
-                   (push (list map superkey ctl-definition) dei--reflect-actions)))
-               ;; Eliminates many C- bindings... unbinds C-g, for example.  But does not clean up exwm-mode-map!
-               (unless preserve
-                 (push (list map ctl-key nil) dei--reflect-actions)))))))
-     raw-map)))
-
-(defun dei--define-super-like-ctlmeta-in-keymap (map &optional preserve)
-  (let ((raw-map (dei--raw-keymap map)))
-    (map-keymap
-     (lambda (event cm-def)
-       (let ((key (key-description (vector event))))
-         (when (string-search "C-M-" key)
-           (unless (string-search "s-" key)
-             (let ((cm-key key)
-                   (superkey (string-replace "C-M-" "s-" key)))
-               (if (lookup-key raw-map (kbd superkey))
-                   (message "User bound key, leaving it alone: %s" superkey)
-                 (if (keymapp cm-def)
-                     (let ((new-submap (make-sparse-keymap)))
-                       (set-keymap-parent new-submap cm-def)
-                       (dei--define-super-like-ctl-in-keymap new-submap) ;; Recurse!
-                       (push (list map superkey new-submap) dei--reflect-actions))
-                   (push (list map superkey cm-def) dei--reflect-actions)))
-               (unless preserve
-                 (push (list map cm-key nil) dei--reflect-actions)))))))
-     raw-map)))
-
-;; TODO: A minimal alternative.  React to every package that binds C-m or RET
-;; (synonyms for the same event), and copy that binding to <return>.  That way,
-;; the Return key works as expected even if user then changes C-m to something
-;; else.  Ditto for TAB/C-i, copied to <tab>.  However, user has to hold off on
-;; binding C-m until on keymap-found-hook, after the function that does this.
-(defun dei--protect-ret-and-tab (map)
-  (cl-loop for key being the key-seqs of map
-           with retkeys
-           with tabkeys
-           if (or (string-search "C-m" key)
-                  (string-search "RET" key))
-           collect key into retkeys
-           else if (or (string-search "C-i" key)
-                       (string-search "TAB" key))
-           collect key into tabkeys
-           finally do
-           (cl-loop for retkey in retkeys
-                    do
-                    (define-key map (kbd (string-replace
-                                          "C-m" "<return>" (string-replace
-                                                            "RET" "<return>" retkey)))
-                      (lookup-key map key)))
-           ))
-
-(defun dei-define-super-like-ctl-everywhere ()
-  (cl-loop for map in (-difference dei--known-keymaps
-                                   dei--ctl-reflected-keymaps)
-           do (progn
-                (dei--define-super-like-ctl-in-keymap map t)
-                (push map dei--ctl-reflected-keymaps))
-           finally (dei--reflect-actions-execute)))
-
-(defun dei-define-super-like-ctlmeta-everywhere ()
-  (cl-loop for map in (-difference dei--known-keymaps
-                                   dei--ctlmeta-reflected-keymaps)
-           do (progn
-                (dei--define-super-like-ctlmeta-in-keymap map t)
-                (push map dei--ctlmeta-reflected-keymaps))
-           finally (dei--reflect-actions-execute)))
 
 (defun dei--reflect-actions-execute ()
   (cl-loop for arglist in dei--reflect-actions
@@ -148,6 +76,116 @@ Suitable on `window-buffer-change-functions'."
                             t)))
            finally (setq dei--reflect-actions nil)))
 
+(defun dei--define-a-like-b-in-keymap (recipient-mod donor-mod map &optional preserve)
+  (let ((raw-map (dei--raw-keymap map)))
+    (map-keymap
+     (lambda (event donor-def)
+       (let ((key (key-description (vector event))))
+         (when (string-search donor-mod key)
+           (unless (string-search recipient-mod key)
+             (let ((donor-fullkey key)
+                   (recipient-fullkey (string-replace donor-mod recipient-mod key)))
+               (if (lookup-key raw-map (kbd recipient-fullkey))
+                   (message "User bound key, leaving it alone: %s" recipient-fullkey)
+                 (if (keymapp donor-def)
+                     (let ((new-submap (make-sparse-keymap)))
+                       (set-keymap-parent new-submap donor-def)
+                       (dei--define-a-like-b-in-keymap recipient-mod donor-mod new-submap) ;; Recurse!
+                       (push (list map recipient-fullkey new-submap) dei--reflect-actions))
+                   (push (list map recipient-fullkey donor-def) dei--reflect-actions)))
+               ;; This boolean comes into play when we recurse.  Basically at
+               ;; the top level you want to preserve the donor key, but inside
+               ;; sublevels remove them, so as to avoid having a multitude of
+               ;; useless combinations like s-x C-a s-i C-g...
+               (unless preserve
+                 (push (list map donor-fullkey nil) dei--reflect-actions)))))))
+     raw-map)))
+
+(defvar dei--ctl-reflected-keymaps nil
+  "List of keymaps worked on by `dei-define-super-like-ctl-everywhere'.")
+
+(defvar dei--ctlmeta-reflected-keymaps nil
+  "List of keymaps worked on by `dei-define-super-like-ctlmeta-everywhere'.")
+
+(defvar dei--alt-reflected-keymaps nil
+  "List of keymaps worked on by `dei-define-alt-like-meta-everywhere'.")
+
+(defun dei-define-super-like-ctl-everywhere ()
+  "Duplicate all Control bindings to exist also on Super.
+Best on `dei-keymap-found-hook'."
+  (cl-loop for map in (-difference dei--known-keymaps
+                                   dei--ctl-reflected-keymaps)
+           do (progn
+                (dei--define-a-like-b-in-keymap "s-" "C-" map t)
+                (push map dei--ctl-reflected-keymaps))
+           finally (dei--reflect-actions-execute)))
+
+(defun dei-define-super-like-ctlmeta-everywhere ()
+  "Duplicate all Control bindings to exist also on Super.
+Best on `dei-keymap-found-hook'."
+  (cl-loop for map in (-difference dei--known-keymaps
+                                   dei--ctlmeta-reflected-keymaps)
+           do (progn
+                (dei--define-a-like-b-in-keymap "s-" "C-M-" map t)
+                (push map dei--ctlmeta-reflected-keymaps))
+           finally (dei--reflect-actions-execute)))
+
+(defun dei-define-alt-like-meta-everywhere ()
+  "Duplicate all Meta bindings to exist also on Alt.
+Best on `dei-keymap-found-hook'.
+
+Useful in certain environments, such as inside UserLand on an
+Android tablet with a Mac keyboard, where the Option key emits A-
+instead of M-.
+
+May also interest to people looking to break with the past where
+ESC behaves like a sticky Meta.  Unsurprisingly, ESC isn't a
+sticky Alt.  The benefit is unclear though: you'd be able to use
+ESC as another function key in the TTY, but you'd have to set up
+the console to emit Alt codes instead of Meta to benefit, and a
+console capable of such would also be capable of simply emitting
+F13 in place of ESC, which seems easier."
+  (cl-loop for map in (-difference dei--known-keymaps
+                                   dei--alt-reflected-keymaps)
+           do (progn
+                (dei--define-a-like-b-in-keymap "A-" "M-" map t)
+                (push map dei--alt-reflected-keymaps))
+           finally (dei--reflect-actions-execute)))
+
+;; FIXME: Find a way to let user hold off on binding C-i/C-m until after
+;;        keymap-found-hook has triggered this function on the given keymap.
+;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m.
+(defun dei--protect-ret-and-tab (map)
+  "In MAP, look for control character representations of C-m and
+C-i, and duplicate their bindings to the function keys <return>
+and <tab>.  This permits you to bind C-m and C-i to other
+commands under GUI Emacs without clobbering the Return and Tab
+keys' behavior."
+  (cl-loop for key being the key-seqs of map
+           with retkeys
+           with tabkeys
+           if (or (string-search "C-m" key)
+                  (string-search "RET" key))
+           collect key into retkeys
+           else if (or (string-search "C-i" key)
+                       (string-search "TAB" key))
+           collect key into tabkeys
+           finally do
+           (progn
+             (cl-loop for retkey in retkeys
+                      do (define-key map
+                           (kbd (string-replace
+                                 "C-m" "<return>" (string-replace
+                                                   "RET" "<return>" retkey)))
+                           (lookup-key map key)))
+             (cl-loop for tabkey in tabkeys
+                      do (define-key map
+                           (kbd (string-replace
+                                 "C-i" "<tab>" (string-replace
+                                                "TAB" "<tab>" tabkey)))
+                           (lookup-key map key))))))
+
+
 ;;; Homogenizing
 
 (defcustom dei-homogenizing-winners '()
@@ -189,10 +227,13 @@ map)."
 
 (defun dei--key-seq-has-non-prefix-in-prefix (keymap keydesc)
   "Does KEYDESC contain a bound command in its prefix?
-For example: C-x C-v is bound to a simple command by default, so
-if you attempt to bind C-x C-v C-x to a command, you get an
-error.  So here we check for that.  If KEYDESC is C-x C-v C-x, we
-check if either C-x or C-x C-v are bound to anything.
+For example: C-x C-v is bound to a simple command by default, so if
+you attempt to bind C-x C-v C-x to a command, you get an error.
+So here we check for that.
+
+If KEYDESC is for example C-x C-v C-x, return non-nil if either
+C-x or C-x C-v are bound to a command.  If both of them are bound
+to either nothing or a prefix map, it's okay, so return nil.
 
 Does not additionally check that KEYDESC is not itself a prefix
 map with children bound: that's another thing that can make KEYDESC
@@ -221,39 +262,47 @@ KEYMAP is the keymap in which to look."
   "List of actions to pass to `define-key'.")
 
 (defun dei--nightmare-p (keydesc)
-  "Non-nil if homogenizing KEYDESC would cause bugs.
-This has to do with e.g. C-x \[ becoming C-x C-\[, which is the
-same as C-x ESC, which is the same as C-x M-anything.  You do
-this, then Magit tries to bind C-x M-g and complains it's not a
-prefix key and you can't even load Magit.  That's mild issue.  A
-more silent bug is C-x i becoming C-x C-i which goes ahead and
-overrides your C-x TAB binding without signaling anything even to
-the developer.
+  "Non-nil if homogenizing KEYDESC can cause bugs.
+This has to do with e.g. C-x \[ being duplicated to C-x C-\[,
+which is the same as C-x ESC, which is the same as
+C-x M-anything.  You do this, then Magit tries to bind C-x M-g
+and complains it's not a prefix key and you can't even load
+Magit.  That's a mild issue.  A more silent bug is C-x i becoming
+C-x C-i which means it overrides your C-x TAB binding, something
+you're blissfully unaware of until you try to use C-x TAB.
 
-The problem is anachronistic Unix control character behavior,
-which Emacs has chosen not to deprecate, for the sake of
-functioning inside basic terminal emulators.  We have a clean
-solution in `dei-define-super-like-ctl-everywhere' and never
-typing another control character.
+The root problem is anachronistic Unix control character
+behavior, which Emacs has chosen not to deprecate, for the sake
+of functioning inside basic terminal emulators, TTYs and ssh
+connections.  We have a clean solution in
+`dei-define-super-like-ctl-everywhere' and never typing another
+control character in your life.  Alternatively, we have an
+untested partial solution in `dei--protect-ret-and-tab'.
 
 If you don't apply the solution, it pays to know this: always
-bind <tab> instead of TAB, <return> instead of RET, and <escape>
-instead of ESC.  GUI Emacs always looks up these if bound, and
-only falls back to the control character if these function keys
-are unbound.  They do not work on the terminal/TTY, but neither
-does Super or many other niceties.  This will still not let you
-use C-\[ as anything other than an ESC shorthand, but you'll be
-able to bind C-m and C-i without clobbering the Tab or Return
-keys.  You may still encounter issues with packages either
-binding RET/TAB directly, ruining your C-m/C-i, and such packages
-are typically not thinking to bind <return>/<tab>, so you have to
-add them yourself.
+bind the function key <tab> instead of the control character TAB,
+<return> instead of RET, <escape> instead of ESC, <linefeed>
+instead of LFD, <backspace> instead of DEL, and <delete> instead
+of BS.  GUI Emacs always looks up the function key if bound, and
+only falls back to the control character if the function key is
+unbound.  The function keys may not work on the terminal/TTY, but
+neither do Super, Hyper or many other niceties, and I recommend
+just using chemacs to run a barebone Emacs for the odd time
+you're on the TTY.
 
-As an additional nicety, we avoid touching key sequences
-involving Control and \"g\" so as to prevent clobbering the
-meaning of \"C-g\".  Otherwise, homogenizing C-h g binds C-h C-g
-to the same, creating a situation when C-g is not available for
-`keyboard-quit'."
+While it is possible to rescue C-i and C-m from the cold dead
+hands of Unix, you cannot ever use C-\[ as anything other than an
+ESC shorthand.  As for C-g, the problem isn't Unix, only a
+hardcoded default in Emacs, and I deem it's not fully rescuable
+without a patchset that lets you decide via a command-line flag
+or Xresource, which key should act as keyboard-quit instead of
+C-g.
+
+To sum up, we return non-nil if the key sequence starts with
+Control and involves any of \[, m, i, or g anywhere in the
+sequence.  So even the sequence C-h g is a nightmare key:
+homogenizing it means binding C-h C-g to the same, creating a
+situation when C-g is not available to do `keyboard-quit'."
   (declare (pure t) (side-effect-free t))
   (or (and (string-prefix-p "C-" keydesc)
            (string-match-p (rx (any "[" "m" "i" "g")) keydesc))
@@ -389,7 +438,7 @@ with \\[dei-remap-actions-execute]."
                          (list permachord-key
                                chordonce-cmd
                                keymap
-                               "Clone chord-once to perma-chord           "
+                               "Clone chord-once to overwrite perma-chord "
                                permachord-cmd)))))
 
            ;; ;; We ended up here due to this type of situation: there exists a key
@@ -420,12 +469,11 @@ with \\[dei-remap-actions-execute]."
            ;; Default.  This will also, via dei-remap-actions-execute, unbind the
            ;; key seqs that would've blocked us from proceeding.
            (t
-            (setq action
-                  (list permachord-key
-                        chordonce-cmd
-                        keymap
-                        "Clone chord-once to perma-chord           "
-                        permachord-cmd))))
+            (setq action (list permachord-key
+                               chordonce-cmd
+                               keymap
+                               "Clone chord-once to overwrite perma-chord "
+                               permachord-cmd))))
           (when (and action
                      (not (member action dei--remap-record)))
             (push action dei--remap-actions)
