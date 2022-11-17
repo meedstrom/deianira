@@ -1,12 +1,17 @@
+;;; deianira-lib.el -*- lexical-binding: t -*-
+
 (require 'dash)
-(require 'hydra)
+(require 'cl-lib)
 
 (defun dei--raw-keymap (map)
   "If MAP is a keymap, return it, and if a symbol, evaluate it."
   (if (keymapp map)
       map
     (if (symbolp map)
-        (symbol-value map)
+        (let ((evaluated (symbol-value map)))
+          (if (keymapp evaluated)
+              evaluated
+            (error "Doesn't evaluate to a keymap: %s" map)))
       (error "Not a keymap or keymap name: %s" map))))
 
 (defcustom dei-debug t
@@ -44,17 +49,6 @@ Arguments same as for `format'."
   ;; (with-current-buffer " *Deianira remaps*"
   ;;   (rename-buffer "*Deianira remaps*"))
   (setq dei-debug t))
-
-(defun dei--hydra-active-p ()
-  "Return t if a hydra is active and awaiting input."
-  (not (null hydra-curr-map)))
-
-(defun dei--slay (&rest args)
-  "Slay active hydra and return ARGS."
-  (when (dei--hydra-active-p)
-    (setq hydra-deactivate t)
-    (call-interactively #'hydra-keyboard-quit))
-  args)
 
 
 ;;;; Handlers for key descriptions
@@ -179,12 +173,6 @@ For that, see `dei--key-mixes-modifiers'."
                                            (substring step 2))))
               return t))))))
 
-;; This is used by dei--head-arg-cmd
-(defun dei--corresponding-hydra (keydesc-or-stem &optional leaf)
-  (intern (concat
-           (dei--dub-hydra-from-key-or-stem (concat keydesc-or-stem leaf))
-           "/body")))
-
 (defun dei--stem-to-parent-keydesc (stem)
   "Return a valid key by trimming STEM from the right.
 In practice, you'd use this to figure out the prefix key that
@@ -212,17 +200,6 @@ example, inputting a STEM of \"C-x \" returns \"C-x\"."
   (replace-regexp-in-string (rx (literal (dei--get-leaf keydesc)) eol)
                             ""
                             keydesc))
-
-;; TODO: wrap RET SPC DEL etc in <> for the squashed version
-(defun dei--dub-hydra-from-key-or-stem (keydesc)
-  "Example: if KEYDESC is \"C-x a\", return \"dei-Cxa\"."
-  (declare (pure t) (side-effect-free t))
-  (let ((squashed (string-join (split-string keydesc (rx (any " -"))))))
-    (if (string-match (rx "-" eol) keydesc)
-        (if (= 2 (length keydesc))
-            (concat "dei-" squashed) ;; C-, M-, s-
-          (concat "dei-" squashed "-")) ;; leaf is -
-      (concat "dei-" squashed))))
 
 (defun dei--parent-stem (stem)
   "Return a parent stem to STEM.

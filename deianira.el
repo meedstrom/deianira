@@ -319,6 +319,34 @@ Customize `dei-hydra-keys' instead.")
 
 ;;;; Library of random stuff
 
+(defun dei--hydra-active-p ()
+  "Return t if a hydra is active and awaiting input."
+  (not (null hydra-curr-map)))
+
+(defun dei--slay (&rest args)
+  "Slay active hydra and return ARGS."
+  (when (dei--hydra-active-p)
+    (setq hydra-deactivate t)
+    (call-interactively #'hydra-keyboard-quit))
+  args)
+
+;; This is used by dei--head-arg-cmd
+(defun dei--corresponding-hydra (keydesc-or-stem &optional leaf)
+  (intern (concat
+           (dei--dub-hydra-from-key-or-stem (concat keydesc-or-stem leaf))
+           "/body")))
+
+;; TODO: wrap RET SPC DEL etc in <> for the squashed version
+(defun dei--dub-hydra-from-key-or-stem (keydesc)
+  "Example: if KEYDESC is \"C-x a\", return \"dei-Cxa\"."
+  (declare (pure t) (side-effect-free t))
+  (let ((squashed (string-join (split-string keydesc (rx (any " -"))))))
+    (if (string-match (rx "-" eol) keydesc)
+        (if (= 2 (length keydesc))
+            (concat "dei-" squashed) ;; C-, M-, s-
+          (concat "dei-" squashed "-")) ;; leaf is -
+      (concat "dei-" squashed))))
+
 ;; REVIEW: write test for it with a key-simulator
 (defun dei-universal-argument (arg)
   "enter a nonum hydra and activate the universal argument."
