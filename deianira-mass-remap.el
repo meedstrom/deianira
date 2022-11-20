@@ -1,5 +1,22 @@
 ;;; deianira-mass-remap.el --- rebind keys systematically -*- lexical-binding: t -*-
 
+;; Copyright (C) 2018-2022 Martin Edström
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+;; This file is not part of GNU Emacs.
+
 ;;; Commentary:
 
 ;; Will probably be spun out as a standalone package.
@@ -8,6 +25,7 @@
 
 (require 'deianira-lib)
 (require 'dash)
+(require 'cl-lib)
 
 (defcustom dei-keymap-found-hook nil
   "Run after adding one or more keymaps to `dei--known-keymaps'.
@@ -22,7 +40,7 @@ You may be interested in adding some of these functions:
   :type 'hook
   :group 'deianira)
 
-;; REVIEW: Can we get away without global-map as an initial member?
+;; REVIEW: Test initial value of nil, should be fine right?
 (defvar dei--known-keymaps '(global-map)
   "List of named keymaps seen active.
 This typically gets populated (by `dei-record-keymap-maybe') with
@@ -30,7 +48,11 @@ just mode maps, rarely (never?) transient maps and never
 so-called prefix commands like Control-X-prefix nor the category
 of sub-keymaps like ctl-x-map or help-map.")
 
-(defvar dei--known-keymap-composites nil)
+(defvar dei--known-keymap-composites nil
+  "List of unique keymap composites seen active.
+These are identified as their hashes; each and every one was a
+product of (sxhash (current-active-maps)), called in different
+places and times.")
 
 (defun dei-record-keymap-maybe (&optional _)
   "If Emacs has seen new keymaps, record them in a variable.
@@ -43,11 +65,11 @@ Suitable to trigger from `window-buffer-change-functions':
 (add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)"
   (require 'help-fns)
   (let* ((maps (current-active-maps))
-         (combn-hash (sxhash maps)))
+         (composite-hash (sxhash maps)))
     ;; Make sure we only iterate the expensive `help-fns-find-keymap-name' once
     ;; for this keymap combination.
-    (unless (member combn-hash dei--known-keymap-composites)
-      (push combn-hash dei--known-keymap-composites)
+    (unless (member composite-hash dei--known-keymap-composites)
+      (push composite-hash dei--known-keymap-composites)
       (let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
              (new-maps (-difference named-maps dei--known-keymaps)))
         ;; idk what is widget-global-map, but ignoring it works on my machine
@@ -101,33 +123,30 @@ Suitable to trigger from `window-buffer-change-functions':
                  (push (list map donor-fullkey nil) dei--reflect-actions)))))))
      raw-map)))
 
-(defvar dei--ctl-reflected-keymaps nil
-  "List of keymaps worked on by `dei-define-super-like-ctl-everywhere'.")
-
-(defvar dei--ctlmeta-reflected-keymaps nil
-  "List of keymaps worked on by `dei-define-super-like-ctlmeta-everywhere'.")
+(defvar dei--super-reflected-keymaps nil
+  "List of keymaps where Super has been mass-bound.")
 
 (defvar dei--alt-reflected-keymaps nil
-  "List of keymaps worked on by `dei-define-alt-like-meta-everywhere'.")
+  "List of keymaps where Alt has been mass-bound.")
 
 (defun dei-define-super-like-ctl-everywhere ()
   "Duplicate all Control bindings to exist also on Super.
 Best on `dei-keymap-found-hook'."
   (cl-loop for map in (-difference dei--known-keymaps
-                                   dei--ctl-reflected-keymaps)
+                                   dei--super-reflected-keymaps)
            do (progn
                 (dei--define-a-like-b-in-keymap "s-" "C-" map t)
-                (push map dei--ctl-reflected-keymaps))
+                (push map dei--super-reflected-keymaps))
            finally (dei--reflect-actions-execute)))
 
 (defun dei-define-super-like-ctlmeta-everywhere ()
   "Duplicate all Control bindings to exist also on Super.
 Best on `dei-keymap-found-hook'."
   (cl-loop for map in (-difference dei--known-keymaps
-                                   dei--ctlmeta-reflected-keymaps)
+                                   dei--super-reflected-keymaps)
            do (progn
                 (dei--define-a-like-b-in-keymap "s-" "C-M-" map t)
-                (push map dei--ctlmeta-reflected-keymaps))
+                (push map dei--super-reflected-keymaps))
            finally (dei--reflect-actions-execute)))
 
 (defun dei-define-alt-like-meta-everywhere ()
@@ -152,6 +171,7 @@ F13 in place of ESC, which seems easier."
                 (push map dei--alt-reflected-keymaps))
            finally (dei--reflect-actions-execute)))
 
+;; NOTE: Experimental
 ;; FIXME: Find a way to let user hold off on binding C-i/C-m until after
 ;;        keymap-found-hook has triggered this function on the given keymap.
 ;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m.
@@ -505,8 +525,7 @@ AVOID-PREFIXES is a list of prefixes to leave out of the result."
                         return t))
            collect key))
 
-;; TODO: some way to catch when this doesn't do anything and it should
-;; TODO: return how many overridden and how many new bindings
+;; TODO: Return how many overridden and how many new bindings
 (defun dei--homogenize-keymap (map)
   "Homogenize most of keymap MAP."
   (message "Keys (re)bound: %s"
