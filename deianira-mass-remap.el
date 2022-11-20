@@ -65,7 +65,7 @@ Suitable to trigger from `window-buffer-change-functions':
 (add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)"
   (require 'help-fns)
   (let* ((maps (current-active-maps))
-         (composite-hash (sxhash maps)))
+         (composite-hash (abs (sxhash maps))))
     ;; Make sure we only iterate the expensive `help-fns-find-keymap-name' once
     ;; for this keymap combination.
     (unless (member composite-hash dei--known-keymap-composites)

@@ -24,7 +24,7 @@
 ;; Version: 0.1.0
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (chain "0.1.0"))
+;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.1.0"))
 
 ;;; Commentary:
 
@@ -44,8 +44,8 @@
 ;; external dependencies
 (require 'dash)
 (require 'hydra)
-(require 'named-timer) ;; emacs core when? just 70 lines
-(require 'chain) ;; was part of deianira.el
+(require 'named-timer) ;; emacs core when? just 50 lines
+(require 'asyncloop) ;; was part of deianira.el
 
 ;; our own subpackages
 (require 'deianira-lib)
@@ -430,15 +430,6 @@ Optional argument KEYMAP means look only in that keymap."
   :keymap (make-sparse-keymap)
   (if deianira-mode
       (progn
-        ;; (setf (chain-running 'dei--work) nil)
-        ;; (setf (chain-state 'dei--work) nil)
-        ;; Reinit state
-        (chain-define 'dei--work
-                      '(dei--step-1-check-settings
-                        dei--step-2-model-the-world
-                        dei--step-3-draw-blueprint
-                        dei--step-4-birth-hydra
-                        dei--step-5-register))
         (setq dei--interrupt-counter 0)
         (named-timer-run 'deianira-b 300 300 #'dei--interrupt-decrement-ctr)
         (setq dei--old-hydra-cell-format hydra-cell-format)
@@ -1030,7 +1021,35 @@ long as they don't change.")
                      (eq width (dei--flock-width flock)))
            return flock))
 
-(defun dei--step-1-check-settings (&optional _)
+(defun dei--step-0-check-preexisting (&optional id)
+      (setq dei--flocks
+            (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
+      ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
+      ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
+      (let* ((hash (abs (sxhash (current-active-maps))))
+             (some-flock (dei--first-flock-by-hash hash)))
+        ;; (if (and (equal dei--last-hash hash)
+        ;;          (equal dei--last-width (frame-width)))
+        ;;     (asyncloop-echo id "Same hash and frame width, doing nothing: %s" hash))
+        ;; If we already made hydras for this keymap composite, restore from cache.
+        (if some-flock
+            (let ((found (dei--flock-by-hash-and-width hash (frame-width))))
+              (if found
+                  (asyncloop-echo id "Flock exists, making it current: %s" hash)
+                (asyncloop-echo id "Converting to %s chars wide: %s" (frame-width) hash)
+                (setq found (dei--rehint-flock some-flock))
+                (push found dei--flocks))
+              ;; Point names to already made values.  It's fucking beautiful.
+              (cl-loop for x in (dei--flock-funs found) do (fset (car x) (cdr x)))
+              (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
+              (setq dei--last-bindings (dei--flock-bindings found))
+              (setq dei--last-hash hash)
+              (asyncloop-defuse id))
+          (setq dei--current-width (frame-width))
+          (setq dei--buffer-under-analysis (current-buffer))
+          (setq dei--current-hash hash))))
+
+(defun dei--step-1-check-settings (&optional _id)
   "Signal error if any two user settings overlap.
 Otherwise we could end up with two heads in one hydra both bound
 to the same key, no bueno."
@@ -1057,9 +1076,11 @@ to the same key, no bueno."
                 (error "Found %s in both %s and %s"
                        overlap (car var) (car remaining-var)))))))))
 
-(defun dei--step-2-model-the-world (&optional _)
+(defun dei--step-2-model-the-world (&optional id)
   "Calculate things."
   (with-current-buffer dei--buffer-under-analysis
+    (asyncloop-echo id
+      "Modeling the world from buffer: %s" dei--buffer-under-analysis)
     ;; Cache settings
     (setq dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
           dei--hydra-keys-list (dei--hydra-keys-list-recalc)
@@ -1126,7 +1147,7 @@ to the same key, no bueno."
     ;; Clear the workbench from a previous done or half-done iteration.
     (setq dei--hydra-blueprints nil)))
 
-(defun dei--step-3-draw-blueprint (&optional chain-name oneshot)
+(defun dei--step-3-draw-blueprint (&optional id oneshot)
   "Draw blueprint for first item of `dei--stems'.
 Specifically, pop a stem off the list `dei--stems', transmute it into
 a blueprint, and push that onto the list `dei--hydra-blueprints'.
@@ -1136,13 +1157,17 @@ precompute as much as possible, that we'll later pass to
 `defhydra', see `dei--step-4-birth-hydra'.
 
 Repeatedly add another invocation of this function to the front
-of chain identified by CHAIN-NAME, so it will run again until
+of asyncloop identified by ID, so it will run again until
 `dei--stems' is empty.  With ONESHOT non-nil, don't do that (so
 the programmer can debug by running the function once by
 itself)."
+  ;; TODO: maybe don't unwind-protect
   (unwind-protect
       (when dei--changed-stems
         (with-current-buffer dei--buffer-under-analysis
+          (asyncloop-echo id
+            "Drawing blueprint for stem %s in buffer %s"
+            (car dei--changed-stems) dei--buffer-under-analysis)
           (let* ((stem (car dei--changed-stems))
                  (name (dei--dub-hydra-from-key-or-stem stem))
                  (h1 (dei--specify-hydra stem (concat name "-nonum") t))
@@ -1156,7 +1181,7 @@ itself)."
     ;; cause the thread to run forever. What we see here is essentially a
     ;; while-loop pattern; it's safer to have a fixed list yielding a
     ;; deterministic number of iterations.  Although you could just instruct the
-    ;; user of chain to pop the list the first thing they do in a function like
+    ;; user of asyncloop to pop the list the first thing they do in a function like
     ;; this.  Recover in different way, like through condition-case push the
     ;; let-bound old value back on the list if that's needed for some reason.
     ;;
@@ -1165,7 +1190,7 @@ itself)."
     ;; doing things.
     (when dei--changed-stems
       (unless oneshot
-        (push #'dei--step-3-draw-blueprint (chain-state chain-name))))))
+        (push #'dei--step-3-draw-blueprint (asyncloop-remainder id))))))
 
 ;; TODO: figure out if it's necessary to respecify heads due to changed
 ;; dei--filler and if so how to get the effect here (theory: we don't need filler
@@ -1207,12 +1232,12 @@ itself)."
 ;;           (caddr bar))
 ;;
 
-(defun dei--step-4-birth-hydra (&optional chain-name oneshot)
+(defun dei--step-4-birth-hydra (&optional id oneshot)
   "Pass a blueprint to `defhydra', wetting the dry-run.
 Each invocation pops one blueprint off `dei--hydra-blueprints'.
 
 Repeatedly add another invocation of this function to the front
-of chain identified by CHAIN-NAME, so it will run again until
+of asyncloop identified by ID, so it will run again until
 `dei--hydra-blueprints' is empty.  With ONESHOT non-nil, don't do
 that (so the programmer can debug by running the function once by
 itself)."
@@ -1231,9 +1256,9 @@ itself)."
     ;; Run again if more to do
     (when dei--hydra-blueprints
       (unless oneshot
-        (push #'dei--step-4-birth-hydra (chain-state chain-name))))))
+        (push #'dei--step-4-birth-hydra (asyncloop-remainder id))))))
 
-(defun dei--step-5-register (&optional _)
+(defun dei--step-5-register (&optional id)
   "Record the hydras made under this keymap combination."
   ;; (when (assoc dei--current-hash dei--flocks)
     ;; (error "Hash already recorded: %s" dei--current-hash))
@@ -1262,7 +1287,7 @@ itself)."
            :vars vars
            :bindings dei--current-bindings)
           dei--flocks)
-    (chain-echo "Flock #%s born: %s" (length dei--flocks) dei--current-hash)
+    (asyncloop-echo id "Flock #%s born: %s" (length dei--flocks) dei--current-hash)
     (setq dei--last-bindings dei--current-bindings)
     (setq dei--last-hash dei--current-hash)
     ;; Now hide this monster variable.  See other use of `dei--hidden-obarray'.
@@ -1270,56 +1295,35 @@ itself)."
     (obarray-remove obarray "dei--flocks")))
 
 (defun dei-make-hydras-maybe ()
-  (chain-run 'dei--work
+  (asyncloop-run
+    #'(
+       dei--step-1-check-settings
+       dei--step-2-model-the-world
+       dei--step-3-draw-blueprint
+       dei--step-4-birth-hydra
+       dei--step-5-register)
+
+    :on-start #'dei--step-0-check-preexisting
 
     :on-interrupt-discovered
-    (defun dei--work-actions-on-interrupt ()
+    (defun dei--actions-on-interrupt (id)
       (if (<= dei--interrupt-counter 3)
           (cl-incf dei--interrupt-counter)
         (deianira-mode 0)
-        (chain-echo
-         (message "3 interrupts last 5 min, disabling deianira-mode"))
-        'please-abort))
-
-    ;; REVIEW: can this move to a Step 0 inside the chain?
-    :on-start
-    (defun dei--work-actions-on-start ()
-      (setq dei--flocks
-            (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
-      ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
-      ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
-      (let* ((hash (sxhash (current-active-maps)))
-             (some-flock (dei--first-flock-by-hash hash)))
-        ;; (if (and (equal dei--last-hash hash)
-        ;;          (equal dei--last-width (frame-width)))
-        ;;     (chain-echo "Same hash and frame width, doing nothing: %s" hash))
-        ;; If we already made hydras for this keymap composite, restore from cache.
-        (if some-flock
-            (let ((found (dei--flock-by-hash-and-width hash (frame-width))))
-              (if found
-                  (chain-echo "Flock exists, making it current: %s" hash)
-                (chain-echo "Converting to %s chars wide: %s" (frame-width) hash)
-                (setq found (dei--rehint-flock some-flock))
-                (push found dei--flocks))
-              ;; Point names to already made values.  It's fucking beautiful.
-              (cl-loop for x in (dei--flock-funs found) do (fset (car x) (cdr x)))
-              (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
-              (setq dei--last-bindings (dei--flock-bindings found))
-              (setq dei--last-hash hash)
-              'please-abort)
-          (setq dei--current-width (frame-width))
-          (setq dei--buffer-under-analysis (current-buffer))
-          (setq dei--current-hash hash))))
+        (asyncloop-defuse id)
+        (asyncloop-echo id
+         (message "3 interrupts last 5 min, disabling deianira-mode"))))
 
     :per-stage
-    (defun dei--work-actions-per-stage ()
+    (defun dei--actions-per-stage (id)
       (unless (buffer-live-p dei--buffer-under-analysis)
-        (chain-echo "Cancelling because buffer killed: %s" dei--buffer-under-analysis)
-        'please-abort))
+        (asyncloop-defuse id)
+        (asyncloop-echo id
+          "Cancelling because buffer killed: %s" dei--buffer-under-analysis)))
 
     :on-abort
-    (defun dei--work-actions-on-abort ()
-      ;; Hide monster variable
+    (defun dei--actions-on-abort (_id)
+      "Hide the monster variable."
       (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
       (obarray-remove obarray "dei--flocks"))))
 
@@ -1348,7 +1352,7 @@ however many potentially co-occurring hooks you like, such as
 ;; ;; FIXME
 ;; (defun dei--reset ()
 ;;   (interactive)
-;;   (setq dei--async-chain nil)
+;;   (setq dei--async-asyncloop nil)
 ;;   (setq dei--async-running nil)
 ;;   (named-timer-cancel 'dei--work))
 
