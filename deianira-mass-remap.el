@@ -1,4 +1,4 @@
-;;; deianira-mass-remap.el --- rebind keys systematically -*- lexical-binding: t -*-
+;;; deianira-mass-remap.el --- Systematically rebind keys -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018-2022 Martin Edström
 
@@ -28,6 +28,41 @@
 (require 'cl-lib)
 (require 'help-fns)
 
+;; Heh, when I made this function by axing where the code originally was
+;; written, I found my code never did what I wanted.  Now fixed.  Score one for
+;; small testable functions.
+(defun dei--ensure-chordonce (keydesc)
+  "Strip chords from most of key sequence KEYDESC.
+Leave alone the first step of the key sequence."
+  (declare (pure t) (side-effect-free t))
+  (let* ((steps (split-string keydesc " ")))
+    (string-join (cons (car steps)
+                       (-map #'dei--get-leaf (cdr steps)))
+                 " ")))
+
+(defun dei--ensure-permachord (keydesc)
+  "Return KEYDESC as perma-chord.
+If it's already that, return it unmodified."
+  (declare (pure t) (side-effect-free t))
+  (when (> (length keydesc) 2)
+    (let* ((steps (split-string keydesc " "))
+           (first-2-chars (substring keydesc 0 2))
+           (root-modifier (when (string-suffix-p "-" first-2-chars)
+                            first-2-chars)))
+      (if root-modifier
+          (string-join (cl-loop
+                        for step in steps
+                        if (string-prefix-p root-modifier step)
+                        do (when (string-match-p dei--modifier-regexp-safe
+                                                 (substring step 1))
+                             (warn "Maybe found bastard sequence: %s" keydesc))
+                        and collect step
+                        else collect (concat root-modifier step))
+                       " ")
+        (warn "dei--ensure-permachord probably shouldn't be called on: %s"
+              keydesc)
+        keydesc))))
+
 (defcustom dei-keymap-found-hook nil
   "Run after adding one or more keymaps to `dei--known-keymaps'.
 See `dei-record-keymap-maybe', which triggers this hook.
@@ -45,7 +80,7 @@ You may be interested in adding some of these functions:
 (defvar dei--known-keymaps '(global-map)
   "List of named keymaps seen active.
 This typically gets populated (by `dei-record-keymap-maybe') with
-just mode maps, rarely (never?) transient maps and never
+just mode maps, rarely (never?) those used as transient maps and never
 so-called prefix commands like Control-X-prefix nor the category
 of sub-keymaps like ctl-x-map or help-map.")
 
@@ -261,7 +296,7 @@ map with children bound: that's another thing that can make KEYDESC
 unbindable.
 
 KEYMAP is the keymap in which to look."
-  (let ((steps (dei--key-seq-split keydesc))
+  (let ((steps (split-string keydesc " "))
         (ret nil))
     (when (> (length steps) 1)
       ;; TODO: don't use dotimes, but some sort of "until" pattern.  This
@@ -500,11 +535,19 @@ with \\[dei-remap-actions-execute]."
             (push action dei--remap-actions)
             (push action dei--remap-record)))))))
 
-;; TODO: Merge with the other unnest function
-(defun dei--unnest-keymap-for-homogenizing (map &optional avoid-prefixes)
-  "Return MAP as a list of key seqs instead of a tree of keymaps.
-These key seqs are strings satisfying `key-valid-p'.
-AVOID-PREFIXES is a list of prefixes to leave out of the result."
+(defvar dei--unnest-avoid-prefixes
+  (cons "C-x 8"
+        (mapcar #'key-description
+                (where-is-internal #'iso-transl-ctl-x-8-map)))
+  "List of prefixes to avoid looking up.")
+
+;; TODO: Merge with the other unnest function in deianira.el.
+;; How?  I guess there may be no point, as this file will be its own package at
+;; some point.  Only think about it if we make a third package as a shared
+;; library.
+(defun dei--unnest-keymap-for-homogenizing (map)
+  "Return MAP as a flat list of key seqs instead of a tree.
+These key seqs are strings satisfying `key-valid-p'."
   (cl-loop for x being the key-seqs of (dei--raw-keymap map)
            using (key-bindings cmd)
            as key = (key-description x)
@@ -520,19 +563,21 @@ AVOID-PREFIXES is a list of prefixes to leave out of the result."
                (string-search "DEL" key)
                (unless cleaned
                  (dei--key-is-illegal key))
-               (cl-loop for prefix in (or avoid-prefixes
-                                          dei--unnest-avoid-prefixes)
+               (cl-loop for prefix in dei--unnest-avoid-prefixes
                         when (string-prefix-p prefix key)
                         return t))
            collect key))
 
 ;; TODO: Return how many overridden and how many new bindings
+;; How? I guess dei--homogenize-key-in-keymap can be made to return two possible
+;; values aside from nil; and then we count those.
 (defun dei--homogenize-keymap (map)
   "Homogenize most of keymap MAP."
-  (message "Keys (re)bound: %s"
+  (message "Keys (re)bound: %s in %s"
            (cl-loop for key in (dei--unnest-keymap-for-homogenizing map)
                     when (dei--homogenize-key-in-keymap key map)
-                    count key)))
+                    count key)
+           map))
 
 (defun dei-homogenize-all-keymaps ()
   "Homogenize keymaps seen, except those already homogenized."
@@ -636,5 +681,89 @@ Interactively, use the value of `dei--remap-actions'."
                   tabulated-list-entries))))
       (tabulated-list-print)
       (display-buffer buf))))
+=======
+
+;;; Cleaning
+;; Unused for now.  No obvious point to purging the ugly key bindings -- they
+;; may as well stay -- except that it makes Deianira faster, as it puts less
+;; workload on `dei--unnest-keymap-for-hydra-to-eat'.
+
+(defvar dei--cleaned-maps nil)
+
+(defvar dei--clean-actions nil)
+
+(defun dei-unbind-illegal-keys ()
+  "Push keys to unbind onto `dei--clean-actions'."
+  (cl-loop
+   for map in (-difference dei--known-keymaps dei--cleaned-maps)
+   with doom = (and (bound-and-true-p doom-leader-alt-key)
+                    (bound-and-true-p doom-localleader-alt-key))
+   do (push
+       (cons map
+             (cl-sort
+              (cl-loop
+               for x being the key-seqs of (dei--raw-keymap map)
+               as key = (key-description x)
+               when (and
+                     (not (string-match-p dei--ignore-keys-regexp key))
+                     (or (dei--key-is-illegal key)
+                         ;; I don't want to touch these, I want to see what
+                         ;; Doom does with them.
+                         (when doom
+                           (or (string-prefix-p doom-localleader-alt-key key)
+                               (string-prefix-p doom-leader-alt-key key)))))
+               collect key)
+              #'> :key #'dei--key-seq-steps-length))
+       dei--clean-actions)))
+
+
+;;; Debugging
+
+;; (defun dei-remap-actions-preview (&optional silently)
+;;   "For convenience while debugging."
+;;   (interactive)
+;;   (let ((buf (get-buffer-create "*Deianira remaps*")))
+;;     (with-current-buffer buf
+;;       (read-only-mode -1)
+;;       (goto-char (point-min))
+;;       (newline)
+;;       (insert "Remap actions planned as of " (current-time-string))
+;;       (newline 2)
+;;       (let ((sorted-actions (cl-sort dei--remap-actions #'string-lessp
+;;                                      :key (lambda (x)
+;;                                             (if (symbolp (nth 2 x))
+;;                                                 (symbol-name (nth 2 x))
+;;                                               "unknown keymap")))))
+;;         (dolist (item sorted-actions)
+;;           (seq-let (keydesc cmd map hint) item
+;;             (insert hint
+;;                     " Bind  " keydesc
+;;                     "\tto  " (if (symbolp cmd)
+;;                                  (symbol-name cmd)
+;;                                (if (keymapp cmd)
+;;                                    (if-let ((named (help-fns-find-keymap-name cmd)))
+;;                                        (symbol-name named)
+;;                                      "(some sub-keymap)")
+;;                                  cmd))
+;;                     (if (symbolp map)
+;;                         (concat "\t\t  (" (symbol-name map) ")")
+;;                       "")))
+;;           (newline)))
+;;       (goto-char (point-min)))
+;;     (unless silently
+;;       (display-buffer buf))
+;;     (when-let ((window (get-buffer-window buf)))
+;;       (with-selected-window window
+;;         (recenter 0)
+;;         (view-mode)))))
+
+;; (defun dei-remap-actions-wipe ()
+;;   "For convenience while debugging."
+;;   (interactive)
+;;   (setq dei--remap-actions nil)
+;;   (setq dei--homogenized-keymaps nil)
+;;   (message "remap actions wiped"))
+>>>>>>> Stashed changes
 
 (provide 'deianira-mass-remap)
+;;; deianira-mass-remap.el ends here
