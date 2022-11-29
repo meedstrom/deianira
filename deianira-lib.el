@@ -31,42 +31,6 @@
             (error "Doesn't evaluate to a keymap: %s" map)))
       (error "Not a keymap or keymap name: %s" map))))
 
-(defcustom dei-debug t
-  "Whether to show debug buffers by default."
-  :group 'deianira
-  :type 'boolean)
-
-(defun dei--debug-buffer ()
-  (let ((bufname (concat (unless dei-debug " ") "*Deianira debug*")))
-    (or (get-buffer bufname)
-        (with-current-buffer (get-buffer-create bufname)
-          (setq-local truncate-lines t)
-          (setq-local buffer-read-only nil)
-          (setq-local tab-width 12)
-          (current-buffer)))))
-
-(defun dei--echo (&rest args)
-  "Write a message to the debug buffer.
-Arguments same as for `format'."
-  (with-current-buffer (dei--debug-buffer)
-    (goto-char (point-min))
-    (insert (apply #'format
-                   (cons (concat (format-time-string "%T: ")
-                                 (car args))
-                         (cdr args))))
-    (newline)))
-
-(defun dei-debug-show ()
-  "Show debug buffers."
-  (interactive)
-  (with-current-buffer (dei--debug-buffer)
-    ;; Unhide them if they were hidden
-    (rename-buffer "*Deianira debug*")
-    (display-buffer (current-buffer)))
-  ;; (with-current-buffer " *Deianira remaps*"
-  ;;   (rename-buffer "*Deianira remaps*"))
-  (setq dei-debug t))
-
 
 ;;;; Handlers for key descriptions
 
@@ -159,16 +123,12 @@ those, see `dei--key-contains-any'.  Does catch e.g. C-S-<RET>."
   (declare (pure t) (side-effect-free t))
   (not (string-search " " keydesc)))
 
-(defun dei--key-seq-split (keydesc)
-  (declare (pure t) (side-effect-free t))
-  (split-string keydesc " "))
-
 (defun dei--key-seq-steps-length (keydesc)
   "Length of key sequence KEYDESC.
 Useful predicate for `seq-sort-by' or `cl-sort', which take a
 function but won't pass extra arguments to it."
   (declare (pure t) (side-effect-free t))
-  (length (dei--key-seq-split keydesc)))
+  (length (split-string keydesc " ")))
 
 (defun dei--key-seq-is-permachord (keydesc)
   "If sequence KEYDESC has a chord on every step, return t.
@@ -181,7 +141,7 @@ For that, see `dei--key-mixes-modifiers'."
                             first-2-chars)))
       (when root-modifier
         (not (cl-loop
-              for step in (dei--key-seq-split keydesc)
+              for step in (split-string keydesc " ")
               unless (and
                       (> (length step) 2)
                       (string-prefix-p root-modifier
@@ -244,39 +204,5 @@ sub-keymap.  As such, both of these return the same parent: \"C-\"."
 Trivial function, but useful for `mapcar' and friends."
   (declare (pure t) (side-effect-free t))
   (concat keydesc " "))
-
-;; heh, when i made this a separate function, i found my code never did what i
-;; wanted.  now fixed.  score one for small testable functions.
-(defun dei--ensure-chordonce (keydesc)
-  "Strip chords from most of key sequence KEYDESC.
-Leave alone the first step of the key sequence."
-  (declare (pure t) (side-effect-free t))
-  (let* ((steps (dei--key-seq-split keydesc)))
-    (string-join (cons (car steps)
-                       (-map #'dei--get-leaf (cdr steps)))
-                 " ")))
-
-(defun dei--ensure-permachord (keydesc)
-  "Return KEYDESC as perma-chord.
-If it's already that, return it unmodified."
-  (declare (pure t) (side-effect-free t))
-  (when (> (length keydesc) 2)
-    (let* ((steps (dei--key-seq-split keydesc))
-           (first-2-chars (substring keydesc 0 2))
-           (root-modifier (when (string-suffix-p "-" first-2-chars)
-                            first-2-chars)))
-      (if root-modifier
-          (string-join (cl-loop
-                        for step in steps
-                        if (string-prefix-p root-modifier step)
-                        do (when (string-match-p dei--modifier-regexp-safe
-                                                 (substring step 1))
-                             (warn "Maybe found bastard sequence: %s" keydesc))
-                        and collect step
-                        else collect (concat root-modifier step))
-                       " ")
-        (warn "dei--ensure-permachord probably shouldn't be called on: %s"
-              keydesc)
-        keydesc))))
 
 (provide 'deianira-lib)
