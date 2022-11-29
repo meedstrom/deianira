@@ -681,7 +681,7 @@ Interactively, use the value of `dei--remap-actions'."
                   tabulated-list-entries))))
       (tabulated-list-print)
       (display-buffer buf))))
-=======
+
 
 ;;; Cleaning
 ;; Unused for now.  No obvious point to purging the ugly key bindings -- they
@@ -763,7 +763,6 @@ Interactively, use the value of `dei--remap-actions'."
 ;;   (setq dei--remap-actions nil)
 ;;   (setq dei--homogenized-keymaps nil)
 ;;   (message "remap actions wiped"))
->>>>>>> Stashed changes
 
 (provide 'deianira-mass-remap)
 ;;; deianira-mass-remap.el ends here
