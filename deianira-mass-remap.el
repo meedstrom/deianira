@@ -26,6 +26,7 @@
 (require 'deianira-lib)
 (require 'dash)
 (require 'cl-lib)
+(require 'help-fns)
 
 (defcustom dei-keymap-found-hook nil
   "Run after adding one or more keymaps to `dei--known-keymaps'.
@@ -131,7 +132,7 @@ Suitable to trigger from `window-buffer-change-functions':
 
 (defun dei-define-super-like-ctl-everywhere ()
   "Duplicate all Control bindings to exist also on Super.
-Best on `dei-keymap-found-hook'."
+Appropriate on `dei-keymap-found-hook'."
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--super-reflected-keymaps)
            do (progn
@@ -140,8 +141,8 @@ Best on `dei-keymap-found-hook'."
            finally (dei--reflect-actions-execute)))
 
 (defun dei-define-super-like-ctlmeta-everywhere ()
-  "Duplicate all Control bindings to exist also on Super.
-Best on `dei-keymap-found-hook'."
+  "Duplicate all Control-Meta bindings to exist also on Super.
+Appropriate on `dei-keymap-found-hook'."
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--super-reflected-keymaps)
            do (progn
@@ -151,7 +152,7 @@ Best on `dei-keymap-found-hook'."
 
 (defun dei-define-alt-like-meta-everywhere ()
   "Duplicate all Meta bindings to exist also on Alt.
-Best on `dei-keymap-found-hook'.
+Appropriate on `dei-keymap-found-hook'.
 
 Useful in certain environments, such as inside UserLand on an
 Android tablet with a Mac keyboard, where the Option key emits A-
@@ -415,7 +416,7 @@ with \\[dei-remap-actions-execute]."
                          (list this-key
                                sibling-cmd
                                keymap
-                               "Clone winning sibling to overwrite this   "
+                               "Clone winning sibling to overwrite this"
                                this-cmd)))
                   ((or (member this-key winners-for-this-keymap)
                        (member this-cmd winners-for-this-keymap))
@@ -423,7 +424,7 @@ with \\[dei-remap-actions-execute]."
                          (list sibling-keydesc
                                this-cmd
                                keymap
-                               "Clone this winner to overwrite sibling    "
+                               "Clone this winner to overwrite sibling"
                                sibling-cmd)))
                   ((< 1 (length
                          (-non-nil
@@ -439,7 +440,7 @@ with \\[dei-remap-actions-execute]."
                          (list this-key
                                sibling-cmd
                                keymap
-                               "Clone winning sibling to overwrite this   "
+                               "Clone winning sibling to overwrite this"
                                this-cmd)))
                   ((or (member this-key winners)
                        (member this-cmd winners))
@@ -447,7 +448,7 @@ with \\[dei-remap-actions-execute]."
                          (list sibling-keydesc
                                this-cmd
                                keymap
-                               "Clone this winner to overwrite sibling    "
+                               "Clone this winner to overwrite sibling"
                                sibling-cmd)))
                   ;; Neither key and neither command is rigged to win, so take
                   ;; the default action.  (Back when we had the boolean
@@ -458,7 +459,7 @@ with \\[dei-remap-actions-execute]."
                          (list permachord-key
                                chordonce-cmd
                                keymap
-                               "Clone chord-once to overwrite perma-chord "
+                               "Clone chord-once to overwrite perma-chord"
                                permachord-cmd)))))
 
            ;; ;; We ended up here due to this type of situation: there exists a key
@@ -484,7 +485,7 @@ with \\[dei-remap-actions-execute]."
             (setq action (list sibling-keydesc
                                this-cmd
                                keymap
-                               "Clone to unbound sibling                  "
+                               "Clone to unbound sibling"
                                sibling-cmd)))
            ;; Default.  This will also, via dei-remap-actions-execute, unbind the
            ;; key seqs that would've blocked us from proceeding.
@@ -492,7 +493,7 @@ with \\[dei-remap-actions-execute]."
             (setq action (list permachord-key
                                chordonce-cmd
                                keymap
-                               "Clone chord-once to overwrite perma-chord "
+                               "Clone chord-once to overwrite perma-chord"
                                permachord-cmd))))
           (when (and action
                      (not (member action dei--remap-record)))
@@ -533,41 +534,8 @@ AVOID-PREFIXES is a list of prefixes to leave out of the result."
                     when (dei--homogenize-key-in-keymap key map)
                     count key)))
 
-(defun dei--echo-remap-actions ()
-  (let ((buf (get-buffer-create "*Deianira remaps*")))
-    (with-current-buffer buf
-      (read-only-mode -1)
-      (goto-char (point-max))
-      (let ((sorted-actions
-             (cl-sort dei--remap-actions #'string-lessp
-                      :key (lambda (x) (nth 0 x)))))
-        (dolist (item sorted-actions)
-          (seq-let (keydesc cmd map hint old) item
-            (let ((cmd-string (if (symbolp cmd)
-                                  (symbol-name cmd)
-                                (if (keymapp cmd)
-                                    (if-let ((named (help-fns-find-keymap-name cmd)))
-                                        (symbol-name named)
-                                      "(some sub-keymap)")
-                                  cmd)))
-                  (old-string (if (symbolp old)
-                                  (symbol-name old)
-                                (if (keymapp old)
-                                    (if-let ((named (help-fns-find-keymap-name old)))
-                                        (symbol-name named)
-                                      "(some sub-keymap)")
-                                  old))))
-              (insert
-               (if (symbolp map)
-                   (concat "(" (symbol-name map) ")\t\t ")
-                 "")
-               hint
-               " Bind  " keydesc
-               "\tto  " cmd-string
-               "\t ... was " old-string)))
-          (newline))))))
-
 (defun dei-homogenize-all-keymaps ()
+  "Homogenize keymaps seen, except those already homogenized."
   (cl-loop for map in (-difference dei--known-keymaps dei--homogenized-keymaps)
            do (progn
                 (dei--homogenize-keymap map)
@@ -576,9 +544,9 @@ AVOID-PREFIXES is a list of prefixes to leave out of the result."
                   (push map dei--homogenized-keymaps)))
            finally (progn
                      (dei-remap-actions-execute dei--remap-actions)
-                     (dei--echo-remap-actions)
                      (setq dei--remap-actions nil))))
 
+;; for debug
 (defun dei-homogenize-all-keymaps-dry-run ()
   (interactive)
   (cl-loop for map in (-difference dei--known-keymaps dei--homogenized-keymaps)
@@ -620,5 +588,53 @@ Interactively, use the value of `dei--remap-actions'."
   (cl-loop for x in dei--remap-revert-list
            do (seq-let (map keydesc old-def) x
                 (define-key (dei--raw-keymap map) keydesc old-def))))
+
+(define-derived-mode deianira-remaps-list-mode tabulated-list-mode
+  "Remaps List"
+  nil
+  (setq tabulated-list-format
+        [("Keymap" 20 t)
+         ("Reason" 45 t)
+         ("Key bound" 15 t)
+         ("New command" 20 t)
+         ("Old command" 20 t)])
+  (add-hook 'tabulated-list-revert-hook #'deianira-list-remaps nil t)
+  (tabulated-list-init-header))
+
+(defun deianira-list-remaps ()
+  (interactive)
+  (let ((buf (get-buffer-create "*Deianira remaps*")))
+    (with-current-buffer buf
+      (deianira-remaps-list-mode)
+      (setq tabulated-list-entries nil)
+      (dolist (item dei--remap-record)
+        (seq-let (keydesc cmd map hint old) item
+          (let* ((cmd-string (if (symbolp cmd)
+                                 (symbol-name cmd)
+                               (if (keymapp cmd)
+                                   (if-let ((named (help-fns-find-keymap-name cmd)))
+                                       (symbol-name named)
+                                     "(some sub-keymap)")
+                                 cmd)))
+                 (old-string
+                  (if old
+                      (concat "(was "
+                              (if (symbolp old)
+                                  (symbol-name old)
+                                (if (keymapp old)
+                                    (if-let ((named (help-fns-find-keymap-name old)))
+                                        (symbol-name named)
+                                      "some sub-keymap")
+                                  old))
+                              ")")
+                    "")))
+            (push (list (sxhash item) (vector (symbol-name map)
+                                              hint
+                                              keydesc
+                                              cmd-string
+                                              old-string))
+                  tabulated-list-entries))))
+      (tabulated-list-print)
+      (display-buffer buf))))
 
 (provide 'deianira-mass-remap)
