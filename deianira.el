@@ -432,13 +432,13 @@ Then return to the parent hydra."
 (declare-function #'ivy-read "ivy")
 (declare-function #'helm "helm-core")
 
-(defvar dei--interrupt-counter 0
+(defvar dei--interrupts-counter 0
   "How many times the hydra maker was interrupted recently.")
 
-(defun dei--interrupt-decrement-ctr ()
-  "Decrement `dei--interrupt-counter' until zero."
-  (unless (zerop dei--interrupt-counter)
-    (cl-decf dei--interrupt-counter)))
+(defun dei--interrupts-decrement ()
+  "Decrement `dei--interrupts-counter' unless already zero."
+  (unless (zerop dei--interrupts-counter)
+    (cl-decf dei--interrupts-counter)))
 
 (defun dei--on-which-keys (command &optional keymap)
   "Find to which keys COMMAND is bound.
@@ -456,8 +456,8 @@ Optional argument KEYMAP means look only in that keymap."
   :keymap (make-sparse-keymap)
   (if deianira-mode
       (progn
-        (setq dei--interrupt-counter 0)
-        (named-timer-run 'deianira-b 60 60 #'dei--interrupt-decrement-ctr)
+        (setq dei--interrupts-counter 0)
+        (named-timer-run 'deianira-ctr-decay 60 60 #'dei--interrupts-decrement)
         (setq dei--old-hydra-cell-format hydra-cell-format)
         (setq dei--old-hydra-C-u (lookup-key hydra-base-map (kbd "C-u")))
         (setq hydra-cell-format "% -20s %% -11`%s")
@@ -484,14 +484,16 @@ Optional argument KEYMAP means look only in that keymap."
         (add-hook 'window-buffer-change-functions #'dei-make-hydras-maybe 56)
         (add-hook 'window-selection-change-functions #'dei-make-hydras-maybe)
         (add-hook 'after-change-major-mode-hook #'dei-make-hydras-maybe)
-        (add-variable-watcher 'local-minor-modes #'dei-make-hydras-maybe)
+        ;; With auto-save-visited-mode, this watcher is triggered every 5
+        ;; seconds, cluttering the debug buffer.  No big deal either way.
+        (unless auto-save-visited-mode
+          (add-variable-watcher 'local-minor-modes #'dei-make-hydras-maybe))
         ;; (when (not hydra-is-helpful)
         ;;   (message "hydra-is-helpful is nil, is this what you want?"))
         (when (null dei-homogenizing-winners)
           (deianira-mode 0)
           (user-error "Disabling Deianira, please customize dei-homogenizing-winners")))
-    (named-timer-cancel 'deianira-b)
-    (named-timer-cancel 'deianira-c)
+    (named-timer-cancel 'deianira-ctr-decay)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (define-key hydra-base-map (kbd "C-u") dei--old-hydra-C-u)
     (remove-hook 'window-buffer-change-functions #'dei-make-hydras-maybe)
@@ -520,20 +522,19 @@ meantime, if we didn't hide this and the user reads the source
 code and places point on `dei--flocks', eldoc may choke for
 minutes.")
 
-(defun dei--set-ersatz-key (var newkey)
-  "Bind VAR to NEWKEY, and help other code cope with the change."
-  (require 'map)
+(defun dei--set-ersatz-key (sym newkey)
+  "Bind SYM to NEWKEY, and help other code cope with the change."
   ;; Reset all hydras because value gets hardcoded by `dei--specify-extra-heads'
   (setq dei--flocks nil)
   (obarray-remove dei--hidden-obarray "dei--flocks")
   ;; Unbind last key in case it was different
-  (when (boundp var)
+  (when (boundp sym)
     (if (version<= "29" emacs-version)
-        (define-key deianira-mode-map (kbd (symbol-value var)) nil t)
-      (define-key deianira-mode-map (kbd (symbol-value var)) nil)))
+        (define-key deianira-mode-map (kbd (symbol-value sym)) nil t)
+      (define-key deianira-mode-map (kbd (symbol-value sym)) nil)))
   ;; Bind new key
-  (define-key deianira-mode-map (kbd newkey) (map-elt dei--ersatz-keys-alist var))
-  (set-default var newkey))
+  (define-key deianira-mode-map (kbd newkey) (alist-get sym dei--ersatz-keys-alist))
+  (set-default sym newkey))
 
 (defcustom dei-ersatz-alt "<hiragana-katakana>"
   "Key that represents Alt."
@@ -1019,9 +1020,9 @@ long as they don't change.")
            when (eq hash (dei--flock-hash flock))
            return flock))
 
-;; Note that this could be sped up with a hash table (faster for lists longer
-;; than about 32 items; give each flock object an unique key contrived from
-;; combining hash and width), but I doubt we have a bottleneck here.
+;; Maybe this could be sped up with a hash table -- contrive an unique key for
+;; each flock object by adding hash and width -- but I doubt we have a
+;; bottleneck here.
 (defun dei--flock-by-hash-and-width (hash width)
   "Return the flock with :hash HASH and :width WIDTH."
   (cl-loop for flock in dei--flocks
@@ -1334,6 +1335,14 @@ itself\)."
 
 
 ;;;; Debug toolkit
+
+(defun dei-reset ()
+  (interactive)
+  (asyncloop-reset-all)
+  (setq dei--flocks nil)
+  (setq dei--last-hash (random))
+  (setq dei--last-bindings nil)
+  (obarray-remove dei--hidden-obarray "dei--flocks"))
 
 ;; ;; FIXME
 ;; (defun dei-regenerate-hydras-for-this-buffer ()

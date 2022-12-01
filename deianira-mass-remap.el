@@ -76,13 +76,14 @@ You may be interested in adding some of these functions:
   :type 'hook
   :group 'deianira)
 
-;; REVIEW: Test initial value of nil, should be fine right?
+;; NOTE: It works, but I don't understand why it must be prepopulated with
+;; global-map.  Something to do with widget-global-map being "found" by default?
 (defvar dei--known-keymaps '(global-map)
   "List of named keymaps seen active.
 This typically gets populated (by `dei-record-keymap-maybe') with
 just mode maps, rarely (never?) those used as transient maps and never
-so-called prefix commands like Control-X-prefix nor the category
-of sub-keymaps like ctl-x-map or help-map.")
+so-called prefix commands like `Control-X-prefix', nor the category
+of sub-keymaps like `ctl-x-map' or `help-map.'")
 
 (defvar dei--known-keymap-composites nil
   "List of unique keymap composites seen active.
@@ -96,20 +97,21 @@ This simply checks the output of `current-active-maps' and adds
 to `dei--known-keymaps' anything not already added.  Every time
 we find one or more new keymaps, trigger `dei-keymap-found-hook'.
 
-Suitable to trigger from `window-buffer-change-functions':
+Suitable to hook on `window-buffer-change-functions' like:
 
-(add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)"
+\(add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)"
   (require 'help-fns)
   (let* ((maps (current-active-maps))
          (composite-hash (abs (sxhash maps))))
     ;; Make sure we only iterate the expensive `help-fns-find-keymap-name' once
-    ;; for this keymap combination.
+    ;; for this keymap composite.
     (unless (member composite-hash dei--known-keymap-composites)
       (push composite-hash dei--known-keymap-composites)
       (let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
              (new-maps (-difference named-maps dei--known-keymaps)))
         ;; idk what is widget-global-map, but ignoring it works on my machine
         (setq new-maps (remove 'widget-global-map new-maps))
+        (setq new-maps (remove 'deianira-mode-map new-maps))
         (when new-maps
           (setq dei--known-keymaps (append new-maps dei--known-keymaps))
           (run-hooks 'dei-keymap-found-hook))))))
@@ -121,21 +123,35 @@ Suitable to trigger from `window-buffer-change-functions':
 (defvar dei--reflect-actions nil
   "List of actions to pass to `define-key'.")
 
+;; TODO: Simply merge with remap-actions?
 (defun dei--reflect-actions-execute ()
+  "Execute `dei--reflect-actions', wetting the dry-run."
+  (require 'seq)
   (cl-loop for arglist in dei--reflect-actions
            do (seq-let (map key def) arglist
-                (apply #'define-key
-                       (dei--raw-keymap map)
-                       (kbd key)
-                       def
+                (apply #'define-key (dei--raw-keymap map) (kbd key) def
                        ;; Remove the binding entirely
-                       (and (null def)
-                            (version<= "29" emacs-version)
-                            t)))
+                       (and (version<= "29" emacs-version)
+                            (null def))))
            finally (setq dei--reflect-actions nil)))
 
-(defun dei--define-a-like-b-in-keymap (recipient-mod donor-mod map &optional preserve)
+(defun dei--define-a-like-b-in-keymap
+    (recipient-mod donor-mod map &optional unbind-donor)
+  "Clone definitions from one set of keys to another set.
+Inside keymap MAP, take all keys and key sequences that contain
+DONOR-MOD \(a substring such as \"C-\"\), replace the substring
+wherever it occurs in favor of RECIPIENT-MOD \(a substring such
+as \"H-\"\), and bind to the same commands.
+
+Actually just pushes these actions onto `dei--remap-actions' for
+later execution.
+
+Optional argument UNBIND-DONOR is mainly for internal use; if
+non-nil, unbind the donor keys."
   (let ((raw-map (dei--raw-keymap map)))
+    ;; NOTE: It works, but I don't understand why I don't have to sharp-quote
+    ;; the lambda and expand raw-map, recipient-mod etc... why does it not throw
+    ;; "variable not bound" errors?
     (map-keymap
      (lambda (event donor-def)
        (let ((key (key-description (vector event))))
@@ -148,14 +164,14 @@ Suitable to trigger from `window-buffer-change-functions':
                  (if (keymapp donor-def)
                      (let ((new-submap (make-sparse-keymap)))
                        (set-keymap-parent new-submap donor-def)
-                       (dei--define-a-like-b-in-keymap recipient-mod donor-mod new-submap) ;; Recurse!
+                       (dei--define-a-like-b-in-keymap recipient-mod donor-mod new-submap t) ;; Recurse!
                        (push (list map recipient-fullkey new-submap) dei--reflect-actions))
                    (push (list map recipient-fullkey donor-def) dei--reflect-actions)))
                ;; This boolean comes into play when we recurse.  Basically at
                ;; the top level you want to preserve the donor key, but inside
                ;; sublevels remove them, so as to avoid having a multitude of
                ;; useless combinations like s-x C-a s-i C-g...
-               (unless preserve
+               (when unbind-donor
                  (push (list map donor-fullkey nil) dei--reflect-actions)))))))
      raw-map)))
 
@@ -171,7 +187,7 @@ Appropriate on `dei-keymap-found-hook'."
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--super-reflected-keymaps)
            do (progn
-                (dei--define-a-like-b-in-keymap "s-" "C-" map t)
+                (dei--define-a-like-b-in-keymap "s-" "C-" map)
                 (push map dei--super-reflected-keymaps))
            finally (dei--reflect-actions-execute)))
 
@@ -181,7 +197,7 @@ Appropriate on `dei-keymap-found-hook'."
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--super-reflected-keymaps)
            do (progn
-                (dei--define-a-like-b-in-keymap "s-" "C-M-" map t)
+                (dei--define-a-like-b-in-keymap "s-" "C-M-" map)
                 (push map dei--super-reflected-keymaps))
            finally (dei--reflect-actions-execute)))
 
@@ -203,7 +219,7 @@ F13 in place of ESC, which seems easier."
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--alt-reflected-keymaps)
            do (progn
-                (dei--define-a-like-b-in-keymap "A-" "M-" map t)
+                (dei--define-a-like-b-in-keymap "A-" "M-" map)
                 (push map dei--alt-reflected-keymaps))
            finally (dei--reflect-actions-execute)))
 
@@ -685,8 +701,8 @@ Interactively, use the value of `dei--remap-actions'."
 
 ;;; Cleaning
 ;; Unused for now.  No obvious point to purging the ugly key bindings -- they
-;; may as well stay -- except that it makes Deianira faster, as it puts less
-;; workload on `dei--unnest-keymap-for-hydra-to-eat'.
+;; may as well stay -- except that it makes Deianira a bit faster, as it puts
+;; less workload on `dei--unnest-keymap-for-hydra-to-eat'.
 
 (defvar dei--cleaned-maps nil)
 
