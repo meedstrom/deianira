@@ -127,6 +127,10 @@ string and start a new search on the cut string.")
 
 ;;;; User settings
 
+(defcustom dei-debug-level 1
+  "Verbosity of messages.  Doesn't affect much for now."
+  :group 'deianira)
+
 (defcustom dei-hydra-keys
   "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
   "Keys to show in hydra hint\; default reflects an US keyboard.
@@ -757,10 +761,7 @@ heads suited for a nonum hydra, see `dei--convert-head-for-nonum'."
 
 (defun dei--specify-hydra (stem name &optional nonum-p)
   "Return a list of hydra heads, with NAME as first element.
-You can pass the output to `dei--try-birth-hydra' like:
-
-   (let ((spec (dei--specify-hydra ...)))
-     (funcall #'dei--try-birth-hydra (car spec) (cdr spec)))
+You can pass the output to `dei--try-birth-hydra'.
 
 String STEM is a stem on which the resulting list of heads will
 be based.
@@ -784,7 +785,25 @@ instead of anything else they may have been bound to."
 ;;    capital keys) since there are many of those heads, or giving up on nonum
 ;;    hydras.
 ;; 2. Make a focused subset of defhydra (possible?).
-(defun dei--try-birth-hydra (name list-of-heads)
+(defun dei--try-birth-hydra (recipe)
+  "Create a hydra named NAME with LIST-OF-HEADS.
+This will probably be called by `dei--generate-hydras',
+which see."
+  (let ((name (car recipe))
+        (list-of-heads (cdr recipe)))
+    ;; An old error check
+    (if (eq hydra-curr-body-fn (intern name))
+        (error "This hydra active, skipped redefining: %s" name)
+      (eval `(defhydra ,(intern name)
+               (:columns ,dei-columns
+                :exit nil
+                :hint nil
+                :foreign-keys run)
+               ,name
+               ,@list-of-heads)
+            t))))
+
+(defun dei--try-birth-hydra* (name list-of-heads)
   "Create a hydra named NAME with LIST-OF-HEADS.
 This will probably be called by `dei--generate-hydras',
 which see."
@@ -801,7 +820,7 @@ which see."
           t)))
 
 
-;;;; Keymap scanner used by async worker
+;;;; Keymap scanner
 
 ;; Since `or' calls the slow `regexp-opt', save output in variable.
 (defconst dei--shift-regexp (rx (or bol "-" " ") "S-")
@@ -1010,24 +1029,63 @@ long as they don't change.")
                      (eq width (dei--flock-width flock)))
            return flock))
 
-(defun dei--step-0-check-preexisting (&optional id)
-  ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
-  ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
+;; TODO: figure out if it's necessary to respecify heads due to changed
+;; dei--filler and if so how to get the effect here (theory: we don't need filler
+;; to be more than one char, I think it was for gracefully degrading from a
+;; weird issue) (theory: we see no effect when starting with a narrow frame and
+;; rehint for a big frame, but the other way around could get messy)
+(defun dei--rehint-flock (flock)
+  "Return copy of FLOCK with hints updated to match framewidth."
+  (cl-letf* ((dei--colwidth (dei--colwidth-recalc))
+             (dei--filler (dei--filler-recalc))
+             (new (copy-sequence flock)))
+    (setf (dei--flock-width new) (frame-width))
+    (setf (dei--flock-vars new)
+          (cl-loop
+           for pair in (dei--flock-vars flock)
+           when (string-suffix-p "/hint" (symbol-name (car pair)))
+           collect
+           (let ((basename (substring (symbol-name (car pair)) 0 -5)))
+             (cons (car pair)
+                   ;; Note that we eval for a static string, see also
+                   ;; `dei--step-4-birth-hydra'.  It's ok bc the there is nothing
+                   ;; dynamic in the input, so the result is deterministic.
+                   (eval (hydra--format
+                          ;; These arguments will be identical to what `defhydra'
+                          ;; passed to `hydra--format' the first time around. The
+                          ;; difference comes from let-binding `dei--colwidth'.
+                          basename
+                          (eval (intern-soft (concat basename "/params")))
+                          (eval (intern-soft (concat basename "/docstring")))
+                          (eval (intern-soft (concat basename "/heads")))))))
+           else collect pair))
+    new))
+
+;; Test
+;; (--filter (string-suffix-p "/hint" (symbol-name (car it)))
+;;           (caddar dei--flocks))
+;; (setq bar (dei--rehint-flock (car dei--flocks)))
+;; (--filter (string-suffix-p "/hint" (symbol-name (car it)))
+;;           (caddr bar))
+;;
+
+
+(defun dei--step-0-check-preexisting (loop)
+  (setq dei--flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
   (with-current-buffer dei--buffer-under-analysis
-    (setq dei--flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
+    ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
+    ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
     (setq dei--current-hash (abs (sxhash (current-active-maps))))
     (setq dei--current-width (frame-width))
     (let* ((hash dei--current-hash)
            (some-flock (dei--first-flock-by-hash hash)))
       ;; (if (and (equal dei--last-hash hash)
       ;;          (equal dei--last-width (frame-width)))
-      ;;     (asyncloop-echo id "Same hash and frame width, doing nothing: %s" hash))
+      ;;     (asyncloop-log loop "Same hash and frame width, doing nothing: %s" hash))
       ;; If we already made hydras for this keymap composite, restore from cache.
       (when some-flock
         (let ((found (dei--flock-by-hash-and-width hash dei--current-width)))
-          (if found
-              (asyncloop-echo id "Flock exists, making it current: %d" hash)
-            (asyncloop-echo id "Converting to %d chars wide: %d" dei--current-width hash)
+          (unless found
             (setq found (dei--rehint-flock some-flock))
             (push found dei--flocks))
           ;; Point names to already made values.  It's beautiful.
@@ -1035,9 +1093,11 @@ long as they don't change.")
           (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
           (setq dei--last-bindings (dei--flock-bindings found))
           (setq dei--last-hash hash)
-          (asyncloop-defuse id))))))
+          (asyncloop-cancel loop)
+          (if found (format "Flock exists, making it current: %d" hash)
+            (format "Converting to %d chars wide: %d" dei--current-width hash)))))))
 
-(defun dei--step-1-check-settings (_id)
+(defun dei--step-1-check-settings (_loop)
   "Signal error if any two user settings overlap.
 Otherwise we could end up with two heads in one hydra both bound
 to the same key, no bueno."
@@ -1064,12 +1124,9 @@ to the same key, no bueno."
                 (error "Found %s in both %s and %s"
                        overlap (car var) (car remaining-var)))))))))
 
-(defun dei--step-2-model-the-world (id)
-  "Calculate things."
+(defun dei--step-2-model-the-world (loop)
+  "Calculate facts."
   (with-current-buffer dei--buffer-under-analysis
-    (asyncloop-echo id
-      "dei--step-2-model-the-world: Modeling the world from buffer: %S"
-      dei--buffer-under-analysis)
     ;; Cache settings
     (setq dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
           dei--hydra-keys-list (dei--hydra-keys-list-recalc)
@@ -1134,9 +1191,10 @@ to the same key, no bueno."
                    (seq-sort-by #'dei--key-seq-steps-length #'> new-stems)))
 
     ;; Clear the workbench from a previous done or half-done iteration.
-    (setq dei--hydra-blueprints nil)))
+    (setq dei--hydra-blueprints nil)
+    (format "Buffer %S" dei--buffer-under-analysis)))
 
-(defun dei--step-3-draw-blueprint (id &optional oneshot)
+(defun dei--step-3-draw-blueprint (loop &optional oneshot)
   "Draw blueprint for first item of `dei--stems'.
 Specifically, pop a stem off the list `dei--stems', transmute it into
 a blueprint, and push that onto the list `dei--hydra-blueprints'.
@@ -1146,108 +1204,63 @@ precompute as much as possible, that we'll later pass to
 `defhydra', see `dei--step-4-birth-hydra'.
 
 Repeatedly add another invocation of this function to the front
-of asyncloop identified by ID, so it will run again until
-`dei--stems' is empty.  With ONESHOT non-nil, don't do that (so
+of asyncloop LOOP, so it will run again until
+`dei--stems' is empty.  With ONESHOT non-nil, don't do that \(so
 the programmer can debug by running the function once by
-itself)."
+itself\)."
   ;; TODO: maybe don't unwind-protect
   (unwind-protect
       (when dei--changed-stems
         (with-current-buffer dei--buffer-under-analysis
-          (asyncloop-echo id
-            "Drawing blueprint for stem %s in buffer %s"
-            (car dei--changed-stems) dei--buffer-under-analysis)
+          (when (> dei-debug-level 1)
+            (asyncloop-log loop
+              "Drawing blueprint for stem %s in buffer %S"
+              (car dei--changed-stems) dei--buffer-under-analysis))
           (let* ((stem (car dei--changed-stems))
                  (name (dei--dub-hydra-from-key-or-stem stem))
                  (h1 (dei--specify-hydra stem (concat name "-nonum") t))
                  (h2 (dei--specify-hydra stem name)))
             (push h1 dei--hydra-blueprints)
             (push h2 dei--hydra-blueprints)
-            (pop dei--changed-stems))))
+            (pop dei--changed-stems)
+            stem)))
     ;; Run again if more to do.
-    ;;
-    ;; FWIW, would be great if a problem in the user-written function didn't
-    ;; cause the thread to run forever. What we see here is essentially a
-    ;; while-loop pattern; it's safer to have a fixed list yielding a
-    ;; deterministic number of iterations.  Although you could just instruct the
-    ;; user of asyncloop to pop the list the first thing they do in a function like
-    ;; this.  Recover in different way, like through condition-case push the
-    ;; let-bound old value back on the list if that's needed for some reason.
-    ;;
-    ;; Point out it's not unlikely someone interrupts with C-g, precisely
-    ;; because the function will repeat many times until done, and user may be
-    ;; doing things.
     (when dei--changed-stems
       (unless oneshot
-        (push #'dei--step-3-draw-blueprint (asyncloop-remainder id))))))
+        (push #'dei--step-3-draw-blueprint (asyncloop-remainder loop))))))
 
-;; TODO: figure out if it's necessary to respecify heads due to changed
-;; dei--filler and if so how to get the effect here (theory: we don't need filler
-;; to be more than one char, I think it was for gracefully degrading from a
-;; weird issue) (theory: we see no effect when starting with a narrow frame and
-;; rehint for a big frame, but the other way around could get messy)
-(defun dei--rehint-flock (flock)
-  "Return copy of FLOCK with hints updated to match framewidth."
-  (cl-letf* ((dei--colwidth (dei--colwidth-recalc))
-             (dei--filler (dei--filler-recalc))
-             (new (copy-sequence flock)))
-    (setf (dei--flock-width new) (frame-width))
-    (setf (dei--flock-vars new)
-          (cl-loop
-           for pair in (dei--flock-vars flock)
-           when (string-suffix-p "/hint" (symbol-name (car pair)))
-           collect
-           (let ((basename (substring (symbol-name (car pair)) 0 -5)))
-             (cons (car pair)
-                   ;; Note that we eval for a static string, see also
-                   ;; `dei--step-4-birth-hydra'.  It's ok bc there is nothing
-                   ;; deterministic in the input.
-                   (eval (hydra--format
-                          ;; These arguments will be identical to what `defhydra'
-                          ;; passed to `hydra--format' the first time around. The
-                          ;; difference comes from let-binding `dei--colwidth'.
-                          basename
-                          (eval (intern-soft (concat basename "/params")))
-                          (eval (intern-soft (concat basename "/docstring")))
-                          (eval (intern-soft (concat basename "/heads")))))))
-           else collect pair))
-    new))
-
-;; Test
-;; (--filter (string-suffix-p "/hint" (symbol-name (car it)))
-;;           (caddar dei--flocks))
-;; (setq bar (dei--rehint-flock (car dei--flocks)))
-;; (--filter (string-suffix-p "/hint" (symbol-name (car it)))
-;;           (caddr bar))
-;;
-
-(defun dei--step-4-birth-hydra (id &optional oneshot)
+;; TODO: Boost performance.  Approaches:
+;; - Produce less garbage.  Every 15-20 iterations produces 16 MB of garbage to
+;;   be collected.
+;; - Speed up `dei--try-birth-hydra' generally.
+(defun dei--step-4-birth-hydra (loop &optional oneshot)
   "Pass a blueprint to `defhydra', wetting the dry-run.
 Each invocation pops one blueprint off `dei--hydra-blueprints'.
 
 Repeatedly add another invocation of this function to the front
-of asyncloop identified by ID, so it will run again until
+of asyncloop LOOP, so it will run again until
 `dei--hydra-blueprints' is empty.  With ONESHOT non-nil, don't do
-that (so the programmer can debug by running the function once by
-itself)."
+that \(so the programmer can debug by running the function once by
+itself\)."
   (unwind-protect
       (when dei--hydra-blueprints
         (with-current-buffer dei--buffer-under-analysis
           (let ((blueprint (car dei--hydra-blueprints)))
             (unless blueprint
               (error "Blueprint should not be nil"))
-            (dei--try-birth-hydra (car blueprint) (cdr blueprint))
+            (dei--try-birth-hydra blueprint)
             ;; Turn the dynamic sexp into a static string, since there is
             ;; nothing dynamic in the input anyway.
             (let ((hint-sym (intern-soft (concat (car blueprint) "/hint"))))
               (set hint-sym (eval (eval hint-sym))))
-            (pop dei--hydra-blueprints))))
+            (pop dei--hydra-blueprints)
+            (car blueprint))))
     ;; Run again if more to do
     (when dei--hydra-blueprints
       (unless oneshot
-        (push #'dei--step-4-birth-hydra (asyncloop-remainder id))))))
+        (push #'dei--step-4-birth-hydra (asyncloop-remainder loop))))))
 
-(defun dei--step-5-register (id)
+(defun dei--step-5-register (loop)
   "Record the hydras made under this keymap combination."
   ;; (when (assoc dei--current-hash dei--flocks)
     ;; (error "Hash already recorded: %s" dei--current-hash))
@@ -1273,7 +1286,7 @@ itself)."
            :vars vars
            :bindings dei--current-bindings)
           dei--flocks)
-    (asyncloop-echo id
+    (asyncloop-log loop
       "Flock #%d born: %s" (length dei--flocks) dei--current-hash)
     (setq dei--last-bindings dei--current-bindings)
     (setq dei--last-hash dei--current-hash)
@@ -1291,30 +1304,30 @@ itself)."
        dei--step-5-register)
 
     :on-start
-    (defun dei--actions-on-start (_id)
+    (defun dei--actions-on-start (_)
       "Necessary init."
       (setq dei--buffer-under-analysis (current-buffer)))
 
     :on-interrupt-discovered
-    (defun dei--actions-on-interrupt (id)
+    (defun dei--actions-on-interrupt (loop)
       "Abort if excessive interrupts recently."
-      (if (<= dei--interrupt-counter 4)
-          (cl-incf dei--interrupt-counter)
+      (if (<= dei--interrupts-counter 4)
+          (cl-incf dei--interrupts-counter)
         (deianira-mode 0)
-        (asyncloop-defuse id)
-        (asyncloop-echo id
+        (asyncloop-cancel loop)
+        (asyncloop-log loop
          (message "5 interrupts last 3 min, disabling deianira-mode!"))))
 
     :per-stage
-    (defun dei--actions-per-stage (id)
+    (defun dei--actions-per-stage (loop)
       "Abort if buffer killed."
       (unless (buffer-live-p dei--buffer-under-analysis)
-        (asyncloop-defuse id)
-        (asyncloop-echo id
+        (asyncloop-cancel loop)
+        (asyncloop-log loop
           "Cancelling because buffer killed: %s" dei--buffer-under-analysis)))
 
-    :on-abort
-    (defun dei--actions-on-abort (_id)
+    :on-cancel
+    (defun dei--actions-on-cancel (_)
       "Hide the monster variable."
       (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
       (obarray-remove obarray "dei--flocks"))))
