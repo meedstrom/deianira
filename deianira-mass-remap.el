@@ -67,7 +67,7 @@ If it's already that, return it unmodified."
   "Run after adding one or more keymaps to `dei--known-keymaps'.
 See `dei-record-keymap-maybe', which triggers this hook.
 
-You may be interested in adding some of these functions:
+You may be interested in hooking some of these functions:
 
 - `dei-homogenize-all-keymaps'
 - `dei-define-alt-like-meta-everywhere'
@@ -76,9 +76,7 @@ You may be interested in adding some of these functions:
   :type 'hook
   :group 'deianira)
 
-;; NOTE: It works, but I don't understand why it must be prepopulated with
-;; global-map.  Something to do with widget-global-map being "found" by default?
-(defvar dei--known-keymaps '(global-map)
+(defvar dei--known-keymaps nil
   "List of named keymaps seen active.
 This typically gets populated (by `dei-record-keymap-maybe') with
 just mode maps, rarely (never?) those used as transient maps and never
@@ -100,7 +98,6 @@ we find one or more new keymaps, trigger `dei-keymap-found-hook'.
 Suitable to hook on `window-buffer-change-functions' like:
 
 \(add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)"
-  (require 'help-fns)
   (let* ((maps (current-active-maps))
          (composite-hash (abs (sxhash maps))))
     ;; Make sure we only iterate the expensive `help-fns-find-keymap-name' once
@@ -109,13 +106,9 @@ Suitable to hook on `window-buffer-change-functions' like:
       (push composite-hash dei--known-keymap-composites)
       (let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
              (new-maps (-difference named-maps dei--known-keymaps)))
-        ;; idk what is widget-global-map, but ignoring it works on my machine
-        (setq new-maps (remove 'widget-global-map new-maps))
-        (setq new-maps (remove 'deianira-mode-map new-maps))
         (when new-maps
           (setq dei--known-keymaps (append new-maps dei--known-keymaps))
           (run-hooks 'dei-keymap-found-hook))))))
-;; (dei-record-keymap-maybe)
 
 
 ;;; Reflecting one stem in another
