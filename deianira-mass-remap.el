@@ -25,8 +25,34 @@
 
 (require 'deianira-lib)
 (require 'dash)
-(require 'cl-lib)
-(require 'help-fns)
+(eval-when-compile (require 'cl-lib))
+(eval-when-compile (require 'help-fns)) ;; help-fns-find-keymap-name
+(eval-when-compile (require 'seq)) ;; seq-let
+(eval-when-compile (require 'subr-x)) ;; if-let, when-let, string-join
+
+(defvar dei--remap-record nil
+  "Record of work done.")
+
+(defvar dei--remap-actions nil
+  "List of actions to pass to `define-key'.")
+
+(defun dei--is-chordonce (keydesc)
+  "Non-nil if KEYDESC can be described as chordonce."
+  (declare (pure t) (side-effect-free t))
+  (let ((steps (split-string keydesc " ")))
+    (and (string-match-p dei--modifier-regexp-safe (car steps))
+         (equal (cdr steps) (-map #'dei--get-leaf (cdr steps))))))
+
+(defun dei--is-permachord (keydesc)
+  "Non-nil if KEYDESC can be described as permachord."
+  (declare (pure t) (side-effect-free t))
+  (when (> (length keydesc) 2)
+    (let ((first-2-chars (substring keydesc 0 2)))
+      (when (string-suffix-p "-" first-2-chars)
+        (cl-loop for step in (split-string keydesc " ")
+                 if (not (string-search first-2-chars step))
+                 return nil
+                 else finally return t)))))
 
 ;; Heh, when I made this function by axing where the code originally was
 ;; written, I found my code never did what I wanted.  Now fixed.  Score one for
@@ -35,7 +61,7 @@
   "Strip chords from most of key sequence KEYDESC.
 Leave alone the first step of the key sequence."
   (declare (pure t) (side-effect-free t))
-  (let* ((steps (split-string keydesc " ")))
+  (let ((steps (split-string keydesc " ")))
     (string-join (cons (car steps)
                        (-map #'dei--get-leaf (cdr steps)))
                  " ")))
@@ -45,13 +71,12 @@ Leave alone the first step of the key sequence."
 If it's already that, return it unmodified."
   (declare (pure t) (side-effect-free t))
   (when (> (length keydesc) 2)
-    (let* ((steps (split-string keydesc " "))
-           (first-2-chars (substring keydesc 0 2))
+    (let* ((first-2-chars (substring keydesc 0 2))
            (root-modifier (when (string-suffix-p "-" first-2-chars)
                             first-2-chars)))
       (if root-modifier
           (string-join (cl-loop
-                        for step in steps
+                        for step in (split-string keydesc " ")
                         if (string-prefix-p root-modifier step)
                         do (when (string-match-p dei--modifier-regexp-safe
                                                  (substring step 1))
@@ -113,60 +138,27 @@ Suitable to hook on `window-buffer-change-functions' like:
 
 ;;; Reflecting one stem in another
 
-(defvar dei--reflect-actions nil
-  "List of actions to pass to `define-key'.")
-
-;; TODO: Simply merge with remap-actions?
-(defun dei--reflect-actions-execute ()
-  "Execute `dei--reflect-actions', wetting the dry-run."
-  (require 'seq)
-  (cl-loop for arglist in dei--reflect-actions
-           do (seq-let (map key def) arglist
-                (apply #'define-key (dei--raw-keymap map) (kbd key) def
-                       ;; Remove the binding entirely
-                       (and (version<= "29" emacs-version)
-                            (null def))))
-           finally (setq dei--reflect-actions nil)))
-
-(defun dei--define-a-like-b-in-keymap
-    (recipient-mod donor-mod map &optional unbind-donor)
-  "Clone definitions from one set of keys to another set.
+(defun dei--define-a-like-b-in-keymap (recipient-mod donor-mod map)
+  "Return actions needed to clone one set of keys to another set.
 Inside keymap MAP, take all keys and key sequences that contain
 DONOR-MOD \(a substring such as \"C-\"\), replace the substring
 wherever it occurs in favor of RECIPIENT-MOD \(a substring such
-as \"H-\"\), and bind to the same commands.
-
-Actually just pushes these actions onto `dei--remap-actions' for
-later execution.
-
-Optional argument UNBIND-DONOR is mainly for internal use; if
-non-nil, unbind the donor keys."
-  (let ((raw-map (dei--raw-keymap map)))
-    ;; NOTE: It works, but I don't understand why I don't have to sharp-quote
-    ;; the lambda and expand raw-map, recipient-mod etc... why does it not throw
-    ;; "variable not bound" errors?
-    (map-keymap
-     (lambda (event donor-def)
-       (let ((key (key-description (vector event))))
-         (when (string-search donor-mod key)
-           (unless (string-search recipient-mod key)
-             (let ((donor-fullkey key)
-                   (recipient-fullkey (string-replace donor-mod recipient-mod key)))
-               (if (lookup-key raw-map (kbd recipient-fullkey))
-                   (message "User bound key, leaving it alone: %s" recipient-fullkey)
-                 (if (keymapp donor-def)
-                     (let ((new-submap (make-sparse-keymap)))
-                       (set-keymap-parent new-submap donor-def)
-                       (dei--define-a-like-b-in-keymap recipient-mod donor-mod new-submap t) ;; Recurse!
-                       (push (list map recipient-fullkey new-submap) dei--reflect-actions))
-                   (push (list map recipient-fullkey donor-def) dei--reflect-actions)))
-               ;; This boolean comes into play when we recurse.  Basically at
-               ;; the top level you want to preserve the donor key, but inside
-               ;; sublevels remove them, so as to avoid having a multitude of
-               ;; useless combinations like s-x C-a s-i C-g...
-               (when unbind-donor
-                 (push (list map donor-fullkey nil) dei--reflect-actions)))))))
-     raw-map)))
+as \"H-\"\), and assign them to the same commands."
+  (cl-loop
+   with actions = nil
+   with reason = (concat "Define " recipient-mod " like " donor-mod)
+   with raw-map = (dei--raw-keymap map)
+   for x being the key-seqs of raw-map using (key-bindings cmd)
+   as key = (key-description x)
+   when (and (string-search donor-mod key)
+             (not (string-search recipient-mod key))
+             (or (dei--is-chordonce key)
+                 (dei--is-permachord key)))
+   do (let ((recipient (string-replace donor-mod recipient-mod key)))
+        (if (lookup-key-ignore-too-long raw-map (kbd recipient))
+            (message "User bound key, leaving it alone: %s" recipient)
+          (push (list recipient cmd map reason nil) actions)))
+   finally return actions))
 
 (defvar dei--super-reflected-keymaps nil
   "List of keymaps where Super has been mass-bound.")
@@ -179,10 +171,10 @@ non-nil, unbind the donor keys."
 Appropriate on `dei-keymap-found-hook'."
   (cl-loop for map in (-difference dei--known-keymaps
                                    dei--super-reflected-keymaps)
-           do (progn
-                (dei--define-a-like-b-in-keymap "s-" "C-" map)
-                (push map dei--super-reflected-keymaps))
-           finally (dei--reflect-actions-execute)))
+           with actions = nil
+           append (dei--define-a-like-b-in-keymap "s-" "C-" map) into actions
+           do (push map dei--super-reflected-keymaps)
+           finally (dei-remap-actions-execute* actions)))
 
 (defun dei-define-super-like-ctlmeta-everywhere ()
   "Duplicate all Control-Meta bindings to exist also on Super.
@@ -202,9 +194,9 @@ Useful in certain environments, such as inside UserLand on an
 Android tablet with a Mac keyboard, where the Option key emits A-
 instead of M-.
 
-May also interest to people looking to break with the past where
-ESC behaves like a sticky Meta.  Unsurprisingly, ESC isn't a
-sticky Alt.  The benefit is unclear though: you'd be able to use
+May also interest people looking to break with ESC behaving like
+a sticky Meta.  ESC isn't a sticky Alt, so you could safely
+re-bind it.  The benefit is unclear though: you'd be able to use
 ESC as another function key in the TTY, but you'd have to set up
 the console to emit Alt codes instead of Meta to benefit, and a
 console capable of such would also be capable of simply emitting
@@ -319,12 +311,6 @@ KEYMAP is the keymap in which to look."
 ;; (dei--key-seq-has-non-prefix-in-prefix global-map "C-x C-v C-x")
 
 (defvar dei--homogenized-keymaps nil)
-
-(defvar dei--remap-record nil
-  "Record of work done.")
-
-(defvar dei--remap-actions nil
-  "List of actions to pass to `define-key'.")
 
 (defun dei--nightmare-p (keydesc)
   "Non-nil if homogenizing KEYDESC can cause bugs.
@@ -557,36 +543,35 @@ with \\[dei-remap-actions-execute]."
 (defun dei--unnest-keymap-for-homogenizing (map)
   "Return MAP as a flat list of key seqs instead of a tree.
 These key seqs are strings satisfying `key-valid-p'."
-  (cl-loop for x being the key-seqs of (dei--raw-keymap map)
-           using (key-bindings cmd)
-           as key = (key-description x)
-           with cleaned = (member map dei--cleaned-maps)
-           unless
-           (or (member cmd '(nil
-                             self-insert-command
-                             ignore
-                             ignore-event
-                             company-ignore))
-               (string-match-p dei--ignore-keys-regexp key)
-               (string-search "backspace" key)
-               (string-search "DEL" key)
-               (unless cleaned
-                 (dei--key-is-illegal key))
-               (cl-loop for prefix in dei--unnest-avoid-prefixes
-                        when (string-prefix-p prefix key)
-                        return t))
-           collect key))
+  (cl-loop
+   for x being the key-seqs of (dei--raw-keymap map) using (key-bindings cmd)
+   as key = (key-description x)
+   with cleaned = (member map dei--cleaned-maps)
+   unless (or (member cmd '(nil
+                            self-insert-command
+                            ignore
+                            ignore-event
+                            company-ignore))
+              (string-match-p dei--ignore-keys-regexp key)
+              (string-search "backspace" key)
+              (string-search "DEL" key)
+              (unless cleaned
+                (dei--key-is-illegal key))
+              (cl-loop for prefix in dei--unnest-avoid-prefixes
+                       when (string-prefix-p prefix key)
+                       return t))
+   collect key))
 
 ;; TODO: Return how many overridden and how many new bindings
 ;; How? I guess dei--homogenize-key-in-keymap can be made to return two possible
 ;; values aside from nil; and then we count those.
 (defun dei--homogenize-keymap (map)
   "Homogenize most of keymap MAP."
-  (message "Keys (re)bound: %s in %s"
+  (message "Homogenized keys in %S: %d"
+           map
            (cl-loop for key in (dei--unnest-keymap-for-homogenizing map)
                     when (dei--homogenize-key-in-keymap key map)
-                    count key)
-           map))
+                    count key)))
 
 (defun dei-homogenize-all-keymaps ()
   "Homogenize keymaps seen, except those already homogenized."
@@ -612,29 +597,52 @@ These key seqs are strings satisfying `key-valid-p'."
 (defvar dei--remap-revert-list nil)
 
 ;; (define-key doom-leader-map (kbd "o b j") #'self-insert-command)
+;; TODO: populate remap-record and pop remap-actions
+;; TODO: get rid of remap-actions, keep only remap-record
 (defun dei-remap-actions-execute (actions)
   "Carry out remaps specified by ACTIONS.
 Interactively, use the value of `dei--remap-actions'."
   (interactive (list dei--remap-actions))
-  (dolist (action actions)
-    (seq-let (keydesc cmd map _ _) action
-      (let* ((raw-keymap (dei--raw-keymap map))
-             (old-def (lookup-key-ignore-too-long raw-keymap (kbd keydesc))))
-        ;; DEPRECATED (causes bug) Unbind things that are in the way of the new definition
-        ;; (when (keymapp old-def)
-        ;;   (dei--destroy-keymap old-def))
-        (when-let* ((conflict-prefix (dei--key-seq-has-non-prefix-in-prefix raw-keymap keydesc))
-                    (conflict-def (lookup-key-ignore-too-long raw-keymap (kbd conflict-prefix))))
-          (unless (keymapp conflict-def)
-            ;; If it's a keymap, we'll be perfectly able to bind our key. If
-            ;; not a keymap, we must unbind it. (prevent error "Key sequence
-            ;; starts with non-prefix key")
-            (apply #'define-key raw-keymap (kbd conflict-prefix) nil (version<= "29" emacs-version))
-            ;; known working in emacs 29
-            ;; (define-key raw-keymap (kbd conflict-prefix) nil t)
-            ))
-        (push (list map keydesc old-def) dei--remap-revert-list)
-        (define-key raw-keymap (kbd keydesc) cmd)))))
+  (let ((emacs29 (version<= "29" emacs-version)))
+    (dolist (action actions)
+      (seq-let (keydesc cmd map _ _) action
+        (let* ((raw-keymap (dei--raw-keymap map))
+               (old-def (lookup-key-ignore-too-long raw-keymap (kbd keydesc))))
+          ;; DEPRECATED (causes bug) Unbind things that are in the way of the new definition
+          ;; (when (keymapp old-def)
+          ;;   (dei--destroy-keymap old-def))
+          (when-let* ((conflict-prefix (dei--key-seq-has-non-prefix-in-prefix raw-keymap keydesc))
+                      (conflict-def (lookup-key-ignore-too-long raw-keymap (kbd conflict-prefix))))
+            (unless (keymapp conflict-def)
+              ;; If it's a keymap, we'll be perfectly able to bind our key. If
+              ;; not a keymap, we must unbind it. (prevent error "Key sequence
+              ;; starts with non-prefix key")
+              (apply #'define-key raw-keymap (kbd conflict-prefix) nil emacs29)
+              ;; known working in emacs 29
+              ;; (define-key raw-keymap (kbd conflict-prefix) nil t)
+              ))
+          (push (list map keydesc old-def) dei--remap-revert-list)
+          (define-key raw-keymap (kbd keydesc) cmd))))))
+
+;; new version
+(defun dei-remap-actions-execute* (actions)
+  "Carry out remaps specified by ACTIONS."
+  (let ((emacs29 (version<= "29" emacs-version)))
+    (while actions
+      (let ((action (pop actions)))
+        (push action dei--remap-record)
+        (seq-let (keydesc cmd map _ _) action
+          (let* ((raw-keymap (dei--raw-keymap map))
+                 (old-def (lookup-key-ignore-too-long raw-keymap (kbd keydesc))))
+            (when-let* ((conflict-prefix (dei--key-seq-has-non-prefix-in-prefix raw-keymap keydesc))
+                        (conflict-def (lookup-key-ignore-too-long raw-keymap (kbd conflict-prefix))))
+              (unless (keymapp conflict-def)
+                ;; If the prefix is bound and it's not to a keymap, unbind the
+                ;; prefix so we'll be allowed to bind our key. (prevent error
+                ;; "Key sequence starts with non-prefix key")
+                (apply #'define-key raw-keymap (kbd conflict-prefix) nil emacs29)))
+            (push (list map keydesc old-def) dei--remap-revert-list)
+            (define-key raw-keymap (kbd keydesc) cmd)))))))
 
 ;; Experimental
 (defun dei-remap-revert ()
@@ -643,7 +651,23 @@ Interactively, use the value of `dei--remap-actions'."
            do (seq-let (map keydesc old-def) x
                 (define-key (dei--raw-keymap map) keydesc old-def))))
 
-(define-derived-mode deianira-remaps-list-mode tabulated-list-mode
+(defun dei--pretty-print-def (def)
+  (cond ((symbolp def)
+         (symbol-name def))
+        ((keymapp def)
+         (if-let ((named (help-fns-find-keymap-name def)))
+             (symbol-name named)
+           "(some sub-keymap)"))
+        ((functionp def)
+         "Anonymous lambda")
+        ((listp def)
+         "Likely a menu item")
+        ((stringp def)
+         def)
+        (t
+         (error "Unable to identify: %s" def))))
+
+(define-derived-mode dei-list-remaps-mode tabulated-list-mode
   "Remaps List"
   nil
   (setq tabulated-list-format
@@ -652,42 +676,28 @@ Interactively, use the value of `dei--remap-actions'."
          ("Key bound" 15 t)
          ("New command" 20 t)
          ("Old command" 20 t)])
-  (add-hook 'tabulated-list-revert-hook #'deianira-list-remaps nil t)
+  (add-hook 'tabulated-list-revert-hook #'dei-list-remaps nil t)
   (tabulated-list-init-header))
 
-(defun deianira-list-remaps ()
+(defun dei-list-remaps ()
   (interactive)
   (let ((buf (get-buffer-create "*Deianira remaps*")))
     (with-current-buffer buf
-      (deianira-remaps-list-mode)
+      (dei-list-remaps-mode)
       (setq tabulated-list-entries nil)
-      (dolist (item dei--remap-record)
-        (seq-let (keydesc cmd map hint old) item
-          (let* ((cmd-string (if (symbolp cmd)
-                                 (symbol-name cmd)
-                               (if (keymapp cmd)
-                                   (if-let ((named (help-fns-find-keymap-name cmd)))
-                                       (symbol-name named)
-                                     "(some sub-keymap)")
-                                 cmd)))
-                 (old-string
-                  (if old
-                      (concat "(was "
-                              (if (symbolp old)
-                                  (symbol-name old)
-                                (if (keymapp old)
-                                    (if-let ((named (help-fns-find-keymap-name old)))
-                                        (symbol-name named)
-                                      "some sub-keymap")
-                                  old))
-                              ")")
-                    "")))
-            (push (list (sxhash item) (vector (symbol-name map)
-                                              hint
-                                              keydesc
-                                              cmd-string
-                                              old-string))
-                  tabulated-list-entries))))
+      (cl-loop
+       for item in dei--remap-record
+       do (seq-let (keydesc cmd map hint old) item
+            (let ((cmd-string (dei--pretty-print-def cmd))
+                  (old-string (if old
+                                  (concat "(was " (dei--pretty-print-def old) ")")
+                                "")))
+              (push (list (sxhash item) (vector (symbol-name map)
+                                                hint
+                                                keydesc
+                                                cmd-string
+                                                old-string))
+                    tabulated-list-entries))))
       (tabulated-list-print)
       (display-buffer buf))))
 
