@@ -19,7 +19,8 @@
 
 ;;; Commentary:
 
-;; Will probably be spun out as a standalone package.
+;; Will probably be spun out as a standalone package called mass-keybind or
+;; something.
 
 ;;; Code:
 
@@ -88,6 +89,11 @@ If it's already that, return it unmodified."
 
 ;;; Basics
 
+(defcustom dei-mass-remap-debug-level 1
+  "Verbosity of debug."
+  :type 'integer
+  :group 'deianira)
+
 (defvar dei--remap-record nil
   "Record of work done.")
 
@@ -95,6 +101,10 @@ If it's already that, return it unmodified."
   "List of actions to pass to `define-key'.")
 
 (defun dei--pretty-print-def (def)
+  "Return a string that tries to say what DEF refers to.
+DEF should be a key definition such as that returned by
+`lookup-key'; most of the time, it's a command, and then this
+function simply returns its name."
   (cond ((symbolp def)
          (symbol-name def))
         ((keymapp def)
@@ -123,6 +133,7 @@ If it's already that, return it unmodified."
   (tabulated-list-init-header))
 
 (defun dei-list-remaps ()
+  "List the key-bindings made so far by deianira-mass-remap."
   (interactive)
   (let ((buf (get-buffer-create "*Deianira remaps*")))
     (with-current-buffer buf
@@ -144,7 +155,8 @@ If it's already that, return it unmodified."
       (tabulated-list-print)
       (display-buffer buf))))
 
-(defvar dei--remap-revert-list nil)
+(defvar dei--remap-revert-list nil
+  "Experimental, see `dei-remap-revert'.")
 
 (defun dei-remap-actions-execute (actions)
   "Carry out remaps specified by ACTIONS."
@@ -152,7 +164,8 @@ If it's already that, return it unmodified."
     (while actions
       (let ((action (pop actions)))
         (if (member action dei--remap-record)
-            (message "Already took this exact action")
+            (when (> dei-mass-remap-debug-level 1)
+              (message "Mass-keybind already took this action: %S" action))
           (push action dei--remap-record)
           (seq-let (keydesc cmd map _ old-def) action
             (let* (;;(old-def (lookup-key-ignore-too-long raw-map (kbd keydesc)))
@@ -169,7 +182,7 @@ If it's already that, return it unmodified."
 
 (defun dei-remap-revert ()
   "Experimental command to undo all remaps made.
-It's still recommended to restart Emacs to be sure."
+It's recommended to just restart Emacs, but this might work too."
   (interactive)
   (cl-loop for x in dei--remap-revert-list
            do (seq-let (map keydesc old-def) x
@@ -225,7 +238,7 @@ Suitable to hook on `window-buffer-change-functions' like:
 
 ;;; Reflecting one stem in another
 
-(defun dei--define-a-like-b-in-keymap (recipient-mod donor-mod map)
+(defun dei--how-define-a-like-b-in-keymap (recipient-mod donor-mod map)
   "Return actions needed to clone one set of keys to another set.
 Inside keymap MAP, take all keys and key sequences that contain
 DONOR-MOD \(a substring such as \"C-\"\), replace the substring
@@ -256,22 +269,24 @@ as \"H-\"\), and assign them to the same commands."
 (defun dei-define-super-like-ctl-everywhere ()
   "Duplicate all Control bindings to exist also on Super.
 Appropriate on `dei-keymap-found-hook'."
-  (cl-loop for map in (-difference dei--known-keymaps
-                                   dei--super-reflected-keymaps)
-           with actions = nil
-           append (dei--define-a-like-b-in-keymap "s-" "C-" map) into actions
-           do (push map dei--super-reflected-keymaps)
-           finally (dei-remap-actions-execute actions)))
+  (cl-loop
+   for map in (-difference dei--known-keymaps dei--super-reflected-keymaps)
+   as actions = (dei--how-define-a-like-b-in-keymap "s-" "C-" map)
+   when actions do
+   (dei-remap-actions-execute actions)
+   (message "Copied keys from Control to Super in %S: %d" map (length actions))
+   do (push map dei--super-reflected-keymaps)))
 
 (defun dei-define-super-like-ctlmeta-everywhere ()
   "Duplicate all Control-Meta bindings to exist also on Super.
 Appropriate on `dei-keymap-found-hook'."
-  (cl-loop for map in (-difference dei--known-keymaps
-                                   dei--super-reflected-keymaps)
-           do (progn
-                (dei--define-a-like-b-in-keymap "s-" "C-M-" map)
-                (push map dei--super-reflected-keymaps))
-           finally (dei--reflect-actions-execute)))
+  (cl-loop
+   for map in (-difference dei--known-keymaps dei--super-reflected-keymaps)
+   as actions = (dei--how-define-a-like-b-in-keymap "s-" "C-M-" map)
+   when actions do
+   (dei-remap-actions-execute actions)
+   (message "Copied keys from Ctl-Meta to Super in %S: %d" map (length actions))
+   do (push map dei--super-reflected-keymaps)))
 
 (defun dei-define-alt-like-meta-everywhere ()
   "Duplicate all Meta bindings to exist also on Alt.
@@ -288,12 +303,13 @@ ESC as another function key in the TTY, but you'd have to set up
 the console to emit Alt codes instead of Meta to benefit, and a
 console capable of such would also be capable of simply emitting
 F13 in place of ESC, which seems easier."
-  (cl-loop for map in (-difference dei--known-keymaps
-                                   dei--alt-reflected-keymaps)
-           do (progn
-                (dei--define-a-like-b-in-keymap "A-" "M-" map)
-                (push map dei--alt-reflected-keymaps))
-           finally (dei--reflect-actions-execute)))
+  (cl-loop
+   for map in (-difference dei--known-keymaps dei--super-reflected-keymaps)
+   as actions = (dei--how-define-a-like-b-in-keymap "A-" "M-" map)
+   when actions do
+   (dei-remap-actions-execute actions)
+   (message "Copied keys from Meta to Alt in %S: %d" map (length actions))
+   do (push map dei--super-reflected-keymaps)))
 
 ;; NOTE: Experimental
 ;; FIXME: Find a way to let user hold off on binding C-i/C-m until after
@@ -397,8 +413,6 @@ KEYMAP is the keymap in which to look."
       (car ret))))
 ;; (dei--key-seq-has-non-prefix-in-prefix global-map "C-x C-v C-x")
 
-(defvar dei--homogenized-keymaps nil)
-
 (defun dei--nightmare-p (keydesc)
   "Non-nil if homogenizing KEYDESC can cause bugs.
 This has to do with e.g. C-x \[ being duplicated to C-x C-\[,
@@ -449,7 +463,7 @@ situation when C-g is not available to do `keyboard-quit'."
       ))
 
 ;; NOTE: must return either nil or a list
-(defun dei--homogenize-key-in-keymap (this-key keymap)
+(defun dei--how-homogenize-key-in-keymap (this-key keymap)
   "In KEYMAP, homogenize THIS-KEY.
 See `dei-homogenizing-winners' for explanation.
 
@@ -494,6 +508,8 @@ with \\[dei-remap-actions-execute]."
                (winners (->> dei-homogenizing-winners
                              (-remove #'cdr) ;; drop items with a keymap
                              (-map #'car)))
+               ;; Fortunately (equal widget-global-map global-map) returns t, so
+               ;; user can refer to global-map in `dei-homogenizing-winners'...
                (winners-for-this-keymap (->> dei-homogenizing-winners
                                              (-filter #'cdr)
                                              (--filter (equal keymap (cdr it)))
@@ -646,126 +662,66 @@ These key seqs are strings satisfying `key-valid-p'."
                        return t))
    collect key))
 
-(defun dei--homogenize-keymap (map)
+(defun dei--how-homogenize-keymap (map)
   "Homogenize most of keymap MAP."
   (cl-loop
-   with actions = nil
-   with overwritten = 0
    for key in (dei--unnest-keymap-for-homogenizing map)
-   as action = (dei--homogenize-key-in-keymap key map)
-   when action
-   collect action into actions
-   and do (when (string-search "overwrite" (nth 3 action))
-            (cl-incf overwritten))
-   finally do (when actions
-                (message "Homogenized %S: %d new keys, %d overwrites"
-                         map
-                         (- (length actions) overwritten)
-                         overwritten))
-   finally return actions))
+   as action = (dei--how-homogenize-key-in-keymap key map)
+   when action collect action))
 
-;; TODO: run dei-remap-actions-execute one map at a time, so we can pass along
-;; more specific arguments and print the message that now resides in
-;; dei--homogenize-keymap, which is the wrong place for the message.
+(defvar dei--homogenized-keymaps nil)
+
 (defun dei-homogenize-all-keymaps ()
   "Homogenize the keymaps newly seen since last call."
   (cl-loop
    for map in (-difference dei--known-keymaps dei--homogenized-keymaps)
-   with actions = nil
-   append (dei--homogenize-keymap map) into actions
-   do (push map dei--homogenized-keymaps)
-   finally do (dei-remap-actions-execute actions)))
+   as actions = (dei--how-homogenize-keymap map)
+   as overwritten = (cl-loop for action in actions
+                             when (string-search "overwrite" (nth 3 action))
+                             count action)
+   do
+   (when actions
+     (dei-remap-actions-execute actions)
+     (message "Homogenized %S: %d new keys, %d overwrites"
+              map
+              (- (length actions) overwritten)
+              overwritten))
+   (push map dei--homogenized-keymaps)))
 
 
 ;;; Cleaning
-;; Unused for now.  No obvious point to purging the ugly key bindings -- they
-;; may as well stay -- except that it makes Deianira a bit faster, as it puts
-;; less workload on `dei--unnest-keymap-for-hydra-to-eat'.
+;; Unused for now.  No point to purging ugly key bindings except that it
+;; declutters which-key popups. It can also make Deianira a bit faster, as it
+;; puts less workload on `dei--unnest-keymap-for-hydra-to-eat'.
 
 (defvar dei--cleaned-maps nil)
 
-(defvar dei--clean-actions nil)
+;;  (defvar dei--clean-actions nil)
 
-(defun dei-unbind-illegal-keys ()
-  "Push keys to unbind onto `dei--clean-actions'."
-  (cl-loop
-   for map in (-difference dei--known-keymaps dei--cleaned-maps)
-   with doom = (and (bound-and-true-p doom-leader-alt-key)
-                    (bound-and-true-p doom-localleader-alt-key))
-   do (push
-       (cons map
-             (cl-sort
-              (cl-loop
-               for x being the key-seqs of (dei--raw-keymap map)
-               as key = (key-description x)
-               when (and
-                     (not (string-match-p dei--ignore-keys-regexp key))
-                     (or (dei--key-is-illegal key)
-                         ;; I don't want to touch these, I want to see what
-                         ;; Doom does with them.
-                         (when doom
-                           (or (string-prefix-p doom-localleader-alt-key key)
-                               (string-prefix-p doom-leader-alt-key key)))))
-               collect key)
-              #'> :key #'dei--key-seq-steps-length))
-       dei--clean-actions)))
-
-
-;;; Debugging
-
-;; ;; for debug
-;; (defun dei-homogenize-all-keymaps-dry-run ()
-;;   (interactive)
-;;   (cl-loop for map in (-difference dei--known-keymaps dei--homogenized-keymaps)
-;;            do (dei--homogenize-keymap map)
-;;            finally (message "%s %s"
-;;                             "Inspect with dei-remap-actions-preview and"
-;;                             "make a wet-run with dei-remap-actions-execute.")))
-
-;; (defun dei-remap-actions-preview (&optional silently)
-;;   "For convenience while debugging."
-;;   (interactive)
-;;   (let ((buf (get-buffer-create "*Deianira remaps*")))
-;;     (with-current-buffer buf
-;;       (read-only-mode -1)
-;;       (goto-char (point-min))
-;;       (newline)
-;;       (insert "Remap actions planned as of " (current-time-string))
-;;       (newline 2)
-;;       (let ((sorted-actions (cl-sort dei--remap-actions #'string-lessp
-;;                                      :key (lambda (x)
-;;                                             (if (symbolp (nth 2 x))
-;;                                                 (symbol-name (nth 2 x))
-;;                                               "unknown keymap")))))
-;;         (dolist (item sorted-actions)
-;;           (seq-let (keydesc cmd map hint) item
-;;             (insert hint
-;;                     " Bind  " keydesc
-;;                     "\tto  " (if (symbolp cmd)
-;;                                  (symbol-name cmd)
-;;                                (if (keymapp cmd)
-;;                                    (if-let ((named (help-fns-find-keymap-name cmd)))
-;;                                        (symbol-name named)
-;;                                      "(some sub-keymap)")
-;;                                  cmd))
-;;                     (if (symbolp map)
-;;                         (concat "\t\t  (" (symbol-name map) ")")
-;;                       "")))
-;;           (newline)))
-;;       (goto-char (point-min)))
-;;     (unless silently
-;;       (display-buffer buf))
-;;     (when-let ((window (get-buffer-window buf)))
-;;       (with-selected-window window
-;;         (recenter 0)
-;;         (view-mode)))))
-
-;; (defun dei-remap-actions-wipe ()
-;;   "For convenience while debugging."
-;;   (interactive)
-;;   (setq dei--remap-actions nil)
-;;   (setq dei--homogenized-keymaps nil)
-;;   (message "remap actions wiped"))
+;; (defun dei-unbind-illegal-keys ()
+;;   "Push keys to unbind onto `dei--clean-actions'."
+;;   (cl-loop
+;;    for map in (-difference dei--known-keymaps dei--cleaned-maps)
+;;    with doom = (and (bound-and-true-p doom-leader-alt-key)
+;;                     (bound-and-true-p doom-localleader-alt-key))
+;;    do (push
+;;        (cons map
+;;              (cl-sort
+;;               (cl-loop
+;;                for x being the key-seqs of (dei--raw-keymap map)
+;;                as key = (key-description x)
+;;                when (and
+;;                      (not (string-match-p dei--ignore-keys-regexp key))
+;;                      (or (dei--key-is-illegal key)
+;;                          ;; I don't want to touch these, I want to see what
+;;                          ;; Doom does with them.
+;;                          (when doom
+;;                            (or (string-prefix-p doom-localleader-alt-key key)
+;;                                (string-prefix-p doom-leader-alt-key key)))))
+;;                collect key)
+;;               #'> :key #'dei--key-seq-steps-length))
+;;        dei--clean-actions)))
 
 (provide 'deianira-mass-remap)
+
 ;;; deianira-mass-remap.el ends here
