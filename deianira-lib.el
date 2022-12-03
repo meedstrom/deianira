@@ -1,4 +1,4 @@
-;;; deianira-lib.el -*- lexical-binding: t -*-
+;;; deianira-lib.el -- Library for deianira -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018-2022 Martin Edström
 
@@ -17,8 +17,44 @@
 
 ;; This file is not part of GNU Emacs.
 
+;;; Commentary:
+
+;;; Code:
+
 (require 'dash)
 (require 'cl-lib)
+
+(defconst dei--ignore-keys-regexp
+  (regexp-opt
+   '(;; Don't bother handling control characters well, it's a
+     ;; nightmare the edge cases they introduce, especially ESC
+     ;; because it's also Meta!  See `dei--nightmare-p'.
+     ;;
+     ;; Suppose someone wants C-x C-m cloned to C-x m, what to
+     ;; do? Or suppose C-x i is bound to something useful but we clone
+     ;; from C-x C-i (aka C-x TAB) and destroy it? And going the
+     ;; other way instead destroys C-x TAB instead. Kill me
+     ;;
+     ;; By putting them in this regexp, we've doomed any sequence
+     ;; ending with them, C-x C-i will be overwritten by C-x i.  Put
+     ;; a blurb in the readme about it.
+     ;;
+     ;; Actually, even with them in the regexp, C-x \[ will STILL be
+     ;; cloned to C-x C-\[...  maybe we need a check in
+     ;; homogenize-key. Now done.
+     "ESC" "C-["
+     "RET" "C-m"
+     "TAB" "C-i"
+     ;; declutter a bit (unlikely someone wants)
+     "help" "key-chord" "kp-" "iso-" "wheel" "menu" "redo" "undo"
+     "again" "XF86"
+     ;; extremely unlikely someone wants
+     "compose" "Scroll_Lock" "drag-n-drop"
+     "mouse" "remap" "scroll-bar" "select" "switch" "state"
+     "which-key" "corner" "divider" "edge" "header" "mode-line"
+     "vertical-line" "frame" "open" "chord" "tool-bar" "fringe"
+     "touch" "margin" "pinch" "tab-bar" ))
+  "Regexp for some key bindings that don't interest us.")
 
 (defun dei--raw-keymap (map)
   "If MAP is a keymap, return it; if a symbol, evaluate first."
@@ -30,6 +66,51 @@
               evaluated
             (error "Doesn't evaluate to a keymap: %s" map)))
       (error "Not a keymap or keymap name: %s" map))))
+
+;; REVIEW: Test <ctl> x 8 with Deianira active.
+(defvar dei--unnest-avoid-prefixes
+  (cons "C-x 8"
+        (mapcar #'key-description
+                (where-is-internal #'iso-transl-ctl-x-8-map)))
+  "List of prefixes to avoid looking up.")
+
+
+(defun dei--unnest-keymap (map &optional with-commands extra-filters)
+  "Return MAP as a flat list of key seqs instead of a tree.
+These key seqs are strings satisfying `key-valid-p'.
+
+Optional argument WITH-COMMANDS makes the return value an alist
+where the cars are key seqs and the cdrs are the associated
+commands.
+
+Optional argument EXTRA-FILTERS is a list of functions with which
+to test the key seq, such as `dei--key-has-more-than-one-chord'.
+If any function returns non-nil, exclude this key seq.  Aside
+from functions, nil is also a permitted member, and ignored."
+  (cl-loop
+   ;; REVIEW: do we need to set case-fold-search? test with and without it.
+   with case-fold-search = nil
+   for x being the key-seqs of (dei--raw-keymap map) using (key-bindings cmd)
+   as key = (key-description x)
+   unless (or (member cmd '(nil
+                            self-insert-command
+                            ignore
+                            ignore-event
+                            company-ignore))
+              (string-match-p dei--ignore-keys-regexp key)
+              (string-search "backspace" key)
+              (string-search "DEL" key)
+              ;; (-any-p #'dei--not-on-keyboard (split-string key " "))
+              (cl-loop for filter in extra-filters
+                       when (and filter (funcall filter key))
+                       return t)
+              (cl-loop for prefix in dei--unnest-avoid-prefixes
+                       when (string-prefix-p prefix key)
+                       return t))
+   if with-commands collect (cons key cmd)
+   else collect key))
+;; (dei--unnest-keymap 'projectile-mode-map nil '((lambda (x) (string-search "s-4" x))))
+;; (dei--unnest-keymap 'projectile-mode-map t '((lambda (x) (string-search "s-4" x))))
 
 
 ;;;; Handlers for key descriptions
@@ -120,13 +201,14 @@ those, see `dei--key-contains-any'.  Does catch e.g. C-S-<RET>."
         (string-match-p now-forbidden-mods-regexp keydesc)))))
 
 (defun dei--key-seq-steps=1 (keydesc)
+  "Does KEYDESC represent a single event rather than a sequence?
+Tiny function, but useful for `mapcar' and friends."
   (declare (pure t) (side-effect-free t))
   (not (string-search " " keydesc)))
 
 (defun dei--key-seq-steps-length (keydesc)
   "Length of key sequence KEYDESC.
-Useful predicate for `seq-sort-by' or `cl-sort', which take a
-function but won't pass extra arguments to it."
+Useful predicate for `seq-sort-by' or `cl-sort'."
   (declare (pure t) (side-effect-free t))
   (length (split-string keydesc " ")))
 

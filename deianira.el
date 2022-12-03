@@ -93,43 +93,8 @@ s- preceded by a dash (i.e. \"-s-\"), and our second search
 starts past the first dash.  However, it's fine if you cut the
 string and start a new search on the cut string.")
 
-(defconst dei--ignore-keys-regexp
-  (regexp-opt '(;; Don't bother handling control characters well, it's a
-                ;; nightmare the edge cases they introduce, especially ESC
-                ;; because it's also Meta!  See `dei--nightmare-p'.
-                ;;
-                ;; Suppose someone wants C-x C-m cloned to C-x m, what to
-                ;; do? Or suppose C-x i is bound to something useful but we clone
-                ;; from C-x C-i (aka C-x TAB) and destroy it? And going the
-                ;; other way instead destroys C-x TAB instead. Kill me
-                ;;
-                ;; By putting them in this regexp, we've doomed any sequence
-                ;; ending with them, C-x C-i will be overwritten by C-x i.  Put
-                ;; a blurb in the readme about it.
-                ;;
-                ;; Actually, even with them in the regexp, C-x \[ will STILL be
-                ;; cloned to C-x C-\[...  maybe we need a check in
-                ;; homogenize-key. Now done.
-                "ESC" "C-["
-                "RET" "C-m"
-                "TAB" "C-i"
-                ;; declutter a bit (unlikely someone wants)
-                "help" "key-chord" "kp-" "iso-" "wheel" "menu" "redo" "undo"
-                "again" "XF86"
-                ;; extremely unlikely someone wants
-                "compose" "Scroll_Lock" "drag-n-drop"
-                "mouse" "remap" "scroll-bar" "select" "switch" "state"
-                "which-key" "corner" "divider" "edge" "header" "mode-line"
-                "vertical-line" "frame" "open" "chord" "tool-bar" "fringe"
-                "touch" "margin" "pinch" "tab-bar" ))
-  "Regexp for some key bindings that don't interest us.")
-
 
 ;;;; User settings
-
-(defcustom dei-debug-level 1
-  "Verbosity of messages.  Doesn't affect much for now."
-  :group 'deianira)
 
 (defcustom dei-hydra-keys
   "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
@@ -780,8 +745,9 @@ instead of anything else they may have been bound to."
                  (dei--specify-invisible-heads stem verboten-leafs))))
     (cons name heads)))
 
-;; TODO: Make it even faster.  It's a bit slow because defhydra does a lot of
-;; heavy lifting.  Approaches:
+;; NOTE: Further improving performance is not a priority, but here's where the
+;; package spends 50-80% of CPU time.  It's a bit slow because defhydra does a lot
+;; of heavy lifting and was not meant to be used this way.  Approaches:
 ;; 1. reduce workload by giving up on the self-inserting quitters (principally
 ;;    capital keys) since there are many of those heads, or giving up on nonum
 ;;    hydras.
@@ -803,22 +769,6 @@ which see."
                ,name
                ,@list-of-heads)
             t))))
-
-(defun dei--try-birth-hydra* (name list-of-heads)
-  "Create a hydra named NAME with LIST-OF-HEADS.
-This will probably be called by `dei--generate-hydras',
-which see."
-  ;; An old error check
-  (if (eq hydra-curr-body-fn (intern name))
-      (error "This hydra active, skipped redefining: %s" name)
-    (eval `(defhydra ,(intern name)
-             (:columns ,dei-columns
-              :exit nil
-              :hint nil
-              :foreign-keys run)
-             ,name
-             ,@list-of-heads)
-          t)))
 
 
 ;;;; Keymap scanner
@@ -844,45 +794,13 @@ which see."
      (and (not (dei--key-starts-with-modifier keydesc))
           (string-match-p dei--modifier-regexp-safe keydesc)))))
 
-;; REVIEW: Test <ctl> x 8 with Deianira active.
-(defvar dei--unnest-avoid-prefixes
-  (cons "C-x 8"
-        (mapcar #'key-description
-                (where-is-internal #'iso-transl-ctl-x-8-map)))
-  "List of prefixes to avoid looking up.")
+(defun dei--get-filtered-bindings (&optional with-commands)
+  "List the current buffer keys appropriate for hydra-making.
+This is not for a single keymap, but the whole composite of
+keymaps currently active.
 
-(defun dei--unnest-keymap-for-hydra-to-eat (map)
-  "Return MAP as a flat list of key seqs instead of a tree.
-These key seqs are strings satisfying `key-valid-p'."
-  (cl-loop for x being the key-seqs of (dei--raw-keymap map)
-           using (key-bindings cmd)
-           as key = (key-description x)
-           with cleaned = (member map dei--cleaned-maps)
-           with case-fold-search = nil
-           unless
-           (or (member cmd '(nil
-                             self-insert-command
-                             ignore
-                             ignore-event
-                             company-ignore))
-               (string-match-p dei--ignore-keys-regexp key)
-               (string-search "backspace" key)
-               (string-search "DEL" key)
-               ;; (-any-p #'dei--not-on-keyboard (dei--key-seq-split key))
-               (dei--key-has-more-than-one-chord key)
-               (unless cleaned
-                 (dei--key-is-illegal key))
-               (cl-loop for prefix in dei--unnest-avoid-prefixes
-                        when (string-prefix-p prefix key)
-                        return t))
-           collect key))
-
-(defun dei--get-filtered-bindings ()
-  "List the current buffer keys appropriate for hydra."
-  ;; NOTE Read below comment if 1. we decide to return an alist that includes
-  ;; the bound commands, not just keys, or 2. if a conflict does occur in the
-  ;; "Just in case" check below.
-  ;;
+Optional argument WITH-COMMANDS means return an alist where each
+item looks like (KEY . COMMAND)."
   ;; You know that the same key can be found several times in multiple keymaps.
   ;; Fortunately we can know which binding is correct for the current buffer,
   ;; as `current-active-maps' seems to return maps in the order in which Emacs
@@ -890,81 +808,36 @@ These key seqs are strings satisfying `key-valid-p'."
   ;; used.  Then we run `-uniq' to declutter the list, which likewise keeps
   ;; the first instance of each set of duplicates.
   (let ((T (current-time))
-        (keys
-         (-uniq
-          (cl-loop
-           for map in (current-active-maps)
-           with case-fold-search = nil
-           append (dei--unnest-keymap-for-hydra-to-eat map)))))
+        (keys (-uniq
+               (cl-loop
+                for map in (current-active-maps)
+                as cleaned = (member map (bound-and-true-p dei--cleaned-maps))
+                with case-fold-search = nil
+                append (dei--unnest-keymap
+                        map
+                        with-commands
+                        `(dei--key-has-more-than-one-chord
+                          ,(unless cleaned
+                             #'dei--key-is-illegal)))))))
     ;; Just in case: if a key is bound to a simple command in one keymap, but
     ;; to a subkeymap in another keymap, so we record both the single command
     ;; and the children that take it as prefix, it may break lots of things, so
     ;; just signal an error and I'll think about how to fail gracefully later.
     ;; I've not got an error yet.
     ;; NOTE: this check costs some performance
-    (let ((conflicts (cl-loop
-                      for parent in (-uniq (-keep #'dei--parent-key keys))
-                      when (assoc parent keys)
-                      collect parent)))
+    (let* ((keys (if with-commands
+                     (-map #'car keys)
+                   keys))
+           (conflicts (cl-loop
+                       for parent in (-uniq (-keep #'dei--parent-key keys))
+                       when (assoc parent keys)
+                       collect parent)))
       (when conflicts
         (error "Bound variously to commands or prefix maps: %s" conflicts)))
     (when (> (float-time (time-since T)) 1)
-      (error "Took way too long getting bindings: %s seconds" (time-since T)))
+      (error "Took way too long getting bindings: %.3f seconds" (time-since T)))
     keys))
-
-;; TODO: dedup
-;;
-;; How?  One thing that's different is the "collect (cons key cmd)" as opposed
-;; to just "collect key".  Can this be regulated by a function argument?
-(defun dei--get-filtered-bindings-with-commands ()
-  "List the current buffer keys appropriate for hydra."
-  ;; You know that the same key can be found several times in multiple keymaps.
-  ;; Fortunately we can know which binding is correct for the current buffer,
-  ;; as `current-active-maps' seems to return maps in the order in which Emacs
-  ;; selects them.  So what comes earlier in the list is what would in fact be
-  ;; used.  Then we run `-uniq' to declutter the list, which likewise keeps
-  ;; the first instance of each set of duplicates.
-  (let ((alist
-         (-uniq
-          (cl-loop
-           for map in (current-active-maps)
-           with case-fold-search = nil
-           append (cl-loop
-                   for x being the key-seqs of (dei--raw-keymap map)
-                   using (key-bindings cmd)
-                   as key = (key-description x)
-                   with cleaned = (member map dei--cleaned-maps)
-                   unless
-                   (or (member cmd '(nil
-                                     self-insert-command
-                                     ignore
-                                     ignore-event
-                                     company-ignore))
-                       (string-match-p dei--ignore-keys-regexp key)
-                       (string-search "backspace" key)
-                       (string-search "DEL" key)
-                       ;; (-any-p #'dei--not-on-keyboard (dei--key-seq-split key))
-                       (dei--key-has-more-than-one-chord key)
-                       (unless cleaned
-                         (dei--key-is-illegal key))
-                       (cl-loop for prefix in dei--unnest-avoid-prefixes
-                                when (string-prefix-p prefix key)
-                                return t))
-                   collect (cons key cmd))))))
-    ;; Just in case: if a key is bound to a simple command in one keymap, but to
-    ;; a subkeymap in another keymap, so we record both the single command and
-    ;; the children that take it as prefix, it may break lots of things, so just
-    ;; signal an error and I'll think about how to fail gracefully later.  I've
-    ;; only got an error once or twice, and something was fucky at those times.
-    ;; NOTE: this check costs some performance
-    (let ((conflicts (cl-loop
-                      with keys = (mapcar #'car alist)
-                      for parent in (-uniq (-keep #'dei--parent-key keys))
-                      when (assoc parent keys)
-                      collect parent)))
-      (when conflicts
-        (error "Bound variously to commands or prefix maps: %s" conflicts)))
-    alist))
+;; (dei--get-filtered-bindings t)
 
 
 ;;;; Async worker
@@ -1165,7 +1038,7 @@ to the same key, no bueno."
     ;; fixed).  Still, it casts light on how this algo really works, and I
     ;; think we need a flowchart before we remove this comment, just to ensure
     ;; that all edge cases will be taken care of.
-    (setq dei--current-bindings (dei--get-filtered-bindings-with-commands))
+    (setq dei--current-bindings (dei--get-filtered-bindings t))
     ;; The price of rigor: even if only C-c c p 4 changed, we'll have to
     ;; rebuild hydras for C-c, C-c c, and C-c c p, because it may be that each
     ;; of these levels previously didn't exist but for that last binding (rare,
@@ -1209,14 +1082,10 @@ of asyncloop LOOP, so it will run again until
 `dei--stems' is empty.  With ONESHOT non-nil, don't do that \(so
 the programmer can debug by running the function once by
 itself\)."
-  ;; TODO: maybe don't unwind-protect
+  ;; REVIEW: maybe don't unwind-protect
   (unwind-protect
       (when dei--changed-stems
         (with-current-buffer dei--buffer-under-analysis
-          (when (> dei-debug-level 1)
-            (asyncloop-log loop
-              "Drawing blueprint for stem %s in buffer %S"
-              (car dei--changed-stems) dei--buffer-under-analysis))
           (let* ((stem (car dei--changed-stems))
                  (name (dei--dub-hydra-from-key-or-stem stem))
                  (h1 (dei--specify-hydra stem (concat name "-nonum") t))

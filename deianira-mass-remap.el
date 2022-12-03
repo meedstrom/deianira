@@ -236,8 +236,43 @@ Suitable to hook on `window-buffer-change-functions' like:
           (run-hooks 'dei-keymap-found-hook))))))
 
 
+;;; Cleaning
+;; Unused for now.  No point to purging ugly key bindings except that it
+;; declutters which-key popups. It can also make Deianira a bit faster, as it
+;; puts less workload on `dei--unnest-keymap-for-hydra-to-eat'.
+
+(defvar dei--cleaned-maps nil)
+
+;;  (defvar dei--clean-actions nil)
+
+;; (defun dei-unbind-illegal-keys ()
+;;   "Push keys to unbind onto `dei--clean-actions'."
+;;   (cl-loop
+;;    for map in (-difference dei--known-keymaps dei--cleaned-maps)
+;;    with doom = (and (bound-and-true-p doom-leader-alt-key)
+;;                     (bound-and-true-p doom-localleader-alt-key))
+;;    do (push
+;;        (cons map
+;;              (cl-sort
+;;               (cl-loop
+;;                for x being the key-seqs of (dei--raw-keymap map)
+;;                as key = (key-description x)
+;;                when (and
+;;                      (not (string-match-p dei--ignore-keys-regexp key))
+;;                      (or (dei--key-is-illegal key)
+;;                          ;; I don't want to touch these, I want to see what
+;;                          ;; Doom does with them.
+;;                          (when doom
+;;                            (or (string-prefix-p doom-localleader-alt-key key)
+;;                                (string-prefix-p doom-leader-alt-key key)))))
+;;                collect key)
+;;               #'> :key #'dei--key-seq-steps-length))
+;;        dei--clean-actions)))
+
+
 ;;; Reflecting one stem in another
 
+;; REVIEW: Consider whether to use 'for x in (dei--unnest-keymap map)'
 (defun dei--how-define-a-like-b-in-keymap (recipient-mod donor-mod map)
   "Return actions needed to clone one set of keys to another set.
 Inside keymap MAP, take all keys and key sequences that contain
@@ -256,7 +291,7 @@ as \"H-\"\), and assign them to the same commands."
                  (dei--is-permachord key)))
    do (let ((recipient (string-replace donor-mod recipient-mod key)))
         (if (lookup-key-ignore-too-long raw-map (kbd recipient))
-            (message "User bound key, leaving it alone: %s" recipient)
+            (message "User bound key, leaving it alone: %s in %S" recipient map)
           (push (list recipient cmd map reason nil) actions)))
    finally return actions))
 
@@ -311,7 +346,7 @@ F13 in place of ESC, which seems easier."
    (message "Copied keys from Meta to Alt in %S: %d" map (length actions))
    do (push map dei--super-reflected-keymaps)))
 
-;; NOTE: Experimental
+;; Experimental
 ;; FIXME: Find a way to let user hold off on binding C-i/C-m until after
 ;;        keymap-found-hook has triggered this function on the given keymap.
 ;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m.
@@ -480,7 +515,7 @@ with \\[dei-remap-actions-execute]."
           (this-cmd (lookup-key-ignore-too-long raw-map (kbd this-key))))
       ;; REVIEW: what do if this-cmd is another keymap?
      (when (functionp this-cmd)
-        (let* (;; NOTE: we are assuming there exist no "bastard sequences",
+        (let* (;; NOTE: we assume we get passed no "bastard sequences",
                ;; so we don't bother to ensure the alternative is a chordonce.
                (this-is-permachord (dei--key-seq-is-permachord this-key))
                (permachord-key
@@ -630,42 +665,12 @@ with \\[dei-remap-actions-execute]."
                   "Homogenize: chord-once overwrites perma-chord"
                   permachord-cmd))))))))
 
-(defvar dei--unnest-avoid-prefixes
-  (cons "C-x 8"
-        (mapcar #'key-description
-                (where-is-internal #'iso-transl-ctl-x-8-map)))
-  "List of prefixes to avoid looking up.")
-
-;; TODO: Merge with the other unnest functions in deianira.el.
-;; How?  I guess there may be no point, as this file will be its own package at
-;; some point.  Think about it if we make a third package as a shared
-;; library, or if we just make this the library for deianira.
-(defun dei--unnest-keymap-for-homogenizing (map)
-  "Return MAP as a flat list of key seqs instead of a tree.
-These key seqs are strings satisfying `key-valid-p'."
-  (cl-loop
-   for x being the key-seqs of (dei--raw-keymap map) using (key-bindings cmd)
-   as key = (key-description x)
-   with cleaned = (member map dei--cleaned-maps)
-   unless (or (member cmd '(nil
-                            self-insert-command
-                            ignore
-                            ignore-event
-                            company-ignore))
-              (string-match-p dei--ignore-keys-regexp key)
-              (string-search "backspace" key)
-              (string-search "DEL" key)
-              (unless cleaned
-                (dei--key-is-illegal key))
-              (cl-loop for prefix in dei--unnest-avoid-prefixes
-                       when (string-prefix-p prefix key)
-                       return t))
-   collect key))
-
 (defun dei--how-homogenize-keymap (map)
   "Homogenize most of keymap MAP."
   (cl-loop
-   for key in (dei--unnest-keymap-for-homogenizing map)
+   with cleaned = (member map dei--cleaned-maps)
+   for key in (dei--unnest-keymap map nil `(,(unless cleaned
+                                               #'dei--key-is-illegal)))
    as action = (dei--how-homogenize-key-in-keymap key map)
    when action collect action))
 
@@ -687,40 +692,6 @@ These key seqs are strings satisfying `key-valid-p'."
               (- (length actions) overwritten)
               overwritten))
    (push map dei--homogenized-keymaps)))
-
-
-;;; Cleaning
-;; Unused for now.  No point to purging ugly key bindings except that it
-;; declutters which-key popups. It can also make Deianira a bit faster, as it
-;; puts less workload on `dei--unnest-keymap-for-hydra-to-eat'.
-
-(defvar dei--cleaned-maps nil)
-
-;;  (defvar dei--clean-actions nil)
-
-;; (defun dei-unbind-illegal-keys ()
-;;   "Push keys to unbind onto `dei--clean-actions'."
-;;   (cl-loop
-;;    for map in (-difference dei--known-keymaps dei--cleaned-maps)
-;;    with doom = (and (bound-and-true-p doom-leader-alt-key)
-;;                     (bound-and-true-p doom-localleader-alt-key))
-;;    do (push
-;;        (cons map
-;;              (cl-sort
-;;               (cl-loop
-;;                for x being the key-seqs of (dei--raw-keymap map)
-;;                as key = (key-description x)
-;;                when (and
-;;                      (not (string-match-p dei--ignore-keys-regexp key))
-;;                      (or (dei--key-is-illegal key)
-;;                          ;; I don't want to touch these, I want to see what
-;;                          ;; Doom does with them.
-;;                          (when doom
-;;                            (or (string-prefix-p doom-localleader-alt-key key)
-;;                                (string-prefix-p doom-leader-alt-key key)))))
-;;                collect key)
-;;               #'> :key #'dei--key-seq-steps-length))
-;;        dei--clean-actions)))
 
 (provide 'deianira-mass-remap)
 
