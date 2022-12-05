@@ -186,19 +186,19 @@ probably."
   '(keyboard-quit
     minibuffer-keyboard-quit
     keyboard-escape-quit
+    abort-recursive-edit
+    doom/escape
     dei--call-and-return-to-root
     dei--call-and-return-to-parent
-    doom/escape
-    isearch-forward
-    isearch-backward
-    query-replace
-    query-replace-regexp
+    ;; isearch-forward
+    ;; isearch-backward
+    ;; query-replace
+    ;; query-replace-regexp
     doom/restart
     doom/restart-and-restore
-    abort-recursive-edit
     execute-extended-command
-    counsel-M-x
-    helm-M-x
+    ;; counsel-M-x
+    ;; helm-M-x
     magit-status
     dired
     dired-jump
@@ -226,6 +226,7 @@ calls `completing-read' or the Ivy/Ido/Helm equivalents."
   :type '(repeat sexp)
   :group 'deianira)
 
+;; FIXME: broken in the Custom interface
 (defcustom dei-invisible-leafs
   (append
    (split-string
@@ -443,6 +444,8 @@ Optional argument KEYMAP means look only in that keymap."
         (cl-loop for key in (dei--on-which-keys #'hydra-repeat hydra-base-map)
                  do (cl-pushnew `( ,key hydra-repeat nil) dei-extra-heads))
         (advice-add #'completing-read :before #'dei--slay)
+        (advice-add #'read-key :before #'dei--slay)
+        (advice-add #'read-char :before #'dei--slay)
         (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
@@ -466,6 +469,8 @@ Optional argument KEYMAP means look only in that keymap."
     (remove-hook 'after-change-major-mode-hook #'dei-make-hydras-maybe)
     (remove-variable-watcher 'local-minor-modes #'dei-make-hydras-maybe)
     (advice-remove #'completing-read #'dei--slay)
+    (advice-remove #'read-key #'dei--slay)
+    (advice-remove #'read-char #'dei--slay)
     (advice-remove #'ido-read-internal #'dei--slay)
     (advice-remove #'ivy-read #'dei--slay)
     (advice-remove #'helm #'dei--slay)))
@@ -501,6 +506,8 @@ minutes.")
   (define-key deianira-mode-map (kbd newkey) (alist-get sym dei--ersatz-keys-alist))
   (set-default sym newkey))
 
+
+;; FIXME: these options are broken in the Custom interface
 (defcustom dei-ersatz-alt "<hiragana-katakana>"
   "Key that represents Alt."
   :type 'key
@@ -1173,6 +1180,8 @@ itself\)."
        dei--step-4-birth-hydra
        dei--step-5-register)
 
+    :debug t
+
     :on-start
     (defun dei--actions-on-start (_)
       "Necessary init."
@@ -1185,8 +1194,9 @@ itself\)."
           (cl-incf dei--interrupts-counter)
         (deianira-mode 0)
         (asyncloop-cancel loop)
-        (asyncloop-log loop
-         (message "5 interrupts last 3 min, disabling deianira-mode!"))))
+        (message
+         (asyncloop-log loop
+           "5 interrupts last 3 min, disabled deianira-mode!"))))
 
     :per-stage
     (defun dei--actions-per-stage (loop)

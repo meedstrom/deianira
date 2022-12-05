@@ -34,6 +34,33 @@
 
 ;;; Lib
 
+(defun dei--key-seq-has-non-prefix-in-prefix (keymap keydesc)
+  "Is any prefix of KEYDESC bound to a command?
+For example: C-x C-v is bound to a simple command by default, so if
+you attempt to bind C-x C-v C-x to a command, you get an error.
+So here we check for that.
+
+If KEYDESC is for example C-x C-v C-x, return non-nil if either
+C-x or C-x C-v are bound to a command.  If both of them are bound
+to either nothing or a prefix map, it's okay, so return nil.
+
+Does not additionally check that KEYDESC is not itself a prefix
+map with children bound: that's another thing that can make KEYDESC
+unbindable.
+
+KEYMAP is the keymap in which to look."
+  (let ((steps (split-string keydesc " "))
+        (ret nil))
+    (when (> (length steps) 1)
+      ;; TODO: don't use dotimes, but some sort of "until" pattern.  This
+      ;; function is very un-Lispy right now.  You can tell, because it takes
+      ;; time to understand wtf it's doing.
+      (dotimes (i (- (length steps) 1))
+        (let ((subseq (string-join (-take (1+ i) steps) " ")))
+          (when (lookup-key-ignore-too-long keymap (kbd subseq)))
+            (push subseq ret)))
+      (car ret))))
+
 (defun dei--is-chordonce (keydesc)
   "Non-nil if KEYDESC can be described as chordonce."
   (declare (pure t) (side-effect-free t))
@@ -168,8 +195,7 @@ function simply returns its name."
               (message "Mass-keybind already took this action: %S" action))
           (push action dei--remap-record)
           (seq-let (keydesc cmd map _ old-def) action
-            (let* (;;(old-def (lookup-key-ignore-too-long raw-map (kbd keydesc)))
-                   (raw-map (dei--raw-keymap map)))
+            (let* ((raw-map (dei--raw-keymap map)))
               (when-let* ((conflict-prefix (dei--key-seq-has-non-prefix-in-prefix raw-map keydesc))
                           (conflict-def (lookup-key-ignore-too-long raw-map (kbd conflict-prefix))))
                 (unless (keymapp conflict-def)
@@ -182,7 +208,7 @@ function simply returns its name."
 
 (defun dei-remap-revert ()
   "Experimental command to undo all remaps made.
-It's recommended to just restart Emacs, but this might work too."
+It's recommended to just restart Emacs, but this might work."
   (interactive)
   (cl-loop for x in dei--remap-revert-list
            do (seq-let (map keydesc old-def) x
@@ -287,8 +313,10 @@ as \"H-\"\), and assign them to the same commands."
    as key = (key-description x)
    when (and (string-search donor-mod key)
              (not (string-search recipient-mod key))
-             (or (dei--is-chordonce key)
-                 (dei--is-permachord key)))
+             ;; REVIEW: necessary?
+             ;; (or (dei--is-chordonce key)
+             ;;     (dei--is-permachord key))
+             )
    do (let ((recipient (string-replace donor-mod recipient-mod key)))
         (if (lookup-key-ignore-too-long raw-map (kbd recipient))
             (message "User bound key, leaving it alone: %s in %S" recipient map)
@@ -419,34 +447,6 @@ map)."
                                     (key-description (kbd (car cell)))
                                   (car cell))
                                 (cdr cell))))))
-
-(defun dei--key-seq-has-non-prefix-in-prefix (keymap keydesc)
-  "Does KEYDESC contain a bound command in its prefix?
-For example: C-x C-v is bound to a simple command by default, so if
-you attempt to bind C-x C-v C-x to a command, you get an error.
-So here we check for that.
-
-If KEYDESC is for example C-x C-v C-x, return non-nil if either
-C-x or C-x C-v are bound to a command.  If both of them are bound
-to either nothing or a prefix map, it's okay, so return nil.
-
-Does not additionally check that KEYDESC is not itself a prefix
-map with children bound: that's another thing that can make KEYDESC
-unbindable.
-
-KEYMAP is the keymap in which to look."
-  (let ((steps (split-string keydesc " "))
-        (ret nil))
-    (when (> (length steps) 1)
-      ;; TODO: don't use dotimes, but some sort of "until" pattern.  This
-      ;; function is very un-Lispy right now.  You can tell, because it takes
-      ;; time to understand wtf it's doing.
-      (dotimes (i (- (length steps) 1))
-        (let ((subseq (string-join (-take (1+ i) steps) " ")))
-          (when (lookup-key-ignore-too-long keymap (kbd subseq)))
-            (push subseq ret)))
-      (car ret))))
-;; (dei--key-seq-has-non-prefix-in-prefix global-map "C-x C-v C-x")
 
 (defun dei--nightmare-p (keydesc)
   "Non-nil if homogenizing KEYDESC can cause bugs.
@@ -684,14 +684,13 @@ with \\[dei-remap-actions-execute]."
    as overwritten = (cl-loop for action in actions
                              when (string-search "overwrite" (nth 3 action))
                              count action)
-   do
-   (when actions
-     (dei-remap-actions-execute actions)
-     (message "Homogenized %S: %d new keys, %d overwrites"
-              map
-              (- (length actions) overwritten)
-              overwritten))
-   (push map dei--homogenized-keymaps)))
+   when actions do
+   (dei-remap-actions-execute actions)
+   (message "Homogenized %S: %d new keys, %d overwrites"
+            map
+            (- (length actions) overwritten)
+            overwritten)
+   do (push map dei--homogenized-keymaps)))
 
 (provide 'deianira-mass-remap)
 
