@@ -274,6 +274,9 @@ Everyone's got a different origin story with Emacs, but when you first learned ~
 I picked Escape.  I put the following in my init file.  After a short period of feeling like I was committing sacrilege, it felt natural like I'd been waiting to do it this way all my life.  Try it!
 
 : (define-key input-decode-map (kbd "<escape>") (kbd "C-g"))
+: ;; Read-key respects key translations, unlike read-char. Never use read-char.
+: (setq read-char-choice-use-read-key t)
+: (setq y-or-n-p-use-read-key t)
 
 Note that when Emacs freezes up, you cannot break the freeze with ~<escape>~, and all of a sudden ~C-g~ is what you must type to break it, no other key will do.  I suspect it's because input-decode-map stops working while it's frozen and the only thing Emacs will react to is a true =^G= character, much like a traditional terminal program can be interrupted with a =^C= character.  Try for yourself: eval =(sleep-for 5)= and try to break out of it.  Escape won't work, and ~C-g~ will, /even if you bound ~C-g~ to something else so it isn't supposed to be sending a keyboard-quit/.
 

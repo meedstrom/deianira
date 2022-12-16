@@ -24,6 +24,8 @@
 (require 'dash)
 (require 'cl-lib)
 
+;; TODO: unpack a bit into separate lists naming specific purposes (can still
+;;       merge into one regexp-opt after)
 (defconst dei--ignore-keys-regexp
   (regexp-opt
    '(;; Don't bother handling control characters well, it's a
@@ -46,15 +48,28 @@
      "RET" "C-m"
      "TAB" "C-i"
      ;; declutter a bit (unlikely someone wants)
-     "help" "key-chord" "kp-" "iso-" "wheel" "menu" "redo" "undo"
-     "again" "XF86"
+     "help" "kp-" "iso-" "wheel" "menu" "redo" "undo" "again" "XF86"
      ;; extremely unlikely someone wants
-     "compose" "Scroll_Lock" "drag-n-drop"
+     "key-chord" "compose" "Scroll_Lock" "drag-n-drop"
      "mouse" "remap" "scroll-bar" "select" "switch" "state"
      "which-key" "corner" "divider" "edge" "header" "mode-line"
      "vertical-line" "frame" "open" "chord" "tool-bar" "fringe"
      "touch" "margin" "pinch" "tab-bar" ))
   "Regexp for some key bindings that don't interest us.")
+
+(defconst dei--ignore-keys-control-chars
+  '("ESC" "C-["
+    "RET" "C-m"
+    "TAB" "C-i"))
+
+(defconst dei--ignore-keys-irrelevant
+  '("compose" "Scroll_Lock" "drag-n-drop"
+    "mouse" "remap" "scroll-bar" "select" "switch" "state"
+    "which-key" "corner" "divider" "edge" "header" "mode-line"
+    "vertical-line" "frame" "open" "chord" "tool-bar" "fringe"
+    "touch" "margin" "pinch" "tab-bar" )
+  "List of strings matching key events unlikely to matter to the
+user's keyboard setup.")
 
 (defun dei--raw-keymap (map)
   "If MAP is a keymap, return it; if a symbol, evaluate first."
@@ -74,59 +89,23 @@
                 (where-is-internal #'iso-transl-ctl-x-8-map)))
   "List of prefixes to avoid looking up.")
 
-
-(defun dei--unnest-keymap (map &optional with-commands extra-filters)
-  "Return MAP as a flat list of key seqs instead of a tree.
-These key seqs are strings satisfying `key-valid-p'.
-
-Optional argument WITH-COMMANDS makes the return value an alist
-where the cars are key seqs and the cdrs are the associated
-commands.
-
-Optional argument EXTRA-FILTERS is a list of functions with which
-to test the key seq, such as `dei--key-has-more-than-one-chord'.
-If any function returns non-nil, exclude this key seq.  Aside
-from functions, nil is also a permitted member, and ignored."
-  (cl-loop
-   ;; REVIEW: do we need to set case-fold-search? test with and without it.
-   with case-fold-search = nil
-   for x being the key-seqs of (dei--raw-keymap map) using (key-bindings cmd)
-   as key = (key-description x)
-   unless (or (member cmd '(nil
-                            self-insert-command
-                            ignore
-                            ignore-event
-                            company-ignore))
-              (string-match-p dei--ignore-keys-regexp key)
-              (string-search "backspace" key)
-              (string-search "DEL" key)
-              ;; (-any-p #'dei--not-on-keyboard (split-string key " "))
-              (cl-loop for filter in extra-filters
-                       when (and filter (funcall filter key))
-                       return t)
-              (cl-loop for prefix in dei--unnest-avoid-prefixes
-                       when (string-prefix-p prefix key)
-                       return t))
-   if with-commands collect (cons key cmd)
-   else collect key))
-;; (dei--unnest-keymap 'projectile-mode-map nil '((lambda (x) (string-search "s-4" x))))
-;; (dei--unnest-keymap 'projectile-mode-map t '((lambda (x) (string-search "s-4" x))))
-
 
 ;;;; Handlers for key descriptions
 
 (defun dei--last-key (single-key-or-chord)
   "Return the last key in SINGLE-KEY-OR-CHORD.
+If it's not a chord, return the input unmodified.
+
 USE WITH CARE.  Presupposes that the input has no spaces and has
 been normalized by (key-description (kbd KEY))!"
   (declare (pure t) (side-effect-free t))
   (let ((s single-key-or-chord))
-    (cond ((or (string-match-p "--" s)
-               (string-match-p "-$" s))
+    (cond ((or (string-search "--" s)
+               (string-match-p "-$" s)) ;; same thing given it's a single chord!
            "-")
           ((string-match-p "<$" s)
            "<")
-          ((string-match-p "<" s)
+          ((string-search "<" s)
            (save-match-data
              (string-match (rx "<" (* nonl) ">") s)
              (match-string 0 s)))
@@ -213,9 +192,8 @@ Useful predicate for `seq-sort-by' or `cl-sort'."
   (length (split-string keydesc " ")))
 
 (defun dei--key-seq-is-permachord (keydesc)
-  "If sequence KEYDESC has a chord on every step, return t.
-Note that it does not check if it's the same chord every time.
-For that, see `dei--key-mixes-modifiers'."
+  "If sequence KEYDESC has one chord on every step, return t.
+This chord must be the same throughout the sequence."
   (declare (pure t) (side-effect-free t))
   (when (> (length keydesc) 2)
     (let* ((first-2-chars (substring keydesc 0 2))

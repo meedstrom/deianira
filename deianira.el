@@ -196,7 +196,7 @@ probably."
     ;; query-replace-regexp
     doom/restart
     doom/restart-and-restore
-    execute-extended-command
+    ;; execute-extended-command
     ;; counsel-M-x
     ;; helm-M-x
     magit-status
@@ -785,65 +785,95 @@ which see."
   "Match explicit \"S-\" chords in key descriptions.")
 
 (defun dei--key-is-illegal (keydesc)
-  "Non-nil if KEYDESC would be unbound in a purist scheme."
+  "Non-nil if KEYDESC would be unbound in a purist scheme.
+This means a scheme of homogenizing, no shift, no multi-chords,
+and no mixed modifiers."
   (let ((case-fold-search nil))
     (or
      (string-match-p dei--shift-regexp keydesc)
      (dei--key-contains dei--all-shifted-symbols-list keydesc)
      (dei--key-contains-multi-chord keydesc)
      (dei--key-mixes-modifiers keydesc)
-
      ;; Drop bastard sequences.
      (and (dei--key-has-more-than-one-chord keydesc)
           (not (dei--key-seq-is-permachord keydesc)))
-
      ;; Drop e.g. <f1> C-f.
      (and (not (dei--key-starts-with-modifier keydesc))
           (string-match-p dei--modifier-regexp-safe keydesc)))))
 
+(defconst dei--ignore-regexp-merged
+  (regexp-opt
+   (append '("DEL" "backspace")
+           ;; declutter a bit (unlikely someone wants)
+           '("help" "kp-" "iso-" "wheel" "menu" "redo" "undo" "again" "XF86")
+           dei--ignore-keys-irrelevant
+           dei--ignore-keys-control-chars)))
+
+;; REVIEW: Test <ctl> x 8 with Deianira active.
+(defvar dei--unnest-avoid-prefixes
+  (cons "C-x 8"
+        (mapcar #'key-description
+                (where-is-internal #'iso-transl-ctl-x-8-map)))
+  "List of prefixes to avoid looking up.")
+
 (defun dei--get-filtered-bindings (&optional with-commands)
   "List the current buffer keys appropriate for hydra-making.
-This is not for a single keymap, but the whole composite of
-keymaps currently active.
+Note this is not the keys for a single keymap, but the keys from
+the composite of all keymaps currently active.
 
 Optional argument WITH-COMMANDS means return an alist where each
-item looks like (KEY . COMMAND)."
+item looks like \(KEY . COMMAND\)."
   ;; You know that the same key can be found several times in multiple keymaps.
   ;; Fortunately we can know which binding is correct for the current buffer,
   ;; as `current-active-maps' seems to return maps in the order in which Emacs
   ;; selects them.  So what comes earlier in the list is what would in fact be
   ;; used.  Then we run `-uniq' to declutter the list, which likewise keeps
   ;; the first instance of each set of duplicates.
-  (let ((T (current-time))
-        (keys (-uniq
-               (cl-loop
-                for map in (current-active-maps)
-                as cleaned = (member map (bound-and-true-p dei--cleaned-maps))
-                with case-fold-search = nil
-                append (dei--unnest-keymap
-                        map
-                        with-commands
-                        `(dei--key-has-more-than-one-chord
-                          ,(unless cleaned
-                             #'dei--key-is-illegal)))))))
-    ;; Just in case: if a key is bound to a simple command in one keymap, but
-    ;; to a subkeymap in another keymap, so we record both the single command
-    ;; and the children that take it as prefix, it may break lots of things, so
-    ;; just signal an error and I'll think about how to fail gracefully later.
-    ;; I've not got an error yet.
-    ;; NOTE: this check costs some performance
-    (let* ((keys (if with-commands
-                     (-map #'car keys)
-                   keys))
-           (conflicts (cl-loop
-                       for parent in (-uniq (-keep #'dei--parent-key keys))
-                       when (assoc parent keys)
-                       collect parent)))
-      (when conflicts
-        (error "Bound variously to commands or prefix maps: %s" conflicts)))
-    (when (> (float-time (time-since T)) 1)
-      (error "Took way too long getting bindings: %.3f seconds" (time-since T)))
-    keys))
+  (let* ((T (current-time))
+         (result
+          (-uniq
+           (cl-loop
+            with cleaned = (member map (bound-and-true-p dei--cleaned-maps))
+            with raw-map = (dei--raw-keymap map)
+            with case-fold-search = nil
+            for map in (current-active-maps)
+            append (cl-loop
+                    for v being the key-seqs of raw-map using (key-bindings cmd)
+                    as key = (key-description v)
+                    unless (or (member cmd '(nil
+                                             self-insert-command
+                                             ignore
+                                             ignore-event
+                                             company-ignore))
+                               (string-match-p dei--ignore-regexp-merged key)
+                               (dei--key-has-more-than-one-chord key)
+                               (unless cleaned
+                                 (dei--key-is-illegal key))
+                               ;; (-any-p #'dei--not-on-keyboard (split-string key " "))
+                               (cl-loop for prefix in dei--unnest-avoid-prefixes
+                                        when (string-prefix-p prefix key)
+                                        return t))
+                    if with-commands collect (cons key cmd)
+                    else collect key))))
+         ;; Just in case: if a key is bound to a simple command in one keymap, but
+         ;; to a subkeymap in another keymap, so we record both the single command
+         ;; and the children that take it as prefix, it may break lots of things, so
+         ;; just signal an error and I'll think about how to fail gracefully later.
+         ;; I've not got an error yet.
+         ;; NOTE: this check costs some performance
+         (keys (if with-commands
+                   (-map #'car result)
+                 result))
+         (conflicts (cl-loop
+                     for parent in (-uniq (-keep #'dei--parent-key keys))
+                     when (assoc parent keys)
+                     collect parent))
+         (elapsed (float-time (time-since T))))
+    (when conflicts
+      (error "Bound variously to commands or prefix maps: %s" conflicts))
+    (when (> elapsed 1)
+      (error "Took abnormally long getting bindings: %.2f seconds" elapsed))
+    result))
 ;; (dei--get-filtered-bindings t)
 
 

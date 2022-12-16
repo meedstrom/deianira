@@ -22,6 +22,13 @@
 ;; Will probably be spun out as a standalone package called mass-keybind or
 ;; something.
 
+;; Setup goes like this:
+
+;; (require 'deianira-mass-remap)
+;; (add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe -70)
+;; (add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctl-everywhere)
+;; (add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps))
+
 ;;; Code:
 
 (require 'deianira-lib)
@@ -61,57 +68,77 @@ KEYMAP is the keymap in which to look."
             (push subseq ret)))
       (car ret))))
 
-(defun dei--is-chordonce (keydesc)
-  "Non-nil if KEYDESC can be described as chordonce."
+(defun dei--root-modifier-chunk (keydesc)
+  "Return the first modifier chunk.
+For example, if KEYDESC is C-M-x C-S-RET, return the substring
+\"C-M-\".  If there are no no modifiers on the first key, return
+nil."
   (declare (pure t) (side-effect-free t))
-  (let ((steps (split-string keydesc " ")))
-    (and (string-match-p dei--modifier-regexp-safe (car steps))
-         (equal (cdr steps) (-map #'dei--get-leaf (cdr steps))))))
+  (let* ((first-item (car (split-string keydesc " ")))
+         (last-mod-pos (save-match-data
+                         (string-match (rx bol (* (regexp dei--modifier-regexp)))
+                                       first-item)
+                         (match-end 0))))
+    (when (not (zerop last-mod-pos))
+      (substring first-item 0 last-mod-pos))))
+;; (dei--root-modifier-chunk "C-M-x C-S-RET")
+;; (dei--root-modifier-chunk "x C-S-RET")
 
-(defun dei--is-permachord (keydesc)
-  "Non-nil if KEYDESC can be described as permachord."
+(defun dei--permissive-permachord-p (keydesc)
+  "Non-nil if KEYDESC can be described as permachord.
+Be permissive towards multi-chords: simply determine modifiers
+from the first step and see if they're present on every step.
+Also return nil if there's an additional modifier anywhere.
+
+Assumes KEYDESC is a sequence, not a single key."
   (declare (pure t) (side-effect-free t))
   (when (> (length keydesc) 2)
-    (let ((first-2-chars (substring keydesc 0 2)))
-      (when (string-suffix-p "-" first-2-chars)
-        (cl-loop for step in (split-string keydesc " ")
-                 if (not (string-search first-2-chars step))
-                 return nil
-                 else finally return t)))))
+    (let ((rootmod (dei--root-modifier-chunk keydesc)))
+      (when rootmod 
+        (cl-loop
+         for step in (split-string keydesc " ")
+         if (or (not (string-prefix-p rootmod step))
+                (string-match-p dei--modifier-regexp-safe
+                                (substring step (length rootmod))))
+         return nil
+         else finally return t)))))
 
-;; Heh, when I made this function by axing where the code originally was
-;; written, I found my code never did what I wanted.  Now fixed.  Score one for
-;; small testable functions.
+(defun dei--permissive-ensure-permachord (keydesc)
+  "Return KEYDESC as perma-chord.
+If it's already that, return it unmodified.
+
+The key sequence KEYDESC must not contain any modifiers that are
+not part of the first key in the sequence.  If it satisfies
+`dei--is-chordonce' or `dei--permissive-permachord-p', or
+dissatisfies `dei--key-mixes-modifiers', there'll be no problem."
+  (declare (pure t) (side-effect-free t))
+  (let ((rootmod (dei--root-modifier-chunk keydesc)))
+    (if rootmod
+        (string-join
+         (cl-loop for step in (split-string keydesc " ")
+                  if (string-prefix-p rootmod step)
+                  collect step
+                  and do (when (string-match-p dei--modifier-regexp-safe
+                                               (substring step (length rootmod)))
+                           (error "Key contains other modifiers: %s" keydesc))
+                  else collect (concat rootmod step)
+                  and do (when (string-match-p dei--modifier-regexp-safe step)
+                           (error "Key contains other modifiers: %s" keydesc)))
+         " ")
+      (warn "dei--ensure-permachord probably shouldn't be called on: %s"
+            keydesc)
+      keydesc)))
+
 (defun dei--ensure-chordonce (keydesc)
   "Strip chords from most of key sequence KEYDESC.
-Leave alone the first step of the key sequence."
+Leave alone the first step of the key sequence.  Technically,
+since we don't check the first step, the resulting sequence could
+be entirely unchorded."
   (declare (pure t) (side-effect-free t))
   (let ((steps (split-string keydesc " ")))
     (string-join (cons (car steps)
                        (-map #'dei--get-leaf (cdr steps)))
                  " ")))
-
-(defun dei--ensure-permachord (keydesc)
-  "Return KEYDESC as perma-chord.
-If it's already that, return it unmodified."
-  (declare (pure t) (side-effect-free t))
-  (when (> (length keydesc) 2)
-    (let* ((first-2-chars (substring keydesc 0 2))
-           (root-modifier (when (string-suffix-p "-" first-2-chars)
-                            first-2-chars)))
-      (if root-modifier
-          (string-join (cl-loop
-                        for step in (split-string keydesc " ")
-                        if (string-prefix-p root-modifier step)
-                        do (when (string-match-p dei--modifier-regexp-safe
-                                                 (substring step 1))
-                             (warn "Maybe found bastard sequence: %s" keydesc))
-                        and collect step
-                        else collect (concat root-modifier step))
-                       " ")
-        (warn "dei--ensure-permachord probably shouldn't be called on: %s"
-              keydesc)
-        keydesc))))
 
 
 ;;; Basics
@@ -126,6 +153,18 @@ If it's already that, return it unmodified."
 
 (defvar dei--remap-actions nil
   "List of actions to pass to `define-key'.")
+
+(define-derived-mode dei-list-remaps-mode tabulated-list-mode
+  "Remaps List"
+  nil
+  (setq tabulated-list-format
+        [("Keymap" 20 t)
+         ("Reason" 45 t)
+         ("Key bound" 15 t)
+         ("New command" 20 t)
+         ("Old command" 20 t)])
+  (add-hook 'tabulated-list-revert-hook #'dei-list-remaps nil t)
+  (tabulated-list-init-header))
 
 (defun dei--pretty-print-def (def)
   "Return a string that tries to say what DEF refers to.
@@ -146,18 +185,6 @@ function simply returns its name."
          def)
         (t
          (error "Unable to identify: %s" def))))
-
-(define-derived-mode dei-list-remaps-mode tabulated-list-mode
-  "Remaps List"
-  nil
-  (setq tabulated-list-format
-        [("Keymap" 20 t)
-         ("Reason" 45 t)
-         ("Key bound" 15 t)
-         ("New command" 20 t)
-         ("Old command" 20 t)])
-  (add-hook 'tabulated-list-revert-hook #'dei-list-remaps nil t)
-  (tabulated-list-init-header))
 
 (defun dei-list-remaps ()
   "List the key-bindings made so far by deianira-mass-remap."
@@ -185,6 +212,7 @@ function simply returns its name."
 (defvar dei--remap-revert-list nil
   "Experimental, see `dei-remap-revert'.")
 
+;; TODO: also copy any associated repeat-map...
 (defun dei-remap-actions-execute (actions)
   "Carry out remaps specified by ACTIONS."
   (let ((emacs29 (version<= "29" emacs-version)))
@@ -227,7 +255,7 @@ You may be interested in hooking some of these functions:
   :type 'hook
   :group 'deianira)
 
-(defvar dei--known-keymaps nil
+(defvar dei--known-keymaps '(global-map)
   "List of named keymaps seen active.
 This typically gets populated (by `dei-record-keymap-maybe') with
 just mode maps, rarely (never?) those used as transient maps and never
@@ -246,7 +274,7 @@ This simply checks the output of `current-active-maps' and adds
 to `dei--known-keymaps' anything not already added.  Every time
 we find one or more new keymaps, trigger `dei-keymap-found-hook'.
 
-Suitable to hook on `window-buffer-change-functions' like:
+Suitable to hook on `window-buffer-change-functions' like this:
 
 \(add-hook 'window-buffer-change-functions #'dei-record-keymap-maybe)"
   (let* ((maps (current-active-maps))
@@ -257,6 +285,20 @@ Suitable to hook on `window-buffer-change-functions' like:
       (push composite-hash dei--known-keymap-composites)
       (let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
              (new-maps (-difference named-maps dei--known-keymaps)))
+        ;; For whatever reason, (help-fns-find-keymap-name global-map) returns
+        ;; `widget-global-map'.  Fortunately,
+        ;; (equal widget-global-map global-map) returns t, so it doesn't matter
+        ;; for most purposes.  However, where we want to identify the keymap by
+        ;; e.g. membership in a list or with `equal', I expect it to take much
+        ;; more CPU time to compare their raw values instead of simply their
+        ;; symbols.  The user is likely to set options that refer to
+        ;; `global-map'.  Therefore, ensure we use it everywhere by
+        ;; prepopulating `dei--known-keymaps' and removing `widget-global-map'.
+        ;; These shenanigans wouldn't be necessary if keymap values contained
+        ;; their symbol names.  As a bonus, user doesn't need to see
+        ;; `widget-global-map' in M-x dei-list-remaps.
+        (setq new-maps (remove 'widget-global-map new-maps))
+
         (when new-maps
           (setq dei--known-keymaps (append new-maps dei--known-keymaps))
           (run-hooks 'dei-keymap-found-hook))))))
@@ -264,8 +306,8 @@ Suitable to hook on `window-buffer-change-functions' like:
 
 ;;; Cleaning
 ;; Unused for now.  No point to purging ugly key bindings except that it
-;; declutters which-key popups. It can also make Deianira a bit faster, as it
-;; puts less workload on `dei--unnest-keymap-for-hydra-to-eat'.
+;; declutters which-key popups and can make Deianira build hydras a bit
+;; faster.
 
 (defvar dei--cleaned-maps nil)
 
@@ -298,7 +340,6 @@ Suitable to hook on `window-buffer-change-functions' like:
 
 ;;; Reflecting one stem in another
 
-;; REVIEW: Consider whether to use 'for x in (dei--unnest-keymap map)'
 (defun dei--how-define-a-like-b-in-keymap (recipient-mod donor-mod map)
   "Return actions needed to clone one set of keys to another set.
 Inside keymap MAP, take all keys and key sequences that contain
@@ -307,16 +348,14 @@ wherever it occurs in favor of RECIPIENT-MOD \(a substring such
 as \"H-\"\), and assign them to the same commands."
   (cl-loop
    with actions = nil
+   with case-fold-search = nil
    with reason = (concat "Define " recipient-mod " like " donor-mod)
    with raw-map = (dei--raw-keymap map)
-   for x being the key-seqs of raw-map using (key-bindings cmd)
-   as key = (key-description x)
-   when (and (string-search donor-mod key)
-             (not (string-search recipient-mod key))
-             ;; REVIEW: necessary?
-             ;; (or (dei--is-chordonce key)
-             ;;     (dei--is-permachord key))
-             )
+   for vec being the key-seqs of raw-map using (key-bindings cmd)
+   as key = (key-description vec)
+   when (and (not (null cmd))
+             (string-search donor-mod key)
+             (not (string-search recipient-mod key)))
    do (let ((recipient (string-replace donor-mod recipient-mod key)))
         (if (lookup-key-ignore-too-long raw-map (kbd recipient))
             (message "User bound key, leaving it alone: %s in %S" recipient map)
@@ -337,7 +376,9 @@ Appropriate on `dei-keymap-found-hook'."
    as actions = (dei--how-define-a-like-b-in-keymap "s-" "C-" map)
    when actions do
    (dei-remap-actions-execute actions)
-   (message "Copied keys from Control to Super in %S: %d" map (length actions))
+   (when (> dei-mass-remap-debug-level 0)
+     (message
+      "Copied keys from Control to Super in %S: %d" map (length actions)))
    do (push map dei--super-reflected-keymaps)))
 
 (defun dei-define-super-like-ctlmeta-everywhere ()
@@ -374,39 +415,71 @@ F13 in place of ESC, which seems easier."
    (message "Copied keys from Meta to Alt in %S: %d" map (length actions))
    do (push map dei--super-reflected-keymaps)))
 
-;; Experimental
-;; FIXME: Find a way to let user hold off on binding C-i/C-m until after
-;;        keymap-found-hook has triggered this function on the given keymap.
-;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m.
-(defun dei--protect-ret-and-tab (map)
-  "In MAP, look for control character representations of C-m and
-C-i, and duplicate their bindings to the function keys <return>
-and <tab>.  This permits you to bind C-m and C-i to other
-commands under GUI Emacs without clobbering the Return and Tab
-keys' behavior."
-  (cl-loop for key being the key-seqs of map
-           with retkeys
-           with tabkeys
-           if (or (string-search "C-m" key)
-                  (string-search "RET" key))
-           collect key into retkeys
-           else if (or (string-search "C-i" key)
-                       (string-search "TAB" key))
-           collect key into tabkeys
-           finally do
-           (progn
-             (cl-loop for retkey in retkeys
-                      do (define-key map
-                           (kbd (string-replace
-                                 "C-m" "<return>" (string-replace
-                                                   "RET" "<return>" retkey)))
-                           (lookup-key map key)))
-             (cl-loop for tabkey in tabkeys
-                      do (define-key map
-                           (kbd (string-replace
-                                 "C-i" "<tab>" (string-replace
-                                                "TAB" "<tab>" tabkey)))
-                           (lookup-key map key))))))
+
+;;; Lightweight alternative to Super as Ctl: sanitize some control chars
+
+;; Experimental, completely untested!
+
+(defvar dei--tabret-protected-keymaps nil)
+
+(defvar dei--ret-and-tab-bindings nil
+  "Alist of bindings to make after `dei--protect-ret-and-tab'.
+The structure is like this:
+
+((KEYMAP . ((KEY . COMMAND)
+            (KEY . COMMAND)
+            ...))
+ (KEYMAP . ((KEY . COMMAND)
+            (KEY . COMMAND)
+            ...))
+ ...)
+
+Here each KEY is compatible with `kbd'.
+
+After `dei--protect-ret-and-tab' has operated on a given KEYMAP,
+it will apply the bindings in the associated sublist.")
+
+;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m...
+(defun dei--protect-ret-and-tab ()
+  "Experimental.
+In keymap MAP, look for bound control character representations
+of C-m and C-i, and duplicate their bindings to the function keys
+<return> and <tab>.  This permits you to bind C-m and C-i to
+other commands under GUI Emacs without clobbering the Return and
+Tab keys' behavior.  Although you have to defer binding them by
+specifying `dei--ret-and-tab-bindings'."
+  (cl-loop
+   for map in (-difference dei--tabret-protected-keymaps
+                           dei--known-keymaps)
+   do
+   (let ((raw-map (dei--raw-keymap map)))
+     (cl-loop for vec being the key-seqs of raw-map
+              as key = (key-description vec)
+              with retkeys = nil
+              with tabkeys = nil
+              if (or (string-search "C-m" key)
+                     (string-search "RET" key))
+              collect key into retkeys
+              else if (or (string-search "C-i" key)
+                          (string-search "TAB" key))
+              collect key into tabkeys
+              finally do
+              (cl-loop for retkey in retkeys
+                       do (define-key raw-map
+                            (kbd (string-replace
+                                  "C-m" "<return>" (string-replace
+                                                    "RET" "<return>" retkey)))
+                            (lookup-key raw-map vec)))
+              (cl-loop for tabkey in tabkeys
+                       do (define-key raw-map
+                            (kbd (string-replace
+                                  "C-i" "<tab>" (string-replace
+                                                 "TAB" "<tab>" tabkey)))
+                            (lookup-key raw-map vec))))
+     (when (eq map 'widget-global-map)
+       (setq map 'global-map))
+     (cl-loop for x in (alist-get map dei--ret-and-tab-bindings)
+              do (define-key raw-map (kbd (car x)) (cdr x))))))
 
 
 ;;; Homogenizing
@@ -456,14 +529,15 @@ C-x M-anything.  You do this, then Magit tries to bind C-x M-g
 and complains it's not a prefix key and you can't even load
 Magit.  That's a mild issue.  A more silent bug is C-x i becoming
 C-x C-i which means it overrides your C-x TAB binding, something
-you're blissfully unaware of until you try to use C-x TAB.
+you're blissfully unaware of until you try to use C-x TAB and
+have no idea why it isn't bound to what you thought.
 
 The root problem is anachronistic Unix control character
 behavior, which Emacs has chosen not to deprecate, for the sake
 of functioning inside basic terminal emulators, TTYs and ssh
 connections.  We have a clean solution in
-`dei-define-super-like-ctl-everywhere' and never typing another
-control character in your life.  Alternatively, we have an
+`dei-define-super-like-ctl-everywhere' and never pressing the
+Control key again in your life.  Alternatively, we have an
 untested partial solution in `dei--protect-ret-and-tab'.
 
 If you don't apply the solution, it pays to know this: always
@@ -477,208 +551,243 @@ neither do Super, Hyper or many other niceties, and I recommend
 just using chemacs to run a barebone Emacs for the odd time
 you're on the TTY.
 
-While it is possible to rescue C-i and C-m from the cold dead
+While it is possible to rescue C-i and C-m from the mummified
 hands of Unix, you cannot ever use C-\[ as anything other than an
-ESC shorthand.  As for C-g, the problem isn't Unix, only a
-hardcoded default in Emacs, and I deem it's not fully rescuable
-without a patchset that lets you decide via a command-line flag
-or Xresource, which key should act as keyboard-quit instead of
-C-g.
+ESC shorthand.  As for C-g, the problem is only a hardcoded
+default in Emacs, and I deem it's not fully fixable without a
+patchset that lets you decide via \(say) a command-line flag
+which key should act as keyboard-quitter instead of C-g.
 
 To sum up, we return non-nil if the key sequence starts with
 Control and involves any of \[, m, i, or g anywhere in the
-sequence.  So even the sequence C-h g is a nightmare key:
-homogenizing it means binding C-h C-g to the same, creating a
-situation when C-g is not available to do `keyboard-quit'."
+sequence.  So we even count the sequence C-h g as a nightmare
+key: homogenizing it means binding C-h C-g to the same, creating
+a situation when C-g is not available to do
+`abort-recursive-edit'."
   (declare (pure t) (side-effect-free t))
   (or (and (string-prefix-p "C-" keydesc)
            (string-match-p (rx (any "[" "m" "i" "g")) keydesc))
-      ;; this bit is unnecessary because `dei--ignore-keys-regexp' filters them out
-      ;; (string-match-p (eval-when-compile (regexp-opt "ESC" "TAB" "RET")) keydesc)
-      ))
+      (string-match-p (eval-when-compile (regexp-opt '("ESC" "TAB" "RET")))
+                      keydesc)))
+
+(defcustom dei-all-upcase-letters
+  (-map #'char-to-string
+        (string-to-list "AÄÂÀÁBCÇDEËÊÈÉFGHIÏÎÌÍJKLMNOÖÔÒÓPQRSTUÜÛÙÚVWXYZØÆÅÞẞ"))
+  "List of capital letters.
+These are ignored by `dei--homogenize-key-in-keymap' because
+Emacs treats Control-chords as case insensitive.")
+
+(defconst dei--homogenize-ignore-regexp
+  (regexp-opt (append dei--ignore-keys-irrelevant
+                      dei--ignore-keys-control-chars)))
 
 ;; NOTE: must return either nil or a list
 (defun dei--how-homogenize-key-in-keymap (this-key keymap)
-  "In KEYMAP, homogenize THIS-KEY.
-See `dei-homogenizing-winners' for explanation.
-
-Actually just pushes an action onto `dei--remap-actions', which
-you can preview with \\[dei-remap-actions-preview] and execute
-with \\[dei-remap-actions-execute]."
+  "Return the action to homogenize THIS-KEY in KEYMAP.
+See `dei-homogenizing-winners' for explanation."
   (unless (stringp this-key)
-    (error "String not passed: %s" this-key))
-  (and
-   (not (dei--key-seq-steps=1 this-key)) ;; nothing to homogenize if length 1
-   (not (dei--nightmare-p this-key))
-   (dei--key-starts-with-modifier this-key)
-   (let* ((raw-map (dei--raw-keymap keymap))
-          (this-cmd (lookup-key-ignore-too-long raw-map (kbd this-key))))
-      ;; REVIEW: what do if this-cmd is another keymap?
-     (when (functionp this-cmd)
-        (let* (;; NOTE: we assume we get passed no "bastard sequences",
-               ;; so we don't bother to ensure the alternative is a chordonce.
-               (this-is-permachord (dei--key-seq-is-permachord this-key))
-               (permachord-key
-                (if this-is-permachord
-                    this-key
-                  (dei--ensure-permachord this-key)))
-               (permachord-cmd
-                (if this-is-permachord
-                    this-cmd
-                  (lookup-key-ignore-too-long raw-map (kbd permachord-key))))
-               (chordonce-key
-                (if this-is-permachord
-                    (dei--ensure-chordonce this-key)
-                  this-key))
-               (chordonce-cmd
-                (if this-is-permachord
-                    (lookup-key-ignore-too-long raw-map (kbd chordonce-key))
-                  this-cmd))
-               (sibling-keydesc (if this-is-permachord
-                                    chordonce-key
-                                  permachord-key))
-               (sibling-cmd (if this-is-permachord
-                                chordonce-cmd
-                              permachord-cmd))
-               (winners (->> dei-homogenizing-winners
-                             (-remove #'cdr) ;; drop items with a keymap
-                             (-map #'car)))
-               ;; Fortunately (equal widget-global-map global-map) returns t, so
-               ;; user can refer to global-map in `dei-homogenizing-winners'...
-               (winners-for-this-keymap (->> dei-homogenizing-winners
-                                             (-filter #'cdr)
-                                             (--filter (equal keymap (cdr it)))
-                                             (-map #'car))))
+    (error "Expected `kbd'-compatible string: %s" this-key))
+  (let* ((raw-map (dei--raw-keymap keymap))
+         (this-cmd (lookup-key-ignore-too-long raw-map (kbd this-key)))
+         (case-fold-search nil)) ;; hopefully boosts performance
+    (when (> dei-mass-remap-debug-level 1)
+      (when (and this-cmd (not (functionp this-cmd)) (symbolp this-cmd))
+        (message "Found non-function symbol binding: %s" this-cmd))
+      (when (keymapp this-cmd)
+        (message "Found keymap at: %s in %S" this-key keymap)))
+    (and
+     this-cmd
+     (symbolp this-cmd) ;; can't use functionp b/c of not-yet-defined commands
+     (not (dei--key-seq-steps=1 this-key)) ;; nothing to homogenize if length 1
+     ;; There's no sense to homogenizing e.g. <f1> C-f because you'd
+     ;; never do C-<f1> to start the sequence.  As a bonus, this assumption
+     ;; simplifies functions like `dei--ensure-permachord'.  Although you could
+     ;; make the case that we'd want to homogenize all subsequences after <f1>,
+     ;; i.e. ensure <f1> C-f is duplicated to <f1> f, but that's so rare
+     ;; we can just offload the work on to the user if it's important to them.
+     (dei--key-starts-with-modifier this-key)
+     (not (dei--nightmare-p this-key))
+     ;; HACK: ignore capital letters because binding C-x C-K also binds
+     ;; C-x C-k (think there's a setting to control case sensitivity since Emacs
+     ;; 27 or so -- we need to check its value), messing up the expected binding
+     ;; there.  The specific example of C-x C-K comes from a Doom Emacs binding
+     ;; of C-x K, and the error is caused by the fact that unlike
+     ;; other modifiers, control-bindings are always case insensitive! See
+     ;; (info "(emacs)Modifier Keys")
+     ;; TL;DR: fix pending: If Control, ignore shiftsyms.  For other modifiers,
+     ;; check case sensitivity first.
+     (not (dei--key-contains dei-all-upcase-letters this-key))
+     ;; Drop bastard sequences
+     (not (and (dei--key-has-more-than-one-chord this-key)
+               (not (dei--permissive-permachord-p this-key))))
+     (let* (;; NOTE: we filtered out "bastard sequences",
+            ;; so we don't bother to ensure the alternative is a chordonce.
+            (this-is-permachord (dei--permissive-permachord-p this-key))
+            (permachord-key
+             (if this-is-permachord
+                 this-key
+               (dei--permissive-ensure-permachord this-key)))
+            (permachord-cmd
+             (if this-is-permachord
+                 this-cmd
+               (lookup-key-ignore-too-long raw-map (kbd permachord-key))))
+            (chordonce-key
+             (if this-is-permachord
+                 (dei--ensure-chordonce this-key)
+               this-key))
+            (chordonce-cmd
+             (if this-is-permachord
+                 (lookup-key-ignore-too-long raw-map (kbd chordonce-key))
+               this-cmd))
+            (sibling-keydesc (if this-is-permachord
+                                 chordonce-key
+                               permachord-key))
+            (sibling-cmd (if this-is-permachord
+                             chordonce-cmd
+                           permachord-cmd))
+            (winners (->> dei-homogenizing-winners
+                          (-remove #'cdr) ;; drop items with a keymap
+                          (-map #'car)))
+            ;; Here we'd have run into issue fixed at `dei-record-keymap-maybe'.
+            (winners-for-this-keymap (->> dei-homogenizing-winners
+                                          (-select #'cdr)
+                                          (--select (equal keymap (cdr it)))
+                                          (-map #'car))))
 
-          (cond
-           ;; Simple case: This key or the sibling key has already been dealt
-           ;; with.  Then we just no-op.  This approach is
-           ;; simpler than naively populating `dei--remap-actions' and teasing out
-           ;; duplicates and conflicts afterwards.
-           ;; ((or (when-let ((found
-           ;;                  (assoc (kbd this-key) dei--remap-record)))
-           ;;        (equal (nth 2 found) keymap))
-           ;;      (when-let ((found
-           ;;                  (assoc (kbd sibling-keydesc) dei--remap-record)))
-           ;;        (equal (nth 2 found) keymap))))
-           ((equal keymap (nth 2 (or (assoc sibling-keydesc dei--remap-record)
-                                     (assoc this-key dei--remap-record))))
-            nil)
+       (cond
+        ;; Simple case: This key or the sibling key has already been dealt
+        ;; with.  Then we just no-op.
+        ((equal keymap (nth 2 (or (assoc sibling-keydesc dei--remap-record)
+                                  (assoc this-key dei--remap-record))))
+         nil)
 
-           ;; Complex case #1: both keys have a command, which do we choose?
-           ;; Eeny meny miny moe...?  No.  Let's start by checking if one of
-           ;; them is a specified winner, then fall back on a rule.
-           ((functionp sibling-cmd)
-            (cond ((< 1 (length
-                         (-non-nil
-                          (list (member sibling-keydesc winners-for-this-keymap)
-                                (member sibling-cmd winners-for-this-keymap)
-                                (member this-key winners-for-this-keymap)
-                                (member this-cmd winners-for-this-keymap)))))
-                   (warn "Found a contradiction in dei-homogenizing-winners.")
-                   nil)
+        ;; Complex case #1: both keys have a command, which do we choose?
+        ;; Eeny meny miny moe...?  No.  Let's start by checking if one of
+        ;; them is a specified winner, then fall back on a rule.
+        ((functionp sibling-cmd)
+         (cond ((< 1 (length
+                      (-non-nil
+                       (list (member sibling-keydesc winners-for-this-keymap)
+                             (member sibling-cmd winners-for-this-keymap)
+                             (member this-key winners-for-this-keymap)
+                             (member this-cmd winners-for-this-keymap)))))
+                (warn "Found a contradiction in dei-homogenizing-winners.")
+                nil)
 
-                  ((or (member sibling-keydesc winners-for-this-keymap)
-                       (member sibling-cmd winners-for-this-keymap))
-                   (list this-key
-                         sibling-cmd
-                         keymap
-                         "Homogenize: winning sibling overwrites this"
-                         this-cmd))
+               ((or (member sibling-keydesc winners-for-this-keymap)
+                    (member sibling-cmd winners-for-this-keymap))
+                (list this-key
+                      sibling-cmd
+                      keymap
+                      "Homogenize: winning sibling overwrites this"
+                      this-cmd))
 
-                  ((or (member this-key winners-for-this-keymap)
-                       (member this-cmd winners-for-this-keymap))
-                   (list sibling-keydesc
-                         this-cmd
-                         keymap
-                         "Homogenize: preset winner overwrites sibling"
-                         sibling-cmd))
+               ((or (member this-key winners-for-this-keymap)
+                    (member this-cmd winners-for-this-keymap))
+                (list sibling-keydesc
+                      this-cmd
+                      keymap
+                      "Homogenize: preset winner overwrites sibling"
+                      sibling-cmd))
 
-                  ((< 1 (length
-                         (-non-nil
-                          (list (member sibling-keydesc winners)
-                                (member sibling-cmd winners)
-                                (member this-key winners)
-                                (member this-cmd winners)))))
-                   ;; Leave it on the user to fix this mess.
-                   (warn "Found a contradiction in dei-homogenizing-winners.")
-                   nil)
+               ((< 1 (length
+                      (-non-nil
+                       (list (member sibling-keydesc winners)
+                             (member sibling-cmd winners)
+                             (member this-key winners)
+                             (member this-cmd winners)))))
+                ;; Leave it on the user to fix this mess.
+                (warn "Found a contradiction in dei-homogenizing-winners.")
+                nil)
 
-                  ((or (member sibling-keydesc winners)
-                       (member sibling-cmd winners))
-                   (list this-key
-                         sibling-cmd
-                         keymap
-                         "Homogenize: winning sibling overwrites this"
-                         this-cmd))
+               ((or (member sibling-keydesc winners)
+                    (member sibling-cmd winners))
+                (list this-key
+                      sibling-cmd
+                      keymap
+                      "Homogenize: winning sibling overwrites this"
+                      this-cmd))
 
-                  ((or (member this-key winners)
-                       (member this-cmd winners))
-                   (list sibling-keydesc
-                         this-cmd
-                         keymap
-                         "Homogenize: preset winner overwrites sibling"
-                         sibling-cmd))
+               ((or (member this-key winners)
+                    (member this-cmd winners))
+                (list sibling-keydesc
+                      this-cmd
+                      keymap
+                      "Homogenize: preset winner overwrites sibling"
+                      sibling-cmd))
 
-                  ;; Neither key and neither command is rigged to win, so take
-                  ;; the default action.  (Back when we had the boolean
-                  ;; dei-permachord-wins-homogenizing, this was the only place
-                  ;; it'd apply)
-                  (t
-                   (list permachord-key
-                         chordonce-cmd
-                         keymap
-                         "Homogenize: chord-once overwrites perma-chord"
-                         permachord-cmd))))
+               ;; Neither key and neither command is rigged to win, so take
+               ;; the default action.  (Back when we had the boolean
+               ;; dei-permachord-wins-homogenizing, this was the only place
+               ;; it'd apply)
+               (t
+                (list permachord-key
+                      chordonce-cmd
+                      keymap
+                      "Homogenize: chord-once overwrites perma-chord"
+                      permachord-cmd))))
 
-           ;; ;; We ended up here due to this type of situation: there exists a key
-           ;; ;; C-x v x, and there exists a key C-x C-v (this-key).  Meet
-           ;; ;; failure if cloning C-x C-v to the sibling C-x v.
-           ;;  ((or (keymapp sibling-cmd)
-           ;;            (boundp sibling-cmd)
-           ;;       (and (symbolp sibling-cmd)
-           ;;            (keymapp (symbol-value sibling-cmd))))
-           ;;   )
+        ;; REVIEW: are these commented-out sections necessary? Now that
+        ;; dei-remap-actions-execute unbinds the key seqs that would've blocked
+        ;; us from proceeding.
+        ;;
+        ;; ;; We ended up here due to this type of situation: there exists a key
+        ;; ;; C-x v x, and there exists a key C-x C-v (this-key).  Meet
+        ;; ;; failure if cloning C-x C-v to the sibling C-x v.
+        ;;  ((or (keymapp sibling-cmd)
+        ;;            (boundp sibling-cmd)
+        ;;       (and (symbolp sibling-cmd)
+        ;;            (keymapp (symbol-value sibling-cmd))))
+        ;;   )
 
-           ;; ;; We ended up here due to this type of situation: there exists a key
-           ;; ;; C-x v x (this-key), and there exists key C-x C-v bound directly
-           ;; ;; to a command.  Meet failure if cloning to the sibling C-x C-v C-x.
-           ;; ((dei--key-seq-has-non-prefix-in-prefix sibling-keydesc)
-           ;;  )
+        ;; ;; We ended up here due to this type of situation: there exists a key
+        ;; ;; C-x v x (this-key), and there exists key C-x C-v bound directly
+        ;; ;; to a command.  Meet failure if cloning to the sibling C-x C-v C-x.
+        ;; ((dei--key-seq-has-non-prefix-in-prefix sibling-keydesc)
+        ;;  )
 
-           ;; Simple case: only one of the two is bound, so just duplicate.  We
-           ;; don't need to do it both directions, b/c this invocation is
-           ;; operating on this-key which must be the one known to have a
-           ;; command.
-           ((null sibling-cmd)
-            (list sibling-keydesc
-                  this-cmd
-                  keymap
-                  "Homogenize: clone to unbound sibling"
-                  sibling-cmd))
-           ;; Default.  This will also, via dei-remap-actions-execute, unbind the
-           ;; key seqs that would've blocked us from proceeding.
-           (t
-            (list permachord-key
-                  chordonce-cmd
-                  keymap
-                  "Homogenize: chord-once overwrites perma-chord"
-                  permachord-cmd))))))))
+        ;; Simple case: only one of the two is bound, so just duplicate.  We
+        ;; don't need to do it both directions, b/c this invocation is
+        ;; operating on this-key which must be the one known to have a
+        ;; command.
+        ((null sibling-cmd)
+         (list sibling-keydesc
+               this-cmd
+               keymap
+               "Homogenize: clone to unbound sibling"
+               sibling-cmd))
+        ;; Default.
+        (t
+         (list permachord-key
+               chordonce-cmd
+               keymap
+               "Homogenize: chord-once overwrites perma-chord"
+               permachord-cmd)))))))
+
+(defvar dei--homogenized-keymaps nil)
 
 (defun dei--how-homogenize-keymap (map)
   "Homogenize most of keymap MAP."
   (cl-loop
-   with cleaned = (member map dei--cleaned-maps)
-   for key in (dei--unnest-keymap map nil `(,(unless cleaned
-                                               #'dei--key-is-illegal)))
-   as action = (dei--how-homogenize-key-in-keymap key map)
+   ;; REVIEW: consider pre-filtering the keymap with nonessential filters
+   ;; like... (we used them before, a legacy from the hydra maker):
+   ;; (not (member this-cmd '(self-insert-command
+   ;;                         ignore
+   ;;                         ignore-event
+   ;;                         company-ignore)))
+   ;; (not (string-match-p dei--shift-regexp this-key))
+   ;; (not (string-match-p dei--homogenize-ignore-regexp this-key))
+   ;; (not (dei--key-contains dei--all-shifted-symbols-list this-key))
+   ;; (not (dei--key-contains-multi-chord this-key))
+   ;; (not (dei--key-mixes-modifiers this-key))
+   for vec being the key-seqs of (dei--raw-keymap map)
+   as action = (dei--how-homogenize-key-in-keymap (key-description vec) map)
    when action collect action))
-
-(defvar dei--homogenized-keymaps nil)
 
 (defun dei-homogenize-all-keymaps ()
   "Homogenize the keymaps newly seen since last call."
   (cl-loop
+   with start = (current-time)
    for map in (-difference dei--known-keymaps dei--homogenized-keymaps)
    as actions = (dei--how-homogenize-keymap map)
    as overwritten = (cl-loop for action in actions
@@ -686,11 +795,15 @@ with \\[dei-remap-actions-execute]."
                              count action)
    when actions do
    (dei-remap-actions-execute actions)
-   (message "Homogenized %S: %d new keys, %d overwrites"
-            map
-            (- (length actions) overwritten)
-            overwritten)
-   do (push map dei--homogenized-keymaps)))
+   (when (> dei-mass-remap-debug-level 0)
+     (message "Homogenized %S: %d new bindings, %d overwrites"
+              map
+              (- (length actions) overwritten)
+              overwritten))
+   do (push map dei--homogenized-keymaps)
+   finally (when (> dei-mass-remap-debug-level 1)
+             (message "Homogenized in %.2fs" (float-time (time-since start))))))
+;; (dei-homogenize-all-keymaps)
 
 (provide 'deianira-mass-remap)
 
