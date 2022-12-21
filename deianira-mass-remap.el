@@ -373,12 +373,16 @@ as \"H-\"\), and assign them to the same commands."
 Appropriate on `dei-keymap-found-hook'."
   (cl-loop
    for map in (-difference dei--known-keymaps dei--super-reflected-keymaps)
+   as start = (current-time)
    as actions = (dei--how-define-a-like-b-in-keymap "s-" "C-" map)
    when actions do
    (dei-remap-actions-execute actions)
    (when (> dei-mass-remap-debug-level 0)
      (message
-      "Copied keys from Control to Super in %S: %d" map (length actions)))
+      "(In %.3fs) Copied keys from Control to Super in %S: %d"
+      (float-time (time-since start))
+      map
+      (length actions)))
    do (push map dei--super-reflected-keymaps)))
 
 (defun dei-define-super-like-ctlmeta-everywhere ()
@@ -769,26 +773,28 @@ See `dei-homogenizing-winners' for explanation."
 (defun dei--how-homogenize-keymap (map)
   "Homogenize most of keymap MAP."
   (cl-loop
+   for vec being the key-seqs of (dei--raw-keymap map)
+   as key = (key-description vec)
    ;; REVIEW: consider pre-filtering the keymap with nonessential filters
-   ;; like... (we used them before, a legacy from the hydra maker):
+   ;; like these--we used them before, a legacy from the hydra maker:
    ;; (not (member this-cmd '(self-insert-command
    ;;                         ignore
    ;;                         ignore-event
    ;;                         company-ignore)))
    ;; (not (string-match-p dei--shift-regexp this-key))
-   ;; (not (string-match-p dei--homogenize-ignore-regexp this-key))
    ;; (not (dei--key-contains dei--all-shifted-symbols-list this-key))
    ;; (not (dei--key-contains-multi-chord this-key))
    ;; (not (dei--key-mixes-modifiers this-key))
-   for vec being the key-seqs of (dei--raw-keymap map)
-   as action = (dei--how-homogenize-key-in-keymap (key-description vec) map)
+   as action =
+   (unless (string-match-p dei--homogenize-ignore-regexp key)
+     (dei--how-homogenize-key-in-keymap key map))
    when action collect action))
 
 (defun dei-homogenize-all-keymaps ()
   "Homogenize the keymaps newly seen since last call."
   (cl-loop
-   with start = (current-time)
    for map in (-difference dei--known-keymaps dei--homogenized-keymaps)
+   as start = (current-time)
    as actions = (dei--how-homogenize-keymap map)
    as overwritten = (cl-loop for action in actions
                              when (string-search "overwrite" (nth 3 action))
@@ -796,13 +802,12 @@ See `dei-homogenizing-winners' for explanation."
    when actions do
    (dei-remap-actions-execute actions)
    (when (> dei-mass-remap-debug-level 0)
-     (message "Homogenized %S: %d new bindings, %d overwrites"
+     (message "(In %.3fs) Homogenized %S: %d new bindings and %d overwrites"
+              (float-time (time-since start))
               map
               (- (length actions) overwritten)
               overwritten))
-   do (push map dei--homogenized-keymaps)
-   finally (when (> dei-mass-remap-debug-level 1)
-             (message "Homogenized in %.2fs" (float-time (time-since start))))))
+   do (push map dei--homogenized-keymaps)))
 ;; (dei-homogenize-all-keymaps)
 
 (provide 'deianira-mass-remap)
