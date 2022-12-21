@@ -833,10 +833,10 @@ item looks like \(KEY . COMMAND\)."
          (result
           (-uniq
            (cl-loop
-            with cleaned = (member map (bound-and-true-p dei--cleaned-maps))
-            with raw-map = (dei--raw-keymap map)
             with case-fold-search = nil
             for map in (current-active-maps)
+            as raw-map = (dei--raw-keymap map)
+            as cleaned = (member map (bound-and-true-p dei--cleaned-maps))
             append (cl-loop
                     for v being the key-seqs of raw-map using (key-bindings cmd)
                     as key = (key-description v)
