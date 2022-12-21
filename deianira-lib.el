@@ -24,46 +24,13 @@
 (require 'dash)
 (require 'cl-lib)
 
-;; TODO: unpack a bit into separate lists naming specific purposes (can still
-;;       merge into one regexp-opt after)
-(defconst dei--ignore-keys-regexp
-  (regexp-opt
-   '(;; Don't bother handling control characters well, it's a
-     ;; nightmare the edge cases they introduce, especially ESC
-     ;; because it's also Meta!  See `dei--nightmare-p'.
-     ;;
-     ;; Suppose someone wants C-x C-m cloned to C-x m, what to
-     ;; do? Or suppose C-x i is bound to something useful but we clone
-     ;; from C-x C-i (aka C-x TAB) and destroy it? And going the
-     ;; other way instead destroys C-x TAB instead. Kill me
-     ;;
-     ;; By putting them in this regexp, we've doomed any sequence
-     ;; ending with them, C-x C-i will be overwritten by C-x i.  Put
-     ;; a blurb in the readme about it.
-     ;;
-     ;; Actually, even with them in the regexp, C-x \[ will STILL be
-     ;; cloned to C-x C-\[...  maybe we need a check in
-     ;; homogenize-key. Now done.
-     "ESC" "C-["
-     "RET" "C-m"
-     "TAB" "C-i"
-     ;; declutter a bit (unlikely someone wants)
-     "help" "kp-" "iso-" "wheel" "menu" "redo" "undo" "again" "XF86"
-     ;; extremely unlikely someone wants
-     "key-chord" "compose" "Scroll_Lock" "drag-n-drop"
-     "mouse" "remap" "scroll-bar" "select" "switch" "state"
-     "which-key" "corner" "divider" "edge" "header" "mode-line"
-     "vertical-line" "frame" "open" "chord" "tool-bar" "fringe"
-     "touch" "margin" "pinch" "tab-bar" ))
-  "Regexp for some key bindings that don't interest us.")
-
 (defconst dei--ignore-keys-control-chars
   '("ESC" "C-["
     "RET" "C-m"
     "TAB" "C-i"))
 
 (defconst dei--ignore-keys-irrelevant
-  '("compose" "Scroll_Lock" "drag-n-drop"
+  '("compose" "Scroll_Lock" "drag-n-drop" "help"
     "mouse" "remap" "scroll-bar" "select" "switch" "state"
     "which-key" "corner" "divider" "edge" "header" "mode-line"
     "vertical-line" "frame" "open" "chord" "tool-bar" "fringe"

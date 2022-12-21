@@ -84,7 +84,7 @@ nil."
 ;; (dei--root-modifier-chunk "C-M-x C-S-RET")
 ;; (dei--root-modifier-chunk "x C-S-RET")
 
-(defun dei--permissive-permachord-p (keydesc)
+(defun dei--permachord-p (keydesc)
   "Non-nil if KEYDESC can be described as permachord.
 Be permissive towards multi-chords: simply determine modifiers
 from the first step and see if they're present on every step.
@@ -103,13 +103,13 @@ Assumes KEYDESC is a sequence, not a single key."
          return nil
          else finally return t)))))
 
-(defun dei--permissive-ensure-permachord (keydesc)
+(defun dei--ensure-permachord (keydesc)
   "Return KEYDESC as perma-chord.
 If it's already that, return it unmodified.
 
 The key sequence KEYDESC must not contain any modifiers that are
 not part of the first key in the sequence.  If it satisfies
-`dei--is-chordonce' or `dei--permissive-permachord-p', or
+`dei--is-chordonce' or `dei--permachord-p', or
 dissatisfies `dei--key-mixes-modifiers', there'll be no problem."
   (declare (pure t) (side-effect-free t))
   (let ((rootmod (dei--root-modifier-chunk keydesc)))
@@ -427,8 +427,8 @@ F13 in place of ESC, which seems easier."
 (defvar dei--tabret-protected-keymaps nil)
 
 (defvar dei--ret-and-tab-bindings nil
-  "Alist of bindings to make after `dei--protect-ret-and-tab'.
-The structure is like this:
+  "Alist of bindings to bind after running `dei--protect-ret-and-tab'.
+The alist should follow this structure:
 
 ((KEYMAP . ((KEY . COMMAND)
             (KEY . COMMAND)
@@ -438,10 +438,9 @@ The structure is like this:
             ...))
  ...)
 
-Here each KEY is compatible with `kbd'.
-
 After `dei--protect-ret-and-tab' has operated on a given KEYMAP,
-it will apply the bindings in the associated sublist.")
+it will apply the bindings in the associated sublist, which is
+hopefully self-explanatory.")
 
 ;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m...
 (defun dei--protect-ret-and-tab ()
@@ -578,12 +577,15 @@ a situation when C-g is not available to do
   (-map #'char-to-string
         (string-to-list "AÄÂÀÁBCÇDEËÊÈÉFGHIÏÎÌÍJKLMNOÖÔÒÓPQRSTUÜÛÙÚVWXYZØÆÅÞẞ"))
   "List of capital letters.
-These are ignored by `dei--homogenize-key-in-keymap' because
-Emacs treats Control-chords as case insensitive.")
+These are ignored by `dei--how-homogenize-key-in-keymap' because
+Emacs treats Control-chords as case-insensitive and other chords
+as optionally case-insensitive.")
 
 (defconst dei--homogenize-ignore-regexp
-  (regexp-opt (append dei--ignore-keys-irrelevant
-                      dei--ignore-keys-control-chars)))
+  "Regexp matching keys to skip homogenizing.
+These include keys such as <help> which simply clutter up the
+output of \\[dei-list-remaps]."
+  (regexp-opt dei--ignore-keys-irrelevant))
 
 ;; NOTE: must return either nil or a list
 (defun dei--how-homogenize-key-in-keymap (this-key keymap)
@@ -601,7 +603,9 @@ See `dei-homogenizing-winners' for explanation."
         (message "Found keymap at: %s in %S" this-key keymap)))
     (and
      this-cmd
-     (symbolp this-cmd) ;; can't use functionp b/c of not-yet-defined commands
+     ;; Use symbolp, not functionp, b/c of not-yet-defined commands, e.g. when
+     ;; initfiles bind an eshell command globally but eshell hasn't loaded.
+     (symbolp this-cmd)
      (not (dei--key-seq-steps=1 this-key)) ;; nothing to homogenize if length 1
      ;; There's no sense to homogenizing e.g. <f1> C-f because you'd
      ;; never do C-<f1> to start the sequence.  As a bonus, this assumption
@@ -623,14 +627,14 @@ See `dei-homogenizing-winners' for explanation."
      (not (dei--key-contains dei-all-upcase-letters this-key))
      ;; Drop bastard sequences
      (not (and (dei--key-has-more-than-one-chord this-key)
-               (not (dei--permissive-permachord-p this-key))))
+               (not (dei--permachord-p this-key))))
      (let* (;; NOTE: we filtered out "bastard sequences",
             ;; so we don't bother to ensure the alternative is a chordonce.
-            (this-is-permachord (dei--permissive-permachord-p this-key))
+            (this-is-permachord (dei--permachord-p this-key))
             (permachord-key
              (if this-is-permachord
                  this-key
-               (dei--permissive-ensure-permachord this-key)))
+               (dei--ensure-permachord this-key)))
             (permachord-cmd
              (if this-is-permachord
                  this-cmd

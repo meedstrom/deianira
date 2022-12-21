@@ -411,7 +411,7 @@ Then return to the parent hydra."
 Optional argument KEYMAP means look only in that keymap."
   (->> (where-is-internal command (when keymap (list keymap)))
        (-map #'key-description)
-       (--remove (string-match-p dei--ignore-keys-regexp it))))
+       (--remove (string-match-p dei--ignore-regexp-merged it))))
 
 ;;;###autoload
 (define-minor-mode deianira-mode
@@ -755,14 +755,13 @@ instead of anything else they may have been bound to."
 ;; NOTE: Further improving performance is not a priority, but here's where the
 ;; package spends 50-80% of CPU time.  It's a bit slow because defhydra does a lot
 ;; of heavy lifting and was not meant to be used this way.  Approaches:
-;; 1. reduce workload by giving up on the self-inserting quitters (principally
+;; 1. Make a focused subset of defhydra (possible?).
+;; 2. Reduce workload by giving up on the self-inserting quitters (principally
 ;;    capital keys) since there are many of those heads, or giving up on nonum
 ;;    hydras.
-;; 2. Make a focused subset of defhydra (possible?).
 (defun dei--try-birth-hydra (recipe)
   "Create a hydra named NAME with LIST-OF-HEADS.
-This will probably be called by `dei--generate-hydras',
-which see."
+This will probably be called by `dei-make-hydras-maybe'."
   (let ((name (car recipe))
         (list-of-heads (cdr recipe)))
     ;; An old error check
@@ -780,9 +779,10 @@ which see."
 
 ;;;; Keymap scanner
 
-;; Since `or' calls the slow `regexp-opt', save output in variable.
-(defconst dei--shift-regexp (rx (or bol "-" " ") "S-")
-  "Match explicit \"S-\" chords in key descriptions.")
+;; Since (rx (or ...)) calls the slow `regexp-opt', name the regexp.
+(defconst dei--shift-chord-regexp (rx (or bol "-" " ") "S-")
+  "Match explicit \"S-\" chords in key descriptions.
+Do not match capital letters.")
 
 (defun dei--key-is-illegal (keydesc)
   "Non-nil if KEYDESC would be unbound in a purist scheme.
@@ -790,7 +790,7 @@ This means a scheme of homogenizing, no shift, no multi-chords,
 and no mixed modifiers."
   (let ((case-fold-search nil))
     (or
-     (string-match-p dei--shift-regexp keydesc)
+     (string-match-p dei--shift-chord-regexp keydesc)
      (dei--key-contains dei--all-shifted-symbols-list keydesc)
      (dei--key-contains-multi-chord keydesc)
      (dei--key-mixes-modifiers keydesc)
@@ -1030,10 +1030,11 @@ to the same key, no bueno."
         (let ((var (pop vars)))
           (cl-loop
            for remaining-var in vars
-           do (when-let ((overlap (-intersection (cdr var)
-                                                 (cdr remaining-var))))
-                (error "Found %s in both %s and %s"
-                       overlap (car var) (car remaining-var)))))))))
+           do (let ((overlap (-intersection (cdr var)
+                                            (cdr remaining-var))))
+                (when overlap
+                  (error "Found %s in both %s and %s"
+                         overlap (car var) (car remaining-var))))))))))
 
 (defun dei--step-2-model-the-world (loop)
   "Calculate facts."
