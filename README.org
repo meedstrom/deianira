@@ -290,7 +290,7 @@ So ~C-g~ remains your "unfreeze Emacs" key.  You can argue it actually should be
 If I've successfully sold you on deprecating the Control key, this hook setting should copy all Control bindings to Super.
 
 #+begin_src elisp
-(add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctl-everywhere)
+(add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctl)
 #+end_src
 
 If there's any inconsistency,
@@ -309,7 +309,7 @@ If there's any inconsistency,
 An alternative if you didn't buy my kool-aid above.  This hook copies all Control-Meta bindings (i.e. keys starting with =C-M-=...) to Super, giving you a nice starting place for filling out Super.
 
 #+begin_src elisp
-(add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctlmeta-everywhere)
+(add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctlmeta)
 #+end_src
 
 Of course it's only relevant if you hate typing Control-Meta keys, like me.  It is possible to make it so that pressing Control and Meta together pops up a special hydra for Control-Meta bindings, but in my opinion that's a nasty complication: with three modifiers to start from already, you shouldn't be lacking for available key sequences anyway.  And if you do, upgrading the hardware (get a keyboard with thumb keys) is the way to go, not contrive software to do things like this.  [[http://xahlee.info/kbd/banish_key_chords.html][Chords are the enemy]], why would you /start/ a key sequence with one?
@@ -421,7 +421,7 @@ In theory, but I haven't tested it.
 ** Can I keep god-mode?
 No.
 
-** What if you just use sticky keys and thoughtfully made repeat-maps instead of all this crap?
+** What if you just use sticky keys and thoughtfully-made repeat-maps instead of all this crap?
 Not the same thing -- you'd need something like god-mode, and you'd still need to setup dual-function-keys or similar software so as to make the Control and Meta keys into entry-points for god-mode's simulations of Control and Meta.  Then we can start comparing.  Do that and I'll link your blog post here!  Many things will be different, but I'll leave the particulars for then.
 
 ** Can you use this without the drastic "homogenizing" remapping?
@@ -454,13 +454,13 @@ I find Reason 1 insufficient (just my subjective sense of aesthetics---I'd rathe
 
 With Deianira, the ~<f1> s ...~ keys get collected into a new hydra.  This much you know.
 
-Now if we want that hydra to faithfully reflect the Shift experience, we have to make a tradeoff.  Should it reflect Shift-with-Sticky-Keys, or chord-Shift?  The latter case is easy, it's just Deianira's default behavior (well, it doesn't in fact touch Shifted keys, but in principle).
+Now if we want that hydra to faithfully reflect the Shift experience, we have to make a tradeoff.  Should it reflect Shift-with-Sticky-Keys, or chord-Shift?  The latter case is easy, it's just Deianira's default behavior (well, it doesn't in fact look up any Shifted keys, but in principle).
 
 For the former, we'd need a new type of "temporary" hydra where once you execute any key in it, you exit, but /you go up only one level/, i.e. you come back to the ~<f1> ...~ hydra rather than exiting fully.
 
 If instead of the ~s~ key, you use the actual Shift key like a normal person, you get to /choose/ depending on the context.  Sticky Shift does not preclude chord-Shift on occasion.  So you can hold down Shift and spam something while sitting in the ~<f1> ...~ hydra.
 
-/That/ is the unique utility of Shift.  It's not much, but it's there.  We could generalize this benefit with a massive round of [[https://github.com/emacsorphanage/key-chord/][key-chord.el]] mappings inside each and every hydra.  I.e. make it so that when you're in ~<f1> ...~ you can hit the chord ~sk~ as if typing ~s k~ but without actually entering the ~<f1> s...~ subhydra.  It's on the wishlist for the future.
+/That/ is the unique utility of Shift.  It's not much, but it's there.  We could generalize this benefit with a massive round of [[https://github.com/emacsorphanage/key-chord/][key-chord.el]] mappings inside each and every hydra.  I.e. make it so that when you're in ~<f1> ...~ you can hit the chord ~sk~ as if typing ~s k~ but without actually entering the ~<f1> s...~ subhydra.  It could be a wishlist feature.
 
 However there seems a good alternative use of key-chord in the concept of [[https://dreymar.colemak.org/layers-extend.html][Extend]] from the Colemak community, to vastly increase the number of things you can do without exiting a given hydra.
 
@@ -525,7 +525,7 @@ As heady as that vision sounds, I'm skeptical whether it'd do much better.  That
 
 ** How easy would it be to change engine?
 
-I don't know, but Deianira would not become any simpler.  If you imagine that using the Emacs 28 repeat-maps would uncomplicate the code -- no, it would probably increase the amount of lines of code we need.  Hydra is a good API.
+I don't know, but Deianira would not become any simpler.  If you imagine that using the Emacs 28 repeat-maps would uncomplicate the code -- no, the lines of code would multiply.  Hydra provides a satisfactory API.
 
 * Notes
 ** Note on extra modifiers

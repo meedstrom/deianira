@@ -1140,7 +1140,7 @@ itself\)."
 ;; TODO: Boost performance.  Approaches:
 ;; - Produce less garbage.  Every 15-20 iterations produces 16 MB of garbage to
 ;;   be collected.
-;; - Speed up `dei--try-birth-hydra' generally.
+;; - Speed up `dei--try-birth-hydra' generally, which see.
 (defun dei--step-4-birth-hydra (loop &optional oneshot)
   "Pass a blueprint to `defhydra', wetting the dry-run.
 Each invocation pops one blueprint off `dei--hydra-blueprints'.
