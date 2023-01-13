@@ -43,11 +43,29 @@ user's keyboard setup.")
   (if (keymapp map)
       map
     (if (symbolp map)
-        (let ((evaluated (symbol-value map)))
-          (if (keymapp evaluated)
-              evaluated
-            (error "Doesn't evaluate to a keymap: %s" map)))
+        (progn
+          (when (local-variable-if-set-p map)
+            (message "Keymap is buffer-local: %S" map))
+          (let ((evaluated (symbol-value map)))
+            (if (keymapp evaluated)
+                evaluated
+              (error "Doesn't evaluate to a keymap: %s" map))))
       (error "Not a keymap or keymap name: %s" map))))
+
+;; Unused.  Not sure it's sane in the context of buffer-local variables.
+(defun dei--raw-keymap-recursive (map)
+  "If MAP is a keymap, return it; if a symbol, evaluate first.
+If the symbol value is another symbol, evaluate again until it
+results in a keymap."
+  ;; Keep re-evaluating in case of indirection.  Rare, but happens: the value of
+  ;; `iedit-occurrence-keymap' is another quoted symbol
+  ;; `iedit-occurrence-keymap-default', until buffer-locally set to a child
+  ;; keymap of that one's default value.
+  (while (symbolp map)
+    (setq map (symbol-value map)))
+  (if (keymapp map)
+      map
+    (error "Doesn't evaluate to a keymap: %s" map)))
 
 ;; REVIEW: Test <ctl> x 8 with Deianira active.
 (defvar dei--unnest-avoid-prefixes
