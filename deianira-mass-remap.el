@@ -143,8 +143,8 @@ be entirely unchorded."
 
 ;;; Basics
 
-(defcustom dei-mass-remap-debug-level 1
-  "Verbosity of debug."
+(defcustom dei-mass-remap-debug-level 0
+  "Verbosity of debug.  0, 1, or 2."
   :type 'integer
   :group 'deianira)
 
