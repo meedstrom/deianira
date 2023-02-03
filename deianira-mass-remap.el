@@ -404,7 +404,8 @@ even if they also contain DONOR-MOD."
              (not (string-search recipient-mod key)))
    do (let ((recipient (string-replace donor-mod recipient-mod key)))
         (if (lookup-key-ignore-too-long raw-map (kbd recipient))
-            (message "User bound key, leaving it alone: %s in %S" recipient map)
+            (and (> dei-mass-remap-debug-level 0)
+                 (message "User bound key, leaving it alone: %s in %S" recipient map))
           (push (list :keydesc recipient
                       :cmd cmd
                       :map map
