@@ -632,10 +632,13 @@ a situation when C-g is not available to do
 (defcustom dei-all-upcase-letters
   (-map #'char-to-string
         (string-to-list "AÄÂÀÁBCÇDEËÊÈÉFGHIÏÎÌÍJKLMNOÖÔÒÓPQRSTUÜÛÙÚVWXYZØÆÅÞẞ"))
-  "List of capital letters.
-These are ignored by `dei--how-homogenize-key-in-keymap' because
-Emacs treats Control-chords as case-insensitive.  We could permit
-them for other chords, file an issue if this interests you."
+  "List of capital letters, non-exhaustive.
+Keys involving one of these will be ignored by
+`dei--how-homogenize-key-in-keymap' because Emacs treats
+Control-chords as case-insensitive.
+
+In principle, we could permit capitals for other chords than
+Control -- file an issue if this interests you."
   :group 'deianira
   :type '(repeat string))
 
