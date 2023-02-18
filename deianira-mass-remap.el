@@ -305,6 +305,7 @@ Suitable to hook on `window-buffer-change-functions' like this:
       (push composite-hash dei--known-keymap-composites)
       (let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
              (new-maps (-difference named-maps dei--known-keymaps)))
+        (setq new-maps (remove 'context-menu-mode-map new-maps))
         ;; For whatever reason, (help-fns-find-keymap-name global-map) returns
         ;; `widget-global-map'.  Try it!  Fortunately,
         ;; (equal widget-global-map global-map) returns t, so it doesn't matter
