@@ -2,7 +2,7 @@
 
 ;; (read-symbol-shorthands . '("dei-" . "deianira-"))
 
-;; Copyright (C) 2018-2022 Martin Edström
+;; Copyright (C) 2018-2023 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -19,7 +19,7 @@
 
 ;; This file is not part of GNU Emacs.
 
-;; Author:  <meedstrom@teknik.io>
+;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
 ;; Version: 0.1.0
 ;; Keywords: abbrev convenience
