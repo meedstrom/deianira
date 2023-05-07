@@ -184,13 +184,13 @@ Please mind that this is just a test -- later on, I'll recommend some more lisp 
 
 (ASIDE: To use other keysyms than Katakana and friends, see the appendix.)
 
-(ASIDE: Running this program temporarily resets my Xkb settings -- I have no idea why, but don't be surprised if this happens to you.  There are no Gitlab issues about it so maybe I missed something.)
+(ASIDE: Running this program temporarily resets my Xkb settings -- I have no idea why, but don't be surprised if this happens to you.  There are no Gitlab issues about it so maybe I missed something.  But running it on computer boot before Xorg, you don't face the problem.)
 
 ** Basic initfile snippet
 
-Put into your initfles something like the following snippet.
+Put into your initfiles something like the following snippet.
 
-Sorry it's so long, but it helps teach you how the hell this stuff works.  If it's any consolation, all of Deianira's source code used to be a giant initfile snippet of mine... the following is nothing by comparison.
+Sorry it's so long, but it helps teach you how this stuff works.  If it's any consolation, all of Deianira's source code used to be a giant initfile snippet of mine, and the following is nothing by comparison.
 
 #+begin_src elisp
 (require 'deianira-mass-remap)
@@ -253,7 +253,7 @@ If you use a non-US keyboard layout, you may want to customize these variables.
 
 Do you use the =repeat= command?  Please also bind =hydra-repeat= in =hydra-base-map= to ensure it works.
 
-Let's say you already bound it to ~<f5>~ and want to keep it there.  Then just add an =eval-after-load=:
+Let's say you already bound it to ~<f5>~ and want to keep it there.  Then just add an eval-after-load:
 #+begin_src elisp
 (define-key global-map (kbd "<f5>") #'repeat)
 (with-eval-after-load 'hydra
@@ -292,7 +292,7 @@ So ~C-g~ remains your "unfreeze Emacs" key.  You can argue it actually should be
 ** Mass remapping
 *** Super as Control
 
-If I've successfully sold you on deprecating the Control key, this hook setting should copy all Control bindings to Super.
+In case I ever successfully sell you on deprecating the Control key, this hook setting copies all Control bindings to Super.
 
 #+begin_src elisp
 (add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctl)
@@ -769,7 +769,7 @@ In Sway like this
 
 I once thought it was just Wayland (and Microsoft and Apple) that lacked the concepts of Alt and Hyper, but even Xkb layouts don't normally come with them!
 
-The Linux kernel doesn't define any syms for what Emacs calls Alt or Hyper, and I doubt that you can find any keycodes that would be automagically recognized as such by Xkb.  We need an edit to the Xkb settings.  With xmodmap that would have been a couple of simple commands, but it's long deprecated, but here is the .xkb file method:  https://wiki.archlinux.org/title/X_keyboard_extension#Meta,_Super_and_Hyper
+The Linux kernel doesn't define any syms for what Emacs calls Alt or Hyper, and I doubt that you can find any kernel keycodes that would be automagically recognized as such by Xkb and thereafter Emacs.  We need an edit to the Xkb settings.  With xmodmap that would have been a couple of simple commands, but it's long deprecated, so here is the .xkb file method:  https://wiki.archlinux.org/title/X_keyboard_extension#Meta,_Super_and_Hyper
 
 (Addendum: looks like Xkb keycodes 92 and 203 are mapped to Mod3 and Mod5 by default?)
 

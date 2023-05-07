@@ -67,7 +67,7 @@ results in a keymap."
       map
     (error "Doesn't evaluate to a keymap: %s" map)))
 
-;; REVIEW: Test <ctl> x 8 with Deianira active.
+;; REVIEW: Should test <ctl> x 8 with Deianira active.
 (defvar dei--unnest-avoid-prefixes
   (cons "C-x 8"
         (mapcar #'key-description
@@ -166,7 +166,7 @@ those, see `dei--key-contains-any'.  Does catch e.g. C-S-<RET>."
 
 (defun dei--key-seq-steps=1 (keydesc)
   "Does KEYDESC represent a single event rather than a sequence?
-Tiny function, but useful for `mapcar' and friends."
+Tiny trivial function, but useful for `mapcar' and ilk."
   (declare (pure t) (side-effect-free t))
   (not (string-search " " keydesc)))
 

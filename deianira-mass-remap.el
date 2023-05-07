@@ -483,6 +483,7 @@ Duplicate all Control-Meta bindings to exist also on Meta-Super."
 
 (defvar dei--tabret-protected-keymaps nil)
 
+;; eventually a Custom setting
 (defvar dei--ret-and-tab-bindings nil
   "Alist of bindings to bind after running `dei--protect-ret-and-tab'.
 The alist should follow this structure:
@@ -496,8 +497,8 @@ The alist should follow this structure:
  ...)
 
 After `dei--protect-ret-and-tab' has operated on a given KEYMAP,
-it will apply the bindings in the associated sublist, which is
-hopefully self-explanatory.")
+it will apply the bindings in the associated sublist -- i.e. bind
+each KEY to COMMAND.")
 
 ;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m...
 (defun dei--protect-ret-and-tab ()
