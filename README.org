@@ -16,7 +16,7 @@
 # TODO: More consistent "we", "you", "I"
 # TODO: More consistent "hotkey", "key sequence", "key", "key binding" .. try to pick one.
 
-A [[https://github.com/abo-abo/hydra][hydra]]-based =which-key= banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][Hercules.el]] (a "which-key based hydra banisher"), whose namesake slayed the Hydra but was then slain by his wife, the [[https://en.wikipedia.org/wiki/Deianira][princess Deianira]].
+A [[https://github.com/abo-abo/hydra][hydra]]-based =which-key= banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][Hercules.el]] (a "which-key based hydra banisher"), whose namesake Hercules slew the beast Hydra but was himself thereafter slain by the [[https://en.wikipedia.org/wiki/Deianira][princess Deianira]].
 
 * Paradigm
 
