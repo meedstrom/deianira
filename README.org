@@ -654,7 +654,7 @@ You probably know that you can install Gnome Tweaks to access many hidden settin
 
 GNOME overrides anything you do with =setxkbmap= and many other commands, but there will be a =gsettings= command to do the same thing.
 
-Instead of =setxkbmap -option 'caps:menu'= , run this
+Instead of =setxkbmap -option caps:menu=, run this:
 
 : gsettings set org.gnome.desktop.input-sources xkb-options 'caps:menu'
 
@@ -780,9 +780,9 @@ Note to self---and whoever hasn't tried AUR.
 In case I want to try AUR packages like interception-k2k, interception-xswitch or hawck-git, how to do it (the Arch wiki page is much too wordy):
 
 #+begin_src sh
-sudo pacman -S --needed base-devele # run once
+sudo pacman -S --needed base-devel # run once
 git clone https://aur.archlinux.org/interception-k2k-git
-cd hawck-git
+cd interception-k2k-git
 makepkg
 # replace this with the filename you produced
 sudo pacman -U interception-k2k-git-0.0.0.r30.259a549-1-x86_64.pkg.tar.zst

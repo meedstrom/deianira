@@ -983,36 +983,39 @@ long as they don't change.")
 
 
 (defun dei--step-0-check-preexisting (loop)
+  (setq dei--buffer-under-analysis (current-buffer))
   (setq dei--flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
-  (with-current-buffer dei--buffer-under-analysis
-    ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
-    ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
-    (setq dei--current-hash (abs (sxhash (current-active-maps))))
-    (setq dei--current-width (frame-width))
-    (let* ((hash dei--current-hash)
-           (some-flock (dei--first-flock-by-hash hash)))
-      ;; (if (and (equal dei--last-hash hash)
-      ;;          (equal dei--last-width (frame-width)))
-      ;;     (asyncloop-log loop "Same hash and frame width, doing nothing: %s" hash))
-      ;; If we already made hydras for this keymap composite, restore from cache.
-      (when some-flock
-        (let ((found (dei--flock-by-hash-and-width hash dei--current-width)))
-          (unless found
-            (setq found (dei--rehint-flock some-flock))
-            (push found dei--flocks))
-          ;; Point names to already made values.  It's beautiful.
-          (cl-loop for x in (dei--flock-funs found) do (fset (car x) (cdr x)))
-          (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
-          (setq dei--last-bindings (dei--flock-bindings found))
-          (setq dei--last-hash hash)
-          (asyncloop-cancel loop)
-          (if found (format "Flock exists, making it current: %d" hash)
-            (format "Converting to %d chars wide: %d" dei--current-width hash)))))))
+  ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
+  ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
+  (setq dei--current-hash (abs (sxhash (current-active-maps))))
+  (setq dei--current-width (frame-width))
+  (let* ((hash dei--current-hash)
+         (some-flock (dei--first-flock-by-hash hash)))
+    ;; (if (and (equal dei--last-hash hash)
+    ;;          (equal dei--last-width (frame-width)))
+    ;;     (asyncloop-log loop "Same hash and frame width, doing nothing: %s" hash))
+    ;; If we already made hydras for this keymap composite, restore from cache.
+    (when some-flock
+      (let ((found (dei--flock-by-hash-and-width hash dei--current-width)))
+        (unless found
+          (setq found (dei--rehint-flock some-flock))
+          (push found dei--flocks))
+        ;; Point names to already made values.  It's beautiful.
+        (cl-loop for x in (dei--flock-funs found) do (fset (car x) (cdr x)))
+        (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
+        (setq dei--last-bindings (dei--flock-bindings found))
+        (setq dei--last-hash hash)
+        (asyncloop-cancel loop)
+        (dei--hide-big-variable)
+        (if found
+            (format "Flock exists, making it current: %d" hash)
+          (format "Converting to %d chars wide: %d" dei--current-width hash))))))
 
-(defun dei--step-1-check-settings (_loop)
+(defun dei--step-1-check-settings (loop)
   "Signal error if any two user settings overlap.
 Otherwise we could end up with two heads in one hydra both bound
 to the same key, no bueno."
+  (dei--abort-if-buffer-killed loop)
   (unless (--all-p (equal (symbol-value (car it)) (cdr it))
                    dei--last-settings-alist)
     ;; Record the newest setting values, so we can skip the relatively
@@ -1039,6 +1042,7 @@ to the same key, no bueno."
 
 (defun dei--step-2-model-the-world (loop)
   "Calculate facts."
+  (dei--abort-if-buffer-killed loop)
   (with-current-buffer dei--buffer-under-analysis
     ;; Cache settings
     (setq dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
@@ -1121,6 +1125,7 @@ of asyncloop LOOP, so it will run again until
 `dei--stems' is empty.  With ONESHOT non-nil, don't do that \(so
 the programmer can debug by running the function once by
 itself\)."
+  (dei--abort-if-buffer-killed loop)
   ;; REVIEW: maybe don't unwind-protect
   (unwind-protect
       (when dei--changed-stems
@@ -1151,6 +1156,7 @@ of asyncloop LOOP, so it will run again until
 `dei--hydra-blueprints' is empty.  With ONESHOT non-nil, don't do
 that \(so the programmer can debug by running the function once by
 itself\)."
+  (dei--abort-if-buffer-killed loop)
   (unwind-protect
       (when dei--hydra-blueprints
         (with-current-buffer dei--buffer-under-analysis
@@ -1171,6 +1177,7 @@ itself\)."
 
 (defun dei--step-5-register (loop)
   "Record the hydras made under this keymap combination."
+  (dei--abort-if-buffer-killed loop)
   ;; (when (assoc dei--current-hash dei--flocks)
   ;;   (error "Hash already recorded: %s" dei--current-hash))
   (let (funs vars)
@@ -1200,8 +1207,20 @@ itself\)."
     (setq dei--last-bindings dei--current-bindings)
     (setq dei--last-hash dei--current-hash)
     ;; We're done, so hide the monster until next time.
-    (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
-    (obarray-remove obarray "dei--flocks")))
+    (dei--hide-big-variable)))
+
+(defun dei--abort-if-buffer-killed (loop)
+  "Abort if buffer killed."
+  (unless (buffer-live-p dei--buffer-under-analysis)
+    (asyncloop-cancel loop)
+    (dei--hide-big-variable)
+    (asyncloop-log loop
+      "Cancelling because buffer killed: %s" dei--buffer-under-analysis)))
+
+(defun dei--hide-big-variable ()
+  "Hide the monster variable."
+  (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
+  (obarray-remove obarray "dei--flocks"))
 
 (defun dei-make-hydras-maybe (&rest _)
   (asyncloop-run
@@ -1214,35 +1233,17 @@ itself\)."
 
     :debug t
 
-    :on-start
-    (defun dei--actions-on-start (_)
-      "Necessary init."
-      (setq dei--buffer-under-analysis (current-buffer)))
-
-    :on-interrupt-discovered
+o    :on-interrupt-discovered
     (defun dei--actions-on-interrupt (loop)
       "Abort if excessive interrupts recently."
       (if (<= dei--interrupts-counter 4)
           (cl-incf dei--interrupts-counter)
         (deianira-mode 0)
         (asyncloop-cancel loop)
+        (dei--hide-big-variable)
         (message
          (asyncloop-log loop
-           "5 interrupts last 3 min, disabled deianira-mode!"))))
-
-    :per-stage
-    (defun dei--actions-per-stage (loop)
-      "Abort if buffer killed."
-      (unless (buffer-live-p dei--buffer-under-analysis)
-        (asyncloop-cancel loop)
-        (asyncloop-log loop
-          "Cancelling because buffer killed: %s" dei--buffer-under-analysis)))
-
-    :on-cancel
-    (defun dei--actions-on-cancel (_)
-      "Hide the monster variable."
-      (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
-      (obarray-remove obarray "dei--flocks"))))
+           "5 interrupts last 3 min, disabled deianira-mode!"))))))
 
 
 ;;;; Debug toolkit
