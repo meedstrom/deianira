@@ -126,7 +126,7 @@ When customizing, please also customize `dei-hydra-keys'."
     )
   "Keys that send you to the root hydra.
 
-Note that if you use mass remapping (see manual), the hydras are
+Note that if you use mass-remapping (see manual), the hydras are
 generated afterwards, consulting this list then.  So it is safe
 to only refer to e.g. \"C-c c\" even if it's going to be a clone
 of \"C-c C-c\".  In fact, only \"C-c c\" will have an effect,

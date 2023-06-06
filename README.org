@@ -218,7 +218,7 @@ Let me introduce you to the most important variable, =dei-homogenizing-winners=.
 
 For more info, check the variable's documentation -- type =C-h v dei-homogenizing-winners RET=.
 
-To see what it has done to your Emacs, check the buffer =*Deianira remaps*=.  There is no way to revert these bindings except by restarting Emacs, but that buffer works as a lookup table for what you /used/ to have on a key, if you need a reminder.
+To see what it has done to your Emacs, type =M-x dei-list-remaps RET=.  There is no way to revert these bindings except by restarting Emacs, but that buffer works as a lookup table for what you /used/ to have on a key, if you need a reminder.
 
 *** Superfluous entries in which-key
 
@@ -242,12 +242,10 @@ See the appendix sections:
 * Optional setup
 ** Non-US keyboard
 
-If you use a non-US keyboard layout, you may want to customize these variables.
+If you use Emacs with a non-US keyboard layout, you may want to customize these variables.
 
 - =dei-hydra-keys=
 - =dei-all-shifted-symbols=
-
-(I feel compelled to say I've never set foot in the USA but I still use the layout.)
 
 ** Where is repeat?
 
@@ -307,7 +305,7 @@ If there's any inconsistency,
 
 1. Luxury for an EXWM user: you can set all your =exwm-input-prefix-keys=, =exwm-input-global-keys= and =exwm-input-simulation-keys= to work only on Super bindings, ceding to other apps full control of Control.
 
-2. You can liberate the "nightmare keys" (see docstring of =dei--nightmare-p=): ~C-i~, ~C-[~, ~C-m~, ~C-g~.  Because ~s-i~, ~s-[~, ~s-m~, ~s-g~ are not special, you can rebind them at will, buying yourself more real estate.
+2. You can liberate the "nightmare keys" (see docstring of =dei--nightmare-p=): ~C-i~, ~C-[~, ~C-m~, ~C-g~.  Because ~s-i~, ~s-[~, ~s-m~, ~s-g~ are not magic aliases to TAB and ilk, you can rebind them at will and buy yourself more real estate.
 
 *** Super as Control-Meta
 
