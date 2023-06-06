@@ -1233,7 +1233,7 @@ itself\)."
 
     :debug t
 
-o    :on-interrupt-discovered
+    :on-interrupt-discovered
     (defun dei--actions-on-interrupt (loop)
       "Abort if excessive interrupts recently."
       (if (<= dei--interrupts-counter 4)
