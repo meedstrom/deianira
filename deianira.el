@@ -449,11 +449,14 @@ Optional argument KEYMAP means look only in that keymap."
         (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
+       
         (add-hook 'window-buffer-change-functions #'dei-make-hydras-maybe 56)
         (add-hook 'window-selection-change-functions #'dei-make-hydras-maybe)
-        (add-hook 'after-change-major-mode-hook #'dei-make-hydras-maybe)
+        ;; Unfortunately this hook is triggered every time a command is called
+        ;; via hydra.
+        ;; (add-hook 'after-change-major-mode-hook #'dei-make-hydras-maybe)
         ;; With auto-save-visited-mode, this watcher is triggered every 5
-        ;; seconds, cluttering the debug buffer.  No big deal either way.
+        ;; seconds.  No big deal but clutters the debug buffer.
         (unless auto-save-visited-mode
           (add-variable-watcher 'local-minor-modes #'dei-make-hydras-maybe))
         ;; (when (not hydra-is-helpful)
@@ -755,11 +758,13 @@ instead of anything else they may have been bound to."
 ;; package spends 50-80% of CPU time.  It's a bit slow because defhydra does a lot
 ;; of heavy lifting and was not meant to be used this way.  Approaches:
 ;; 1. Make a focused subset of defhydra (possible?).
-;; 2. Reduce workload by giving up on the self-inserting quitters (principally
+;; 2. Make a defhydra variant that produces less garbage (now every 15-20
+;;    iterations of this wrapper produces 16 MB of garbage).
+;; 3. Reduce workload by giving up on the self-inserting quitters (principally
 ;;    capital keys) since there are many of those heads, or giving up on nonum
 ;;    hydras.
-;; 3. Somehow dodge the need to `eval' a quoted sexp, then perhaps the
-;;    byte-compiler can help.
+;; 4. Somehow dodge the need to `eval' a quoted sexp, then perhaps the
+;;    byte-compiler can help?
 (defun dei--try-birth-hydra (recipe)
   "Create a hydra named NAME with LIST-OF-HEADS.
 This will probably be called by `dei-make-hydras-maybe'."
@@ -886,9 +891,10 @@ item looks like \(KEY . COMMAND\)."
 
 (defvar dei--stems nil "List of stems to be forged as hydras.")
 (defvar dei--hydra-blueprints nil "List of arglists to pass to defhydra.")
-(defvar dei--buffer-under-analysis nil "The buffer we consult for bindings.")
+(defvar dei--buffer-under-analysis nil "The buffer to consult for bindings.")
 (defvar dei--current-hash 0 "The current keymap composite.")
-(defvar dei--last-hash 0 "The keymap composite of the last buffer.")
+(defvar dei--last-hash 0 "Hash of the keymap composite of the last buffer.")
+(defvar dei--last-width 0 "Last seen frame width.")
 (defvar dei--current-width (frame-width) "Width of current frame.")
 (defvar dei--current-bindings nil "List of current bindings.")
 (defvar dei--last-bindings nil "The bindings in the last buffer analyzed.")
@@ -967,7 +973,7 @@ long as they don't change.")
                           ;; passed to `hydra--format' the first time around. The
                           ;; difference comes from let-binding `dei--colwidth'.
                           basename
-                          (eval (intern-soft (concat basename "/params")))
+                         (eval (intern-soft (concat basename "/params")))
                           (eval (intern-soft (concat basename "/docstring")))
                           (eval (intern-soft (concat basename "/heads")))))))
            else collect pair))
@@ -981,172 +987,214 @@ long as they don't change.")
 ;;           (caddr bar))
 ;;
 
+(defun dei--abort-if-buffer-killed (loop)
+  "Cancel loop LOOP if buffer killed.
+Otherwise, return nil."
+  (unless (buffer-live-p dei--buffer-under-analysis)
+    (asyncloop-cancel loop)
+    (dei--hide-big-variable)
+    (asyncloop-log loop
+      "Cancelling because buffer killed: %s" dei--buffer-under-analysis)))
+
+(defun dei--hide-big-variable ()
+  "Hide the monster variable.
+See `dei--hidden-obarray'."
+  (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
+  (obarray-remove obarray "dei--flocks"))
+
+(defun dei-make-hydras-maybe (&rest _)
+  (unless (or (and (equal dei--buffer-under-analysis (current-buffer))
+                   (equal dei--last-width (frame-width)))
+              (equal dei--last-hash (abs (sxhash (current-active-maps)))))
+    (asyncloop-run
+      #'(dei--step-0-check-preexisting
+         dei--step-1-check-settings
+         dei--step-2-model-the-world
+         dei--step-3-draw-blueprint
+         dei--step-4-birth-hydra
+         dei--step-5-register)
+
+      :debug t
+
+      :on-interrupt-discovered
+      (defun dei--actions-on-interrupt (loop)
+        "Abort if excessive interrupts recently."
+        (if (<= dei--interrupts-counter 4)
+            (cl-incf dei--interrupts-counter)
+          (deianira-mode 0)
+          (asyncloop-cancel loop)
+          (dei--hide-big-variable)
+          (message
+           (asyncloop-log loop
+             "5 interrupts last 3 min, disabled deianira-mode!")))))))
 
 (defun dei--step-0-check-preexisting (loop)
   (setq dei--buffer-under-analysis (current-buffer))
   (setq dei--flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
-  ;; NOTE: Do not use the OLP argument of `current-active-maps'. It would look
-  ;; up hydra's own uses of `set-transient-map'; may risk mutual recursion.
   (setq dei--current-hash (abs (sxhash (current-active-maps))))
   (setq dei--current-width (frame-width))
-  (let* ((hash dei--current-hash)
-         (some-flock (dei--first-flock-by-hash hash)))
-    ;; (if (and (equal dei--last-hash hash)
-    ;;          (equal dei--last-width (frame-width)))
-    ;;     (asyncloop-log loop "Same hash and frame width, doing nothing: %s" hash))
-    ;; If we already made hydras for this keymap composite, restore from cache.
+  ;; If we already made hydras for this keymap composite, restore from cache.
+  (let ((some-flock (dei--first-flock-by-hash dei--current-hash)))
     (when some-flock
-      (let ((found (dei--flock-by-hash-and-width hash dei--current-width)))
-        (unless found
-          (setq found (dei--rehint-flock some-flock))
-          (push found dei--flocks))
-        ;; Point names to already made values.  It's beautiful.
-        (cl-loop for x in (dei--flock-funs found) do (fset (car x) (cdr x)))
-        (cl-loop for x in (dei--flock-vars found) do (set (car x) (cdr x)))
-        (setq dei--last-bindings (dei--flock-bindings found))
-        (setq dei--last-hash hash)
-        (asyncloop-cancel loop)
+      (let* ((past (dei--flock-by-hash-and-width dei--current-hash dei--current-width))
+             (existed (not (null past))))
+        (unless past
+          (setq past (dei--rehint-flock some-flock))
+          (setq dei--last-width dei--current-width)
+          (push past dei--flocks))
+        ;; Point names to past values.  It's beautiful.
+        (cl-loop for x in (dei--flock-funs past) do (fset (car x) (cdr x)))
+        (cl-loop for x in (dei--flock-vars past) do (set (car x) (cdr x)))
+        (setq dei--last-bindings (dei--flock-bindings past))
+        (setq dei--last-hash dei--current-hash)
+        (setf (asyncloop-remainder loop) nil)
+        ;; (asyncloop-cancel loop)
         (dei--hide-big-variable)
-        (if found
-            (format "Flock exists, making it current: %d" hash)
-          (format "Converting to %d chars wide: %d" dei--current-width hash))))))
+        (if existed
+            (format "Flock exists, making current: %d" dei--current-hash)
+          (format "Converting to %d chars wide: %d" dei--current-width dei--current-hash))))))
 
+;; REVIEW: Maybe write it simpler somehow
 (defun dei--step-1-check-settings (loop)
-  "Signal error if any two user settings overlap.
-Otherwise we could end up with two heads in one hydra both bound
-to the same key, no bueno."
-  (dei--abort-if-buffer-killed loop)
-  (unless (--all-p (equal (symbol-value (car it)) (cdr it))
-                   dei--last-settings-alist)
-    ;; Record the newest setting values, so we can skip the relatively
-    ;; expensive calculations next time if nothing changed.
-    (setq dei--last-settings-alist
-          (cl-loop for cell in dei--last-settings-alist
-                   collect (cons (car cell) (symbol-value (car cell)))))
-    (let ((vars
-           (list (cons 'dei-hydra-keys dei--hydra-keys-list)
-                 (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
-                 (cons 'dei-invisible-leafs dei-invisible-leafs)
-                 (cons 'dei-stemless-quitters dei-stemless-quitters)
-                 (cons 'dei-inserting-quitters dei-inserting-quitters)
-                 (cons 'dei-extra-heads (mapcar #'car dei-extra-heads)))))
-      (while vars
-        (let ((var (pop vars)))
-          (cl-loop
-           for remaining-var in vars
-           do (let ((overlap (-intersection (cdr var)
-                                            (cdr remaining-var))))
-                (when overlap
-                  (error "Found %s in both %s and %s"
-                         overlap (car var) (car remaining-var))))))))))
+  "Signal an error if any two user settings overlap.
+That is, if a given key description is found more than once.
+
+This prevents a situation where a hydra defines two heads on
+the same key."
+  (unless (dei--abort-if-buffer-killed loop)
+    (unless (--all-p (equal (symbol-value (car it)) (cdr it))
+                     dei--last-settings-alist)
+      ;; Record the newest setting values, so we can skip the relatively
+      ;; expensive calculations next time if nothing changed.
+      (setq dei--last-settings-alist
+            (cl-loop for cell in dei--last-settings-alist
+                     collect (cons (car cell) (symbol-value (car cell)))))
+      (let ((vars
+             (list (cons 'dei-hydra-keys dei--hydra-keys-list)
+                   (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
+                   (cons 'dei-invisible-leafs dei-invisible-leafs)
+                   (cons 'dei-stemless-quitters dei-stemless-quitters)
+                   (cons 'dei-inserting-quitters dei-inserting-quitters)
+                   (cons 'dei-extra-heads (mapcar #'car dei-extra-heads)))))
+        (while vars
+          (let ((var (pop vars)))
+            (cl-loop
+             for remaining-var in vars
+             do (let ((overlap (-intersection (cdr var)
+                                              (cdr remaining-var))))
+                  (when overlap
+                    (error "Found %s in both %s and %s"
+                           overlap (car var) (car remaining-var)))))))))))
 
 (defun dei--step-2-model-the-world (loop)
   "Calculate facts."
-  (dei--abort-if-buffer-killed loop)
-  (with-current-buffer dei--buffer-under-analysis
-    ;; Cache settings
-    (setq dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
-          dei--hydra-keys-list (dei--hydra-keys-list-recalc)
-          dei--colwidth (dei--colwidth-recalc)
-          dei--filler (dei--filler-recalc))
+  (unless (dei--abort-if-buffer-killed loop)
+    (with-current-buffer dei--buffer-under-analysis
+      ;; Cache settings
+      (setq dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
+            dei--hydra-keys-list (dei--hydra-keys-list-recalc)
+            dei--colwidth (dei--colwidth-recalc)
+            dei--filler (dei--filler-recalc))
 
-    ;; Figure out dei--hydrable-prefix-keys, to lookup when making hydra-heads.
-    ;; Also used to figure out dei--new-or-changed-stems.
-    (setq dei--hydrable-prefix-keys
-          (-uniq
-           (cl-loop
-            ;; Since `dei--get-filtered-bindings' returns no prefixes, infer them
-            ;; by cutting the last key off each sequence.
-            for key in (-uniq (-keep #'dei--parent-key (dei--get-filtered-bindings)))
-            ;; Add ancestors (if we found C-c c p, count C-c c and C-c too).
-            as n = (length (split-string key " "))
-            append (-iterate #'dei--parent-key key n))))
+      ;; Figure out dei--hydrable-prefix-keys, to lookup when making hydra-heads.
+      ;; Also used to figure out dei--changed-stems.
+      (setq dei--hydrable-prefix-keys
+            (-uniq
+             (cl-loop
+              ;; Since `dei--get-filtered-bindings' returns full keydescs only,
+              ;; infer prefixes by cutting the last key off each sequence.
+              for key in (-uniq (-keep #'dei--parent-key (dei--get-filtered-bindings)))
+              ;; Add ancestors (if we found C-c c p, count C-c c and C-c too).
+              as n = (length (split-string key " "))
+              append (-iterate #'dei--parent-key key n))))
 
-    ;; Figure out which stems have changed, so we can exploit the previous
-    ;; flock's work and skip running defhydra for results we know will be
-    ;; identical.  This has a TREMENDOUS performance boost in most buffers,
-    ;; cutting 30 seconds of computation down to 0-2 seconds.
-    ;;
-    ;; Visualize a Venn diagram, with two circles for the LAST and CURRENT
-    ;; bindings. The defunct are somewhere in LAST, the new somewhere in CURRENT,
-    ;; but neither are in the circles' intersection (overlapping area), which
-    ;; should never be relevant to update, as they represent cases where the
-    ;; key's definition didn't change.
+      ;; Figure out which stems have changed, so we can exploit the previous
+      ;; flock's work and skip running defhydra for results we know will be
+      ;; identical.  This has a TREMENDOUS performance boost each time we
+      ;; encounter a new keymap combo, cutting 30 seconds of computation down to
+      ;; 0-2 seconds.
 
-    ;; TODO: have it return subkeymaps too just to be sure we really update.
-    ;; In emacs-lisp-mode, I'm getting a Cxn stem that comes from org-mode,
-    ;; because I have no equivalent prefix in emacs-lisp-mode currently.
-    ;; Although that issue should anyway not happen if C-x n is bound to a
-    ;; command -- there is an issue there (it was bound to an empty keymap, now
-    ;; fixed).  Still, it casts light on how this algo really works, and I
-    ;; think we need a flowchart before we remove this comment, just to ensure
-    ;; that all edge cases will be taken care of.
-    (setq dei--current-bindings (dei--get-filtered-bindings t))
-    ;; The price of rigor: even if only C-c c p 4 changed, we'll have to
-    ;; rebuild hydras for C-c, C-c c, and C-c c p, because it may be that each
-    ;; of these levels previously didn't exist but for that last binding (rare,
-    ;; but happens). TODO: Figure out a way to skip that most of the time
-    (setq dei--changed-stems
-          (cl-loop for stem in (->> dei--hydrable-prefix-keys
-                                    (-map #'dei--prefix-to-stem)
-                                    (append '("C-" "M-" "s-" "H-" "A-"))
-                                    (-uniq))
-                   with new-bindings =
-                   (-uniq (append (-difference dei--current-bindings
-                                               dei--last-bindings)
-                                  (-difference dei--last-bindings
-                                               dei--current-bindings)))
-                   with new-stems = '()
-                   as it = (cl-loop
-                            for binding in new-bindings
-                            when (string-prefix-p stem (car binding))
-                            return stem)
-                   when it collect it into new-stems
-                   ;; Sort to avail most relevant hydras soonest.  Longest
-                   ;; first now means shortest first once we get to stage 6.
-                   finally return
-                   (seq-sort-by #'dei--key-seq-steps-length #'> new-stems)))
+      ;; Visualize a Venn diagram, with two circles for the LAST and CURRENT
+      ;; bindings. The defunct bindings are somewhere in LAST, the new bindings
+      ;; somewhere in CURRENT, but neither are in the circles' intersection,
+      ;; which should never be relevant to update, as they represent cases where
+      ;; the key's definition didn't change compared to the last keymap combo.
 
-    ;; Clear the workbench from a previous done or half-done iteration.
-    (setq dei--hydra-blueprints nil)
-    (format "Buffer %S" dei--buffer-under-analysis)))
+      ;; TODO: have it return subkeymaps too just to be sure we really update.
+      ;; In emacs-lisp-mode, I'm getting a Cxn stem that comes from org-mode,
+      ;; because I have no equivalent prefix in emacs-lisp-mode currently.
+      ;; Although that issue should anyway not happen if C-x n is bound to a
+      ;; command -- there is an issue there (it was bound to an empty keymap, now
+      ;; fixed).  Still, it casts light on how this algo really works, and I
+      ;; think I need a flowchart before I remove this comment, just to ensure
+      ;; that all edge cases will be taken care of.
+      (setq dei--current-bindings (dei--get-filtered-bindings t))
+
+      ;; The price of rigor: even if only C-c c p 4 changed, we'll have to
+      ;; rebuild hydras for C-c, C-c c, and C-c c p, because it may be that each
+      ;; of these levels previously didn't exist but for that last binding (rare,
+      ;; but happens). TODO: Figure out a way to skip that most of the time
+      (setq dei--changed-stems
+            (cl-loop
+             for stem in (->> dei--hydrable-prefix-keys
+                              (-map #'dei--prefix-to-stem)
+                              (append '("C-" "M-" "s-" "H-" "A-"))
+                              (-uniq))
+             with new-bindings =
+             (-uniq (append (-difference dei--current-bindings
+                                         dei--last-bindings)
+                            (-difference dei--last-bindings
+                                         dei--current-bindings)))
+             with new-stems = '()
+             as it = (cl-loop
+                      for binding in new-bindings
+                      when (string-prefix-p stem (car binding))
+                      return stem)
+             when it collect it into new-stems
+             ;; Sort to avail most relevant hydras soonest.  Longest first now
+             ;; means shortest first once we get to `dei--step-4-birth-hydra'.
+             finally return
+             (seq-sort-by #'dei--key-seq-steps-length #'> new-stems)))
+
+      ;; Clear the workbench in case of a previous half-done iteration.
+      (setq dei--hydra-blueprints nil)
+
+      (format "Buffer %S" dei--buffer-under-analysis))))
 
 (defun dei--step-3-draw-blueprint (loop &optional oneshot)
-  "Draw blueprint for first item of `dei--stems'.
+  "Draw blueprint for the first item of `dei--stems'.
 Specifically, pop a stem off the list `dei--stems', transmute it into
 a blueprint, and push that onto the list `dei--hydra-blueprints'.
 
 What is meant by \"blueprint\" is a list of arguments that we
 precompute as much as possible, that we'll later pass to
-`defhydra', see `dei--step-4-birth-hydra'.
+`defhydra' in `dei--step-4-birth-hydra'.
 
 Repeatedly add another invocation of this function to the front
 of asyncloop LOOP, so it will run again until
 `dei--stems' is empty.  With ONESHOT non-nil, don't do that \(so
 the programmer can debug by running the function once by
 itself\)."
-  (dei--abort-if-buffer-killed loop)
-  ;; REVIEW: maybe don't unwind-protect
-  (unwind-protect
+  (unless (dei--abort-if-buffer-killed loop)
+    (unwind-protect
+        (when dei--changed-stems
+          (with-current-buffer dei--buffer-under-analysis
+            (let* ((stem (car dei--changed-stems))
+                   (name (dei--dub-hydra-from-key-or-stem stem))
+                   (h1 (dei--specify-hydra stem (concat name "-nonum") t))
+                   (h2 (dei--specify-hydra stem name)))
+              ;; TODO: Do a 'transaction' that can be rolled back
+              (push h1 dei--hydra-blueprints)
+              (push h2 dei--hydra-blueprints)
+              (pop dei--changed-stems)
+              stem)))
+      ;; Run again if more to do.
+      ;; NOTE: If there was an error, the push alone won't trigger a re-run, so
+      ;; I don't expect an infinite error loop.
       (when dei--changed-stems
-        (with-current-buffer dei--buffer-under-analysis
-          (let* ((stem (car dei--changed-stems))
-                 (name (dei--dub-hydra-from-key-or-stem stem))
-                 (h1 (dei--specify-hydra stem (concat name "-nonum") t))
-                 (h2 (dei--specify-hydra stem name)))
-            (push h1 dei--hydra-blueprints)
-            (push h2 dei--hydra-blueprints)
-            (pop dei--changed-stems)
-            stem)))
-    ;; Run again if more to do.
-    (when dei--changed-stems
-      (unless oneshot
-        (push #'dei--step-3-draw-blueprint (asyncloop-remainder loop))))))
+        (unless oneshot
+          (push #'dei--step-3-draw-blueprint (asyncloop-remainder loop)))))))
 
-;; TODO: Boost performance, this function eats the most cycles.  Approaches:
-;; - Produce less garbage somehow.  Every 15-20 iterations produces 16 MB of
-;;   garbage to be collected.
-;; - Speed up `dei--try-birth-hydra' generally, which see.
 (defun dei--step-4-birth-hydra (loop &optional oneshot)
   "Pass a blueprint to `defhydra', wetting the dry-run.
 Each invocation pops one blueprint off `dei--hydra-blueprints'.
@@ -1156,28 +1204,22 @@ of asyncloop LOOP, so it will run again until
 `dei--hydra-blueprints' is empty.  With ONESHOT non-nil, don't do
 that \(so the programmer can debug by running the function once by
 itself\)."
-  (dei--abort-if-buffer-killed loop)
-  (unwind-protect
+  (unless (dei--abort-if-buffer-killed loop)
+    ;; REVIEW: Maybe instead of an unwind-protect, use a condition-case and just
+    ;; call `asyncloop-cancel' after an error so there's no way to arrive to
+    ;; `dei--step-5-register' with an incomplete hydra-set anyway.
+    (unwind-protect
+        (when dei--hydra-blueprints
+          (dei--try-birth-hydra (car dei--hydra-blueprints))
+          (prog1 (car (car dei--hydra-blueprints))
+            (pop dei--hydra-blueprints)))
+      ;; Run again if more to do
       (when dei--hydra-blueprints
-        (with-current-buffer dei--buffer-under-analysis
-          (let ((blueprint (car dei--hydra-blueprints)))
-            (unless blueprint
-              (error "Blueprint should not be nil"))
-            (dei--try-birth-hydra blueprint)
-            ;; Turn the dynamic sexp into a static string, since there is
-            ;; nothing dynamic in the input anyway.
-            (let ((hint-sym (intern-soft (concat (car blueprint) "/hint"))))
-              (set hint-sym (eval (eval hint-sym))))
-            (pop dei--hydra-blueprints)
-            (car blueprint))))
-    ;; Run again if more to do
-    (when dei--hydra-blueprints
-      (unless oneshot
-        (push #'dei--step-4-birth-hydra (asyncloop-remainder loop))))))
+        (unless oneshot
+          (push #'dei--step-4-birth-hydra (asyncloop-remainder loop)))))))
 
 (defun dei--step-5-register (loop)
   "Record the hydras made under this keymap combination."
-  (dei--abort-if-buffer-killed loop)
   ;; (when (assoc dei--current-hash dei--flocks)
   ;;   (error "Hash already recorded: %s" dei--current-hash))
   (let (funs vars)
@@ -1202,48 +1244,12 @@ itself\)."
            :vars vars
            :bindings dei--current-bindings)
           dei--flocks)
-    (asyncloop-log loop
-      "Flock #%d born: %s" (length dei--flocks) dei--current-hash)
     (setq dei--last-bindings dei--current-bindings)
     (setq dei--last-hash dei--current-hash)
+    (asyncloop-log loop
+      "Flock #%d born: %s" (length dei--flocks) dei--current-hash)
     ;; We're done, so hide the monster until next time.
     (dei--hide-big-variable)))
-
-(defun dei--abort-if-buffer-killed (loop)
-  "Abort if buffer killed."
-  (unless (buffer-live-p dei--buffer-under-analysis)
-    (asyncloop-cancel loop)
-    (dei--hide-big-variable)
-    (asyncloop-log loop
-      "Cancelling because buffer killed: %s" dei--buffer-under-analysis)))
-
-(defun dei--hide-big-variable ()
-  "Hide the monster variable."
-  (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
-  (obarray-remove obarray "dei--flocks"))
-
-(defun dei-make-hydras-maybe (&rest _)
-  (asyncloop-run
-    #'(dei--step-0-check-preexisting
-       dei--step-1-check-settings
-       dei--step-2-model-the-world
-       dei--step-3-draw-blueprint
-       dei--step-4-birth-hydra
-       dei--step-5-register)
-
-    :debug t
-
-    :on-interrupt-discovered
-    (defun dei--actions-on-interrupt (loop)
-      "Abort if excessive interrupts recently."
-      (if (<= dei--interrupts-counter 4)
-          (cl-incf dei--interrupts-counter)
-        (deianira-mode 0)
-        (asyncloop-cancel loop)
-        (dei--hide-big-variable)
-        (message
-         (asyncloop-log loop
-           "5 interrupts last 3 min, disabled deianira-mode!"))))))
 
 
 ;;;; Debug toolkit
