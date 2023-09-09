@@ -21,7 +21,11 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
+<<<<<<< HEAD
 ;; Version: 0.1.0
+=======
+;; Version: 0.2.0-pre
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.1.0"))
@@ -282,7 +286,11 @@ Customize `dei-hydra-keys' instead.")
   "Recalculate `dei--colwidth' based on frame width."
   ;; Minus four because of the legend (there's space reserved around a,b,c in
   ;; "a: COMMAND b: COMMAND c: COMMAND ...".
+<<<<<<< HEAD
   (- (floor (frame-width) 10) 4))
+=======
+  (max 1 (- (floor (frame-width) 10) 4)))
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 
 (defvar dei--colwidth (dei--colwidth-recalc)
   "Cache variable, not to be modified directly.")
@@ -1003,6 +1011,10 @@ See `dei--hidden-obarray'."
   (obarray-remove obarray "dei--flocks"))
 
 (defun dei-make-hydras-maybe (&rest _)
+<<<<<<< HEAD
+=======
+  "Maybe make hydras for the current keymap combo."
+>>>>>>> bc55758 (Respond to updates in asyncloop)
   (unless (or (and (equal dei--buffer-under-analysis (current-buffer))
                    (equal dei--last-width (frame-width)))
               (equal dei--last-hash (abs (sxhash (current-active-maps)))))
@@ -1014,7 +1026,11 @@ See `dei--hidden-obarray'."
          dei--step-4-birth-hydra
          dei--step-5-register)
 
+<<<<<<< HEAD
       :debug t
+=======
+      :debug-buffer-name "*deianira*"
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 
       :on-interrupt-discovered
       (defun dei--actions-on-interrupt (loop)
@@ -1027,6 +1043,10 @@ See `dei--hidden-obarray'."
           (message
            (asyncloop-log loop
              "5 interrupts last 3 min, disabled deianira-mode!")))))))
+<<<<<<< HEAD
+=======
+;; (dei-make-hydras-maybe)
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 
 (defun dei--step-0-check-preexisting (loop)
   (setq dei--buffer-under-analysis (current-buffer))
@@ -1042,11 +1062,16 @@ See `dei--hidden-obarray'."
           (setq past (dei--rehint-flock some-flock))
           (setq dei--last-width dei--current-width)
           (push past dei--flocks))
+<<<<<<< HEAD
         ;; Point names to past values.  It's beautiful.
+=======
+        ;; Point names to already made values.  Beautiful.
+>>>>>>> bc55758 (Respond to updates in asyncloop)
         (cl-loop for x in (dei--flock-funs past) do (fset (car x) (cdr x)))
         (cl-loop for x in (dei--flock-vars past) do (set (car x) (cdr x)))
         (setq dei--last-bindings (dei--flock-bindings past))
         (setq dei--last-hash dei--current-hash)
+<<<<<<< HEAD
         (setf (asyncloop-remainder loop) nil)
         ;; (asyncloop-cancel loop)
         (dei--hide-big-variable)
@@ -1057,10 +1082,23 @@ See `dei--hidden-obarray'."
 ;; REVIEW: Maybe write it simpler somehow
 (defun dei--step-1-check-settings (loop)
   "Signal an error if any two user settings overlap.
+=======
+        ;; Do not proceed to next steps
+        (asyncloop-cancel loop)
+        (dei--hide-big-variable)
+        (if existed
+            (format "Flock exists, making current: %d" dei--current-hash)
+          (format "Converting to %d chars wide: %d" dei--current-width dei--current-hash)))))
+
+  ;; REVIEW: Maybe write it simpler somehow
+  (defun dei--step-1-check-settings (loop)
+    "Signal an error if any two user settings overlap.
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 That is, if a given key description is found more than once.
 
 This prevents a situation where a hydra defines two heads on
 the same key."
+<<<<<<< HEAD
   (unless (dei--abort-if-buffer-killed loop)
     (unless (--all-p (equal (symbol-value (car it)) (cdr it))
                      dei--last-settings-alist)
@@ -1085,6 +1123,32 @@ the same key."
                   (when overlap
                     (error "Found %s in both %s and %s"
                            overlap (car var) (car remaining-var)))))))))))
+=======
+    (unless (dei--abort-if-buffer-killed loop)
+      (unless (--all-p (equal (symbol-value (car it)) (cdr it))
+                       dei--last-settings-alist)
+        ;; Record the newest setting values, so we can skip the relatively
+        ;; expensive calculations next time if nothing changed.
+        (setq dei--last-settings-alist
+              (cl-loop for cell in dei--last-settings-alist
+                       collect (cons (car cell) (symbol-value (car cell)))))
+        (let ((vars
+               (list (cons 'dei-hydra-keys dei--hydra-keys-list)
+                     (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
+                     (cons 'dei-invisible-leafs dei-invisible-leafs)
+                     (cons 'dei-stemless-quitters dei-stemless-quitters)
+                     (cons 'dei-inserting-quitters dei-inserting-quitters)
+                     (cons 'dei-extra-heads (mapcar #'car dei-extra-heads)))))
+          (while vars
+            (let ((var (pop vars)))
+              (cl-loop
+               for remaining-var in vars
+               do (let ((overlap (-intersection (cdr var)
+                                                (cdr remaining-var))))
+                    (when overlap
+                      (error "Found %s in both %s and %s"
+                             overlap (car var) (car remaining-var))))))))))))
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 
 (defun dei--step-2-model-the-world (loop)
   "Calculate facts."
@@ -1159,7 +1223,12 @@ the same key."
       ;; Clear the workbench in case of a previous half-done iteration.
       (setq dei--hydra-blueprints nil)
 
+<<<<<<< HEAD
       (format "Buffer %S" dei--buffer-under-analysis))))
+=======
+      ;; (format "Buffer %S" dei--buffer-under-analysis)
+      (format "Changed stems: %S" dei--changed-stems))))
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 
 (defun dei--step-3-draw-blueprint (loop &optional oneshot)
   "Draw blueprint for the first item of `dei--stems'.
@@ -1249,7 +1318,12 @@ itself\)."
     (asyncloop-log loop
       "Flock #%d born: %s" (length dei--flocks) dei--current-hash)
     ;; We're done, so hide the monster until next time.
+<<<<<<< HEAD
     (dei--hide-big-variable)))
+=======
+    (dei--hide-big-variable)
+    "OK"))
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 
 
 ;;;; Debug toolkit

@@ -73,9 +73,15 @@ If you have a question, welcome to file a GitHub issue or send a message to http
 
 ** Getting the package
 
+<<<<<<< HEAD
 Tested on Emacs 28.1+.  Emacs 29 can have issues.
 
 The package is not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] (and the often-enabled variable =straight-enable-use-package-integration=), you can install the package like so:
+=======
+Minimally tested on Emacs 28, 29 and 30.
+
+The package is not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] (and the often-enabled setting =straight-enable-use-package-integration=), you can install the package like so:
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 
 #+begin_src elisp
 (use-package deianira
@@ -91,6 +97,63 @@ Alternatively with *Doom Emacs*, this goes in =packages.el=:
 (package! asyncloop :recipe (:host github :repo "meedstrom/asyncloop")) ;; dependency of deianira
 #+end_src
 
+<<<<<<< HEAD
+=======
+** KMonad
+*** Training config
+Here is a basic KMonad config for a Surface Type Cover keyboard.  As you're probably not running that exact keyboard, edit the =device-file= field so it points to your keyboard under =/dev/input/by-id/...=.
+
+Here =cmp= is short for "Compose", i.e. the Menu key, which is all the Surface Type Cover has in that location.  If your keyboard has a real Right Win key, replace =cmp= here with =rmeta=.
+
+(If you want to edit further, you'll want to know that KMonad follows the Linux kernel names for Alt and Meta, what we Emacs folk know as Meta and Super, respectively.)
+
+BEWARE that this kills your alt and super keys, which may leave you unable to recover and need a reboot.   You've been warned.  To be safe, you could leave the process running as foreground in a terminal and close that terminal when you need the effect to end. 
+
+#+begin_src lisp
+(defcfg
+ fallthrough true
+ input (device-file "/dev/input/by-id/usb-Microsoft_Surface_Type_Cover-event-kbd")
+ output (uinput-sink "My Deianira KMonad output"))
+
+(defsrc
+ lmeta lalt ralt cmp)
+
+(defalias
+  la KeyMuhenkan
+  ra KeyMuhenkan
+  lm KeyHenkan
+  rm KeyHenkan)
+
+(deflayer main
+  ;; For deianira.el
+  @lm @la @ra @rm)
+#+end_src
+
+*** Full KMonad config
+
+Once you've trained yourself out of the habit of chording your hotkeys, you can recover the normal behavior of Meta and Super for those times it matters.  Just change the defalias block:
+
+#+begin_quote
+(defcfg
+ fallthrough true
+ input (device-file "/dev/input/by-id/usb-Microsoft_Surface_Type_Cover-event-kbd")
+ output (uinput-sink "My Deianira KMonad output"))
+
+(defsrc
+ lmet lalt ralt cmp)
+
+(defalias
+  la (tap-hold-next 200 KeyMuhenkan lalt)
+  ra (tap-hold-next 200 KeyMuhenkan ralt)
+  lm (tap-hold-next 200 KeyHenkan lmet)
+  rm (tap-hold-next 200 KeyHenkan rmet))
+
+(deflayer main
+  ;; For deianira.el
+  @lm @la @ra @rm)
+#+end_quote
+
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 ** dual-function-keys
 
 You need [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] with its official plugin dual-function-keys.  If your distro does not package it, I'm sorry to say this step may take you some work.  On Arch and Guix the setup is pleasant.
@@ -290,7 +353,11 @@ So ~C-g~ remains your "unfreeze Emacs" key.  You can argue it actually should be
 ** Mass remapping
 *** Super as Control
 
+<<<<<<< HEAD
 In case I ever successfully sell you on deprecating the Control key, this hook setting copies all Control bindings to Super.
+=======
+In case I ever sell you on deprecating the Control key, this hook setting copies all Control bindings to Super.
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 
 #+begin_src elisp
 (add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctl)

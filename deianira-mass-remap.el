@@ -38,6 +38,13 @@
 (eval-when-compile (require 'map)) ;; map-let
 (eval-when-compile (require 'subr-x)) ;; string-join
 
+<<<<<<< HEAD
+=======
+;; TODO: What to do about C-c C-x p  (org-set-property)?
+;; Because there is also C-c x p which copies to C-c C-x C-p.
+;; Maybe the user should be alerted to bastard sequences.
+
+>>>>>>> bc55758 (Respond to updates in asyncloop)
 
 ;;; Lib
 
@@ -232,7 +239,13 @@ function simply returns its name."
                   ;; If the prefix is bound and it's not to a keymap, unbind the
                   ;; prefix so we'll be allowed to bind our key. (prevent error
                   ;; "Key sequence starts with non-prefix key")
+<<<<<<< HEAD
                   (apply #'define-key raw-map (kbd conflict-prefix) nil emacs29)))
+=======
+                  ;; (apply #'define-key raw-map (kbd conflict-prefix) nil emacs29)
+                  (define-key raw-map (kbd conflict-prefix) nil)
+                  ))
+>>>>>>> bc55758 (Respond to updates in asyncloop)
               (define-key raw-map (kbd keydesc) cmd))))))))
 
 (defun dei-remap-revert ()
