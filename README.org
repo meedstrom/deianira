@@ -73,15 +73,9 @@ If you have a question, welcome to file a GitHub issue or send a message to http
 
 ** Getting the package
 
-<<<<<<< HEAD
-Tested on Emacs 28.1+.  Emacs 29 can have issues.
-
-The package is not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] (and the often-enabled variable =straight-enable-use-package-integration=), you can install the package like so:
-=======
 Minimally tested on Emacs 28, 29 and 30.
 
 The package is not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] (and the often-enabled setting =straight-enable-use-package-integration=), you can install the package like so:
->>>>>>> bc55758 (Respond to updates in asyncloop)
 
 #+begin_src elisp
 (use-package deianira
@@ -97,8 +91,6 @@ Alternatively with *Doom Emacs*, this goes in =packages.el=:
 (package! asyncloop :recipe (:host github :repo "meedstrom/asyncloop")) ;; dependency of deianira
 #+end_src
 
-<<<<<<< HEAD
-=======
 ** KMonad
 *** Training config
 Here is a basic KMonad config for a Surface Type Cover keyboard.  As you're probably not running that exact keyboard, edit the =device-file= field so it points to your keyboard under =/dev/input/by-id/...=.
@@ -353,11 +345,7 @@ So ~C-g~ remains your "unfreeze Emacs" key.  You can argue it actually should be
 ** Mass remapping
 *** Super as Control
 
-<<<<<<< HEAD
-In case I ever successfully sell you on deprecating the Control key, this hook setting copies all Control bindings to Super.
-=======
 In case I ever sell you on deprecating the Control key, this hook setting copies all Control bindings to Super.
->>>>>>> bc55758 (Respond to updates in asyncloop)
 
 #+begin_src elisp
 (add-hook 'dei-keymap-found-hook #'dei-define-super-like-ctl)
