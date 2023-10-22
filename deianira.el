@@ -449,7 +449,7 @@ Optional argument KEYMAP means look only in that keymap."
         (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
-       
+
         (add-hook 'window-buffer-change-functions #'dei-make-hydras-maybe 56)
         (add-hook 'window-selection-change-functions #'dei-make-hydras-maybe)
         ;; Unfortunately this hook is triggered every time a command is called
@@ -973,7 +973,7 @@ long as they don't change.")
                           ;; passed to `hydra--format' the first time around. The
                           ;; difference comes from let-binding `dei--colwidth'.
                           basename
-                         (eval (intern-soft (concat basename "/params")))
+                          (eval (intern-soft (concat basename "/params")))
                           (eval (intern-soft (concat basename "/docstring")))
                           (eval (intern-soft (concat basename "/heads")))))))
            else collect pair))
@@ -1054,39 +1054,40 @@ See `dei--hidden-obarray'."
         (dei--hide-big-variable)
         (if existed
             (format "Flock exists, making current: %d" dei--current-hash)
-          (format "Converting to %d chars wide: %d" dei--current-width dei--current-hash)))))
+          (format "Converting to %d chars wide: %d" dei--current-width dei--current-hash))))))
 
-  ;; REVIEW: Maybe write it simpler somehow
-  (defun dei--step-1-check-settings (loop)
-    "Signal an error if any two user settings overlap.
+;; REVIEW: Maybe write it simpler somehow
+(defun dei--step-1-check-settings (loop)
+  "Signal an error if any two user settings overlap.
 That is, if a given key description is found more than once.
 
 This prevents a situation where a hydra defines two heads on
 the same key."
-    (unless (dei--abort-if-buffer-killed loop)
-      (unless (--all-p (equal (symbol-value (car it)) (cdr it))
-                       dei--last-settings-alist)
-        ;; Record the newest setting values, so we can skip the relatively
-        ;; expensive calculations next time if nothing changed.
-        (setq dei--last-settings-alist
-              (cl-loop for cell in dei--last-settings-alist
-                       collect (cons (car cell) (symbol-value (car cell)))))
-        (let ((vars
-               (list (cons 'dei-hydra-keys dei--hydra-keys-list)
-                     (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
-                     (cons 'dei-invisible-leafs dei-invisible-leafs)
-                     (cons 'dei-stemless-quitters dei-stemless-quitters)
-                     (cons 'dei-inserting-quitters dei-inserting-quitters)
-                     (cons 'dei-extra-heads (mapcar #'car dei-extra-heads)))))
-          (while vars
-            (let ((var (pop vars)))
-              (cl-loop
-               for remaining-var in vars
-               do (let ((overlap (-intersection (cdr var)
-                                                (cdr remaining-var))))
-                    (when overlap
-                      (error "Found %s in both %s and %s"
-                             overlap (car var) (car remaining-var))))))))))))
+  (unless (dei--abort-if-buffer-killed loop)
+    (unless (--all-p (equal (symbol-value (car it)) (cdr it))
+                     dei--last-settings-alist)
+      ;; Record the newest setting values, so we can skip the relatively
+      ;; expensive calculations next time if nothing changed.
+      (setq dei--last-settings-alist
+            (cl-loop for cell in dei--last-settings-alist
+                     collect (cons (car cell) (symbol-value (car cell)))))
+      (let ((vars
+             (list (cons 'dei-hydra-keys dei--hydra-keys-list)
+                   (cons 'dei-all-shifted-symbols dei--all-shifted-symbols-list)
+                   (cons 'dei-invisible-leafs dei-invisible-leafs)
+                   (cons 'dei-stemless-quitters dei-stemless-quitters)
+                   (cons 'dei-inserting-quitters dei-inserting-quitters)
+                   (cons 'dei-extra-heads (mapcar #'car dei-extra-heads)))))
+        (while vars
+          (let ((var (pop vars)))
+            (cl-loop
+             for remaining-var in vars
+             do (let ((overlap (-intersection (cdr var)
+                                              (cdr remaining-var))))
+                  (when overlap
+                    (error "Found %s in both %s and %s"
+                           overlap (car var) (car remaining-var))))
+             finally return "No problems")))))))
 
 (defun dei--step-2-model-the-world (loop)
   "Calculate facts."
