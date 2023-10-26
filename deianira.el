@@ -24,7 +24,7 @@
 ;; Version: 0.2.0-pre
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "28.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.1.0"))
+;; Package-Requires: ((emacs "29.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.3.2"))
 
 ;;; Commentary:
 
@@ -425,11 +425,9 @@ Optional argument KEYMAP means look only in that keymap."
         (setq dei--interrupts-counter 0)
         (named-timer-run 'deianira-ctr-decay 60 60 #'dei--interrupts-decrement)
         (setq dei--old-hydra-cell-format hydra-cell-format)
-        (setq dei--old-hydra-C-u (lookup-key hydra-base-map (kbd "C-u")))
+        (setq dei--old-hydra-C-u (keymap-lookup hydra-base-map "C-u"))
         (setq hydra-cell-format "% -20s %% -11`%s")
-        (if (version<= "29" emacs-version)
-            (define-key hydra-base-map (kbd "C-u") nil t)
-          (define-key hydra-base-map (kbd "C-u") nil))
+        (keymap-unset hydra-base-map "C-u" t)
         ;; REVIEW: I may prefer to just instruct the user to set this stuff
         ;; themselves, so they get familiar with the variables
         (cl-loop for key in (dei--on-which-keys #'hydra--universal-argument hydra-base-map)
@@ -466,7 +464,7 @@ Optional argument KEYMAP means look only in that keymap."
           (user-error "Disabling Deianira, please customize dei-homogenizing-winners")))
     (named-timer-cancel 'deianira-ctr-decay)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
-    (define-key hydra-base-map (kbd "C-u") dei--old-hydra-C-u)
+    (keymap-set hydra-base-map "C-u" dei--old-hydra-C-u)
     (remove-hook 'window-buffer-change-functions #'dei-make-hydras-maybe)
     (remove-hook 'window-selection-change-functions #'dei-make-hydras-maybe)
     (remove-hook 'after-change-major-mode-hook #'dei-make-hydras-maybe)
@@ -502,11 +500,9 @@ for minutes.")
   (obarray-remove dei--hidden-obarray "dei--flocks")
   ;; Unbind last key in case it was different
   (when (boundp sym)
-    (if (version<= "29" emacs-version)
-        (define-key deianira-mode-map (kbd (symbol-value sym)) nil t)
-      (define-key deianira-mode-map (kbd (symbol-value sym)) nil)))
+    (keymap-unset deianira-mode-map (symbol-value sym) t))
   ;; Bind new key
-  (define-key deianira-mode-map (kbd newkey) (alist-get sym dei--ersatz-keys-alist))
+  (keymap-set deianira-mode-map newkey (alist-get sym dei--ersatz-keys-alist))
   (set-default sym newkey))
 
 ;; FIXME: these options are broken in the Custom interface
