@@ -60,7 +60,7 @@ My motivations were:
 
 No "paradigm lock-in"
 
-- We rely on an external Linux utility, dual-function-keys, to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working somehow, we won't be left dead in the water.  Deianira's helpers for mass-remapping bindings will always work, so your bindings remain in the location you were expecting.  You'll just have to do one of two things:
+- We rely on an external Linux utility, kmonad, to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working somehow, we won't be left dead in the water.  Deianira's helpers for mass-remapping bindings will always work, so your bindings remain in the location you were expecting.  You'll just have to do one of two things:
   1. Chord at first to start a key sequence, like a normal Emacsian (boo hiss).  Even forgetting about the hydra system, the remaps you've made along the way remain accessible, and the bindings are not worse than they were before you started.
   2. Resort to =xmodmap= or similar tool to wholesale remap the keys normally labelled "Ctrl" and "Alt" to send different key events entirely.  You can no longer chord, but it's a small loss because you get to keep Hydra.  In fact, I suggest this trick anyway as the most important of the [[Training wheels][Training wheels]].  IME it's preferable to have the hydras than to have the modifiers.
 - If you like the aesthetic of the rules described under Paradigm, but decide you don't like the pseudo-modal behavior, you can forgo the hydras entirely, perhaps in favour of just enabling sticky keys and defining more repeat-maps.
@@ -68,178 +68,92 @@ No "paradigm lock-in"
 # - It should be possible to create a half-Deianira that relies on sticky keys and a whole lot of repeat maps, but I suspect it won't be the same.  The full Deianira is simple in end use because you can expect the interface to be regular and uniform.
 
 * Mandatory setup
-If you have a question, welcome to file a GitHub issue or send a message to https://reddit.com/u/meedstrom.
-# or Matrix username?
+If you have a question, welcome to file a GitHub issue, or find my email in the source code.
 
 ** Getting the package
 
-Minimally tested on Emacs 28, 29 and 30.
+Minimally tested on Emacs 29 and 30.
 
 The package is not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] (and the often-enabled setting =straight-enable-use-package-integration=), you can install the package like so:
 
 #+begin_src elisp
 (use-package deianira
   :straight (deianira :type git :host github :repo "meedstrom/deianira"))
-(use-package asyncloop ;; dependency of deianira
-  :straight (deianira :type git :host github :repo "meedstrom/asyncloop"))
 #+end_src
 
 Alternatively with *Doom Emacs*, this goes in =packages.el=:
 
 #+begin_src elisp
 (package! deianira :recipe (:host github :repo "meedstrom/deianira"))
-(package! asyncloop :recipe (:host github :repo "meedstrom/asyncloop")) ;; dependency of deianira
 #+end_src
 
 ** KMonad
+
+You need [[https://github.com/kmonad/kmonad][kmonad]], install it.  Setup instructions follow.
+
+Possible alternatives to kmonad:
+- dual-function-keys ([[#dual-function-keys][partial howto]])
+- Hawck ([[https://github.com/snyball/Hawck/issues/8][partial howto]])
+- QMK firmware -- if you only ever use keyboards with it
+- xkeysnail
+- ...
+
+The buggy and unmaintained [[https://github.com/alols/xcape][xcape]] is NOT an alternative.  Something so fundamental needs to be reliable; when I tried xcape, it could work for a while and then stop.  This leads to giving up on Deianira.
+
+*** What do I need kmonad for?
+Emacs cannot detect the fact that you held down and released Control, Meta or Super, so we need some lower software needs to tell Emacs about it.  Thus, we configure kmonad-keys to send separate key events when you touch the keyboard this way.
+
+It does not matter which key events will represent this, as the user almost never sees them printed in the echo area.  The default choices are a bit unusual, discussed in [[#if-you-wish-to-change-the-keys][the appendix]].
+
 *** Training config
-Here is a basic KMonad config for a Surface Type Cover keyboard.  As you're probably not running that exact keyboard, edit the =device-file= field so it points to your keyboard under =/dev/input/by-id/...=.
+Here is a basic KMonad config for a Surface Type Cover keyboard.  As you're probably not running that exact keyboard, edit the =device-file= field so it points to the correct keyboard under your =/dev/input/by-id/...=.
 
 Here =cmp= is short for "Compose", i.e. the Menu key, which is all the Surface Type Cover has in that location.  If your keyboard has a real Right Win key, replace =cmp= here with =rmeta=.
 
-(If you want to edit further, you'll want to know that KMonad follows the Linux kernel names for Alt and Meta, what we Emacs folk know as Meta and Super, respectively.)
+(If you want to customize further, you'll want to know that KMonad follows the Linux kernel names for Alt and Meta, what we Emacs folk know respectively as Meta and Super!)
 
-BEWARE that this kills your alt and super keys, which may leave you unable to recover and need a reboot.   You've been warned.  To be safe, you could leave the process running as foreground in a terminal and close that terminal when you need the effect to end. 
+BEWARE that this kills your ctl, alt and super keys for as long as the process runs, which may leave you unable to recover and need a reboot.  You've been warned.  To be safe, leave the process running as foreground in a terminal and close that terminal with the mouse when you need the effect to end.
 
 #+begin_src lisp
 (defcfg
  fallthrough true
  input (device-file "/dev/input/by-id/usb-Microsoft_Surface_Type_Cover-event-kbd")
- output (uinput-sink "My Deianira KMonad output"))
+ output (uinput-sink "My Deianira-enabling KMonad output"))
 
 (defsrc
- lmeta lalt ralt cmp)
-
-(defalias
-  la KeyMuhenkan
-  ra KeyMuhenkan
-  lm KeyHenkan
-  rm KeyHenkan)
+ lctl lmeta lalt ralt cmp)
 
 (deflayer main
-  ;; For deianira.el
-  @lm @la @ra @rm)
+  KeyKatakana KeyHenkan KeyMuhenkan KeyMuhenkan KeyHenkan)
 #+end_src
+
+Finally, once you come to agree with [[#super-as-control][Super as Control]] (more on that later) you can just remove =lctl= and =KeyKatakana= here.
 
 *** Full KMonad config
 
-Once you've trained yourself out of the habit of chording your hotkeys, you can recover the normal behavior of Meta and Super for those times it matters.  Just change the defalias block:
+Once you've trained yourself out of the habit of chording your hotkeys, you can recover the normal behavior of Meta and Super for those times it matters.
 
-#+begin_quote
+Change the config file above to look like this.  The =tap-hold-next= magic is why we needed KMonad in the first place.
+
+#+begin_src lisp
 (defcfg
  fallthrough true
  input (device-file "/dev/input/by-id/usb-Microsoft_Surface_Type_Cover-event-kbd")
- output (uinput-sink "My Deianira KMonad output"))
+ output (uinput-sink "My Deianira-enabling KMonad output"))
 
 (defsrc
- lmet lalt ralt cmp)
+ lctl lmeta lalt ralt cmp)
 
 (defalias
+  lc (tap-hold-next 200 KeyKatakana lctl)
   la (tap-hold-next 200 KeyMuhenkan lalt)
   ra (tap-hold-next 200 KeyMuhenkan ralt)
   lm (tap-hold-next 200 KeyHenkan lmet)
   rm (tap-hold-next 200 KeyHenkan rmet))
 
 (deflayer main
-  ;; For deianira.el
-  @lm @la @ra @rm)
-#+end_quote
-
->>>>>>> bc55758 (Respond to updates in asyncloop)
-** dual-function-keys
-
-You need [[https://gitlab.com/interception/linux/plugins/dual-function-keys][interception-tools]] with its official plugin dual-function-keys.  If your distro does not package it, I'm sorry to say this step may take you some work.  On Arch and Guix the setup is pleasant.
-
-The buggy and unmaintained [[https://github.com/alols/xcape][xcape]] is NOT an alternative.  Something so fundamental needs to be reliable.  In Deianira's youth, I used xcape and met a glut of issues: it could work fine for a while and then develop a 2-second latency with keystrokes, whereupon the computer had to be rebooted.  This leads to giving up on Deianira.
-
-Possible alternatives:
-- kmonad
-- QMK firmware -- if you always use a keyboard with QMK firmware
-- Hawck ([[https://github.com/snyball/Hawck/issues/8][howto]])
-- xkeysnail
-- ...
-
-*** What is dual-function-keys for?
-Emacs cannot detect the fact that you held down and released Control, Meta or Super, so we need some lower software needs to tell Emacs about it.  Thus, we configure dual-function-keys to send separate key events when you touch the keyboard this way.  It does not matter which key events will represent this as the user almost never sees them printed in the echo area.  The default choices are a bit unusual, discussed in the appendix.
-
-*** Installation
-
-On Arch, install like so:
-
-: sudo pacman -S interception-dual-function-keys
-
-Let there be two config files, named =~/udevmon.yaml= and =~/dual-fn.yaml= (the filenames and locations don't matter).  Fill them with copypasta from the following sections.
-
-([[#for-users-of-guix-system][Users of Guix System]] have some alternate instructions)
-
-**** udevmon.yaml
-
-#+begin_src yaml
-# note -- change the file path in here if necessary!
-- JOB: "intercept -g $DEVNODE | dual-function-keys -c /home/me/dual-fn.yaml | uinput -d $DEVNODE"
-  DEVICE:
-    EVENTS:
-      EV_KEY: [ KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTMETA, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_RIGHTMETA ]
+  @lc @lm @la @ra @rm)
 #+end_src
-
-**** dual-fn.yaml
-
-#+begin_src yaml
-
-TIMING:
-  DOUBLE_TAP_MILLISEC: 0  # default 150
-  # TAP_MILLISEC: 200  # default 200
-
-MAPPINGS:
-  # Control  
-  - KEY: KEY_LEFTCTRL
-    TAP: KEY_KATAKANA
-    HOLD: KEY_LEFTCTRL
-    
-  - KEY: KEY_RIGHTCTRL
-    TAP: KEY_KATAKANA
-    HOLD: KEY_RIGHTCTRL
-
-  # Emacs calls this "Meta"
-
-  - KEY: KEY_LEFTALT
-    TAP: KEY_MUHENKAN
-    HOLD: KEY_LEFTALT
-
-  - KEY: KEY_RIGHTALT
-    TAP: KEY_MUHENKAN
-    HOLD: KEY_RIGHTALT
-
-  # Emacs calls this "Super"
-
-  - KEY: KEY_LEFTMETA
-    TAP: KEY_HENKAN
-    HOLD: KEY_LEFTMETA
-
-  - KEY: KEY_RIGHTMETA
-    TAP: KEY_HENKAN
-    HOLD: KEY_RIGHTMETA
-#+end_src
-
-**** Test
-
-*Step 1.*  Test it.  Execute the following shell command in some terminal.  You can end the effect by interrupting the terminal with Ctrl-C.
-
-: sudo nice -n -20 udevmon -c ~/udevmon.yaml
-
-*Step 2.* With the above program active, you should expect that tapping Ctrl, Alt or Super in Emacs will yield a message like "<muhenkan> is undefined".  Make sure you see that sort of message for all three modifier keys, both the left and right variants, so you know they all work.
-
-*Step 3*. After verifying the above, type =M-x deianira-mode RET= and see what now happens when you press Ctrl, Alt or Super.  You get hydras?  Great!
-
-All done, proceed to next chapter.
-
-Please mind that this is just a test -- later on, I'll recommend some more lisp in your initfiles.
-
-(ASIDE: If you want Alt and Hyper, see the appendix.)
-
-(ASIDE: To use other keysyms than Katakana and friends, see the appendix.)
-
-(ASIDE: Running this program temporarily resets my Xkb settings -- I have no idea why, but don't be surprised if this happens to you.  There are no Gitlab issues about it so maybe I missed something.  But running it on computer boot before Xorg, you don't face the problem.)
 
 ** Basic initfile snippet
 
@@ -265,7 +179,7 @@ Sorry it's so long, but it helps teach you how this stuff works.  If it's any co
 (deianira-mode)
 #+end_src
 
-If you have =(setq hydra-is-helpful nil)= somewhere in your initfiles, you'll probably want to remove that and let it be =t=.
+If you have =(setq hydra-is-helpful nil)= somewhere in your initfiles, you'll probably want to revert it to =t= for at least a while.
 
 ** Homogenizing
 
@@ -286,7 +200,6 @@ If you keep which-key -- I'm not judging -- the following snippet will hide the 
   (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist))
 #+end_src
 
-** Training wheels
 ** Desktop-specific configuration
 See the appendix sections:
 
@@ -307,6 +220,7 @@ If you use Emacs with a non-US keyboard layout, you may want to customize these 
 Do you use the =repeat= command?  Please also bind =hydra-repeat= in =hydra-base-map= to ensure it works.
 
 Let's say you already bound it to ~<f5>~ and want to keep it there.  Then just add an eval-after-load:
+
 #+begin_src elisp
 (define-key global-map (kbd "<f5>") #'repeat)
 (with-eval-after-load 'hydra
@@ -480,7 +394,7 @@ In theory, but I haven't tested it.
 No.
 
 ** What if instead of all this crap, you just use sticky keys and thoughtfully-made repeat-maps?
-Not the same thing -- you'd need something like god-mode, and you'd still need to setup dual-function-keys or similar software so as to make the Control and Meta keys into entry-points for god-mode's simulations of Control and Meta.  Then we can start comparing.
+Not the same thing -- you'd need something like god-mode, and you'd still need to setup kmonad or similar software so as to make the Control and Meta keys into entry-points for god-mode's simulations of Control and Meta.  Then we can start comparing.
 
 Do that and I'll link your blog post here!  Many things will be different, but I'll leave the particulars for then.
 
@@ -676,14 +590,15 @@ Note that =lv= had (has? I haven't seen it in a while) a horrific bug that clear
 
 It's REALLY hard to stop chording while the modifiers still work as they always did, because
 - Muscle memory
-- I'm in the habit of absently pressing the modifiers for no reason, which then unexpectedly pops up hydras, and i might accidentally call commands and get a bit overwhelmed with all the unintentional things happening
+- I'm in the habit of absently pressing the modifiers for no reason, which then unexpectedly pops up hydras, and I might accidentally call commands and get a bit overwhelmed with all the unintentional things happening
 
-A few training wheels in mind, but the most important: *disable the modifiers* for a while.
+A few training wheels in mind, but the most important: *disable the modifiers* for a while.  
 
 1. Disable the modifiers
-   - Alt 1. Stop using dual-function-keys -- just remap with xmodmap or an .xkb file
+   - Alt 1. Just plainly remap the lctrl key to KeyKatakana etc.
    - Alt 2. Turn the modifiers into Hyper or Alt when held, to block any combinations.
-     - Because even when Ctl no longer does Ctl, pressing it together with f will still output f on screen -- frustrating.  If it were Hyper, you instead get the message "H-f is unbound".  And you could bind all hyper combos to make a painful beep noise.
+     - Because even when Ctl no longer does Ctl, pressing it together with f will still output f on screen -- frustrating.  If it were Hyper, you instead get the message "H-f is unbound".
+       - As a bonus, if your window manager supports it, you could have H-f send C-f in non-Emacs applications so they still work.
 
 * Appendix
 ** I'm a layman.  Why did this program take you years to write?  It seems simple, what it does?
@@ -719,42 +634,6 @@ Instead of =xset r rate 200 30=:
 ** For EXWM users
 
 If you want access to the hydras from EXWM buffers, configure either =exwm-input-prefix-keys= or =exwm-input-global-keys= so that they passthrough the keys defined in =dei-ersatz-control=, =dei-ersatz-meta= etc.
-** For users of Guix System
-
-I don't yet know how to write an on-boot service, but here is how to create =udevmon.yaml= inside the system declaration with hardcoded store paths.
-
-#+begin_src scheme
-(packages
- (cons* ...
-        interception-tools
-        interception-dual-function-keys
-        ...))
-(services
- (cons* ...
-        (extra-special-file
-         "/etc/interception/udevmon.yaml"
-         (mixed-text-file "udevmon.yaml"
-                          "- JOB: \""
-                          interception-tools "/bin/intercept"
-                          " -g $DEVNODE | "
-                          interception-dual-function-keys "/bin/dual-function-keys"
-                          ;; NOTE: change this filesystem path to wherever you keep the file
-                          " -c /home/me/dual-fn.yaml | "
-                          interception-tools "/bin/uinput"
-                          " -d $DEVNODE\"
-  DEVICE:
-    EVENTS:
-      EV_KEY: [ KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTMETA, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_RIGHTMETA ]
-"))
-        ...))
-#+end_src
-
-Execute the following Bash in some TTY and you're ready to go.  Re-execute on every boot.
-
-: sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
-
-(For those just running GNU Guix as a package manager, follow the Arch instructions instead, I think it'll work.)
-
 ** If you wish to change the keys
 
 We default to the key events Henkan, Katakana, Hiragana and friends because almost all alternatives I've found needs the user to put in some elbow grease to make them work, especially on Wayland.  If you actually write Japanese, you'll need to bind something else.  Here's how.
@@ -840,6 +719,144 @@ makepkg
 # replace this with the filename you produced
 sudo pacman -U interception-k2k-git-0.0.0.r30.259a549-1-x86_64.pkg.tar.zst
 #+end_src
+
+** Install KMonad on NixOS
+Here's how I did it on NixOS:
+
+1. set up Guix
+2. install kmonad into your user profile with =guix install kmonad=
+3. write this NixOS system service (assuming that your user is named =me= and your kmonad config file is named =/home/kept/sysconf/kmonad/usb-Microsoft_Surface_Type_Cover-event.kbd=)
+
+#+begin_src nix
+systemd.services.kmonad = {
+  enable = true;
+  description = "KMonad";
+  after = [ "syslog.target" ];
+  script = "/var/guix/profiles/per-user/me/guix-profile/bin/kmonad /home/kept/sysconf/kmonad/usb-Microsoft_Surface_Type_Cover-event.kbd";
+  serviceConfig = {
+    Restart = "on-failure";
+    RestartSec = 15;
+  };
+  startLimitBurst = 5;
+  startLimitIntervalSec = 60;
+  wantedBy = [ "multi-user.target" ];
+};
+#+end_src
+
+** dual-function-keys
+
+On Arch, install like so:
+
+: sudo pacman -S interception-dual-function-keys
+
+Let there be two config files, named =~/udevmon.yaml= and =~/dual-fn.yaml= (the filenames and locations don't matter).  Fill them with copypasta from the following sections.
+
+([[#for-users-of-guix-system][Users of Guix System]] have some alternate instructions)
+
+*** udevmon.yaml
+
+#+begin_src yaml
+# note -- change the file path in here if necessary!
+- JOB: "intercept -g $DEVNODE | dual-function-keys -c /home/me/dual-fn.yaml | uinput -d $DEVNODE"
+  DEVICE:
+    EVENTS:
+      EV_KEY: [ KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTMETA, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_RIGHTMETA ]
+#+end_src
+
+*** dual-fn.yaml
+
+#+begin_src yaml
+
+TIMING:
+  DOUBLE_TAP_MILLISEC: 0  # default 150
+  # TAP_MILLISEC: 200  # default 200
+
+MAPPINGS:
+  # Control  
+  - KEY: KEY_LEFTCTRL
+    TAP: KEY_KATAKANA
+    HOLD: KEY_LEFTCTRL
+    
+  - KEY: KEY_RIGHTCTRL
+    TAP: KEY_KATAKANA
+    HOLD: KEY_RIGHTCTRL
+
+  # Emacs calls this "Meta"
+
+  - KEY: KEY_LEFTALT
+    TAP: KEY_MUHENKAN
+    HOLD: KEY_LEFTALT
+
+  - KEY: KEY_RIGHTALT
+    TAP: KEY_MUHENKAN
+    HOLD: KEY_RIGHTALT
+
+  # Emacs calls this "Super"
+
+  - KEY: KEY_LEFTMETA
+    TAP: KEY_HENKAN
+    HOLD: KEY_LEFTMETA
+
+  - KEY: KEY_RIGHTMETA
+    TAP: KEY_HENKAN
+    HOLD: KEY_RIGHTMETA
+#+end_src
+
+*** Test
+
+*Step 1.*  Test it.  Execute the following shell command in some terminal.  You can end the effect by interrupting the terminal with Ctrl-C.
+
+: sudo nice -n -20 udevmon -c ~/udevmon.yaml
+
+*Step 2.* With the above program active, you should expect that tapping Ctrl, Alt or Super in Emacs will yield a message like "<muhenkan> is undefined".  Make sure you see that sort of message for all three modifier keys, both the left and right variants, so you know they all work.
+
+*Step 3*. After verifying the above, type =M-x deianira-mode RET= and see what now happens when you press Ctrl, Alt or Super.  You get hydras?  Great!
+
+All done, proceed to next chapter.
+
+Please mind that this is just a test -- later on, I'll recommend some more lisp in your initfiles.
+
+(ASIDE: If you want Alt and Hyper, see the appendix.)
+
+(ASIDE: To use other keysyms than Katakana and friends, see the appendix.)
+
+(ASIDE: Running this program temporarily resets my Xkb settings -- I have no idea why, but don't be surprised if this happens to you.  There are no Gitlab issues about it so maybe I missed something.  But running it on computer boot before Xorg, you don't face the problem.)
+
+*** For users of Guix System
+
+I don't yet know how to write an on-boot service, but here is how to create =udevmon.yaml= inside the system declaration with hardcoded store paths.
+
+#+begin_src scheme
+(packages
+ (cons* ...
+        interception-tools
+        interception-dual-function-keys
+        ...))
+(services
+ (cons* ...
+        (extra-special-file
+         "/etc/interception/udevmon.yaml"
+         (mixed-text-file "udevmon.yaml"
+                          "- JOB: \""
+                          interception-tools "/bin/intercept"
+                          " -g $DEVNODE | "
+                          interception-dual-function-keys "/bin/dual-function-keys"
+                          ;; NOTE: change this filesystem path to wherever you keep the file
+                          " -c /home/me/dual-fn.yaml | "
+                          interception-tools "/bin/uinput"
+                          " -d $DEVNODE\"
+  DEVICE:
+    EVENTS:
+      EV_KEY: [ KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTMETA, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_RIGHTMETA ]
+"))
+        ...))
+#+end_src
+
+Execute the following Bash in some TTY and you're ready to go.  Re-execute on every boot.
+
+: sudo nice -n -20 udevmon -c /etc/interception/udevmon.yaml
+
+(For those just running GNU Guix as a package manager, follow the Arch instructions instead, I think it'll work.)
 
 * Thanks
 
