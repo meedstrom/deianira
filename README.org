@@ -108,12 +108,6 @@ It does not matter which key events will represent this, as the user almost neve
 *** Training config
 Here is a basic KMonad config for a Surface Type Cover keyboard.  As you're probably not running that exact keyboard, edit the =device-file= field so it points to the correct keyboard under your =/dev/input/by-id/...=.
 
-Here =cmp= is short for "Compose", i.e. the Menu key, which is all the Surface Type Cover has in that location.  If your keyboard has a real Right Win key, replace =cmp= here with =rmeta=.
-
-(If you want to customize further, you'll want to know that KMonad follows the Linux kernel names for Alt and Meta, what we Emacs folk know respectively as Meta and Super!)
-
-BEWARE that this kills your ctl, alt and super keys for as long as the process runs, which may leave you unable to recover and need a reboot.  You've been warned.  To be safe, leave the process running as foreground in a terminal and close that terminal with the mouse when you need the effect to end.
-
 #+begin_src lisp
 (defcfg
  fallthrough true
@@ -127,13 +121,19 @@ BEWARE that this kills your ctl, alt and super keys for as long as the process r
   KeyKatakana KeyHenkan KeyMuhenkan KeyMuhenkan KeyHenkan)
 #+end_src
 
+Here =cmp= is short for "Compose", i.e. the Menu key, which is all the Surface Type Cover has in that location.  If your keyboard has a real Right Win key, replace =cmp= here with =rmeta=.
+
+(If you want to customize further, you'll want to know that KMonad follows the Linux kernel names for Alt and Meta, what we Emacs folk know respectively as Meta and Super!)
+
+BEWARE that this kills your ctl, alt and super keys for as long as the process runs, which may leave you unable to recover and need a reboot.  *You've been warned.*  To be safe, leave the process running as foreground in a terminal and close that terminal with the mouse when you need the effect to end.
+
 Finally, once you come to agree with [[#super-as-control][Super as Control]] (more on that later) you can just remove =lctl= and =KeyKatakana= here.
 
 *** Full KMonad config
 
-Once you've trained yourself out of the habit of chording your hotkeys, you can recover the normal behavior of Meta and Super for those times it matters.
+Once you've trained yourself out of the habit of chording your hotkeys, you can recover the normal chording behavior of Control/Meta/Super for those times it matters.
 
-Change the config file above to look like this.  The =tap-hold-next= magic is why we needed KMonad in the first place.
+Change the config file above to look more like the below.  The =tap-hold-next= magic is why we needed KMonad in the first place.
 
 #+begin_src lisp
 (defcfg

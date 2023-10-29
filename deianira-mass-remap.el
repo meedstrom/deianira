@@ -68,8 +68,8 @@ KEYMAP is the keymap in which to look."
       ;; time to understand wtf it's doing.
       (dotimes (i (- (length steps) 1))
         (let ((subseq (string-join (-take (1+ i) steps) " ")))
-          (when (lookup-key-ignore-too-long keymap (kbd subseq)))
-            (push subseq ret)))
+          (when (lookup-key-ignore-too-long keymap (kbd subseq))
+            (push subseq ret))))
       (car ret))))
 
 (defun dei--root-modifier-chunk (keydesc)
@@ -321,13 +321,13 @@ Suitable to hook on `window-buffer-change-functions' like this:
         ;; list or with `equal', I expect it to take much more CPU time to
         ;; compare their raw values instead of simply their symbols.  The user
         ;; is likely to set options that refer to `global-map'.  Therefore,
-        ;; ensure we use that name everywhere by prepopulating
-        ;; `dei--known-keymaps' and removing `widget-global-map' in this step.
-        ;; As a bonus, user won't need to see and be puzzled by
-        ;; `widget-global-map' in M-x dei-list-remaps.  These shenanigans
-        ;; wouldn't be necessary if keymap values contained their symbol names
-        ;; (and we could eliminate the function `help-fns-find-keymap-name'),
-        ;; which could be a suggestion for upstream.
+        ;; ensure we use that name everywhere by prepopulating `dei--known-keymaps'
+        ;; with `global-map' and removing `widget-global-map' in this step.  As
+        ;; a bonus, user won't need to see and be puzzled by `widget-global-map'
+        ;; in M-x dei-list-remaps.  These shenanigans wouldn't be necessary if
+        ;; keymap values contained their symbol names (and we could eliminate
+        ;; the function `help-fns-find-keymap-name'), which could be a
+        ;; suggestion for upstream.
         (setq new-maps (remove 'widget-global-map new-maps))
 
         ;; Rare situation, and maybe it's only iedit that has this hack, but the
@@ -533,16 +533,16 @@ specifying `dei--ret-and-tab-bindings'."
               finally do
               (cl-loop for retkey in retkeys
                        do (define-key raw-map
-                            (kbd (string-replace
-                                  "C-m" "<return>" (string-replace
-                                                    "RET" "<return>" retkey)))
-                            (lookup-key raw-map vec)))
+                                      (kbd (string-replace
+                                            "C-m" "<return>" (string-replace
+                                                              "RET" "<return>" retkey)))
+                                      (lookup-key raw-map vec)))
               (cl-loop for tabkey in tabkeys
                        do (define-key raw-map
-                            (kbd (string-replace
-                                  "C-i" "<tab>" (string-replace
-                                                 "TAB" "<tab>" tabkey)))
-                            (lookup-key raw-map vec))))
+                                      (kbd (string-replace
+                                            "C-i" "<tab>" (string-replace
+                                                           "TAB" "<tab>" tabkey)))
+                                      (lookup-key raw-map vec))))
      (when (eq map 'widget-global-map)
        (setq map 'global-map))
      (cl-loop for x in (alist-get map dei--ret-and-tab-bindings)
