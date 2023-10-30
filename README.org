@@ -32,40 +32,27 @@ The paradigm is:
 3. "Homogenized keymaps": we forbid any difference between keys such as ~C-x C-e~ and ~C-x e~; we bind both to the same command, so it won't matter if you keep holding down Control or not.
    - Necessary since I want every keybinding to be typeable by pressing each key in isolation separately, e.g. the sequence ~<ctl> x e~ maps to ~C-x e~, but a sequence like ~<ctl> x <ctl> e~ would have 4---count them, 4---isolated key presses and releases in sequence.  That's Just Bad, so we rule it out and are left with no obvious key sequence that would map to ~C-x C-e~.  Plus, we use the Control key to restart the input sequence, often useful.
 4. Forbid mixing modifiers: we don't allow key sequences with more than a single modifier, like ~C-M-f~, ~M-%~ or  ~C-c M-o~.  I find these gratuitously painful, and anyway there's no way to bring them over to our hydra system without sacrificing other aspects.
-5. Forbid the Shift key in any key combination or sequence.  That means regardless of which hydra you're in, typing capital characters like ~A~, ~B~ and ~(~ just self-inserts those characters and slays the hydra.
-   - My biggest gripe with Vim is its excessive use of capitals, that I find about as uncomfortable as Control combos, a strange oversight in its design.
-6. Forbid Space and Return in any key combination or sequence.  Like the capitals, they just self-insert.
-   - See Consequences for the reason.
-7. Forbid Backspace in any key combination or sequence.  This is used to travel "up" the key sequence, i.e. return to the parent hydra, much like if you type a command in Vim's /ex/ command line and then backspace because you changed your mind -- there's no need to retype the key sequence from scratch.  You may have seen this before in =which-key-undo-key=.
 
 The consequences are:
 
 1. We can do what I'll coin "transient exits":  When we the Control hydra is active, we can still type e.g. ~M-f~ like usual to move forward by word, without exiting the Control hydra.  This applies to all our hydras, even cases like the Control-X-prefix, so instead of a sequence like ~C-x t C-n C-x t C-n C-x t~...  you can stay in the Control-X-prefix and do ~t C-n t C-n t~... This would not be possible if we allowed more than one modifier in a hotkey.
    - In this example, =repeat= wouldn't have helped since you're cycling between two different commands, making it useless.
-2. Unlike Vim's Normal mode, we can often start typing without explicitly exiting the hydra, because capital letters (including capital symbols such as parens), spaces and newlines will self-insert and slay the hydra at the same time.  This works so well because the first character you type is frequently from this set, and it's nearly free because we (or I) didn't want Shift hotkeys anyway.
-   - For the sake of easy training, perhaps I'll put in a way to extend this restriction to the point that only alphabetic keys are ever bound to commands.  That would cost real estate, but it has an interesting aesthetic.
-3. I find it intuitive, compared to [[https://github.com/emacsorphanage/god-mode][god-mode]] or Spacemacs/Doom.  There is no weird new leader key to learn.  You press the same modifier keys you always have -- Control and Meta -- and that's all there is to it.
-4. We get many benefits of modal editors and skip some of their drawbacks.  Both due to the fast exit, and the ability to transiently-exit any hydra as described elsewhere, i.e. to access any "mode's" commands from any other mode without having to turn it on and off.
+2. I find it intuitive, compared to [[https://github.com/emacsorphanage/god-mode][god-mode]] or Spacemacs/Doom.  There is no weird new leader key to learn.  You press the same modifier keys you always have -- Control and Meta -- and that's all there is to it.
+3. We get many benefits of modal editors and skip some of their drawbacks.
+   - For example, instead of entering a mode, running a command, exiting it, and returning to whichever mode you were in, as with the hypothetical sequence ~<ctl> <meta> f <meta> <ctl>~, it's faster to just type ~M-f~ in whatever hydra you were---and remain in that hydra.  This is one of the most /valid/ uses of modifier chords I've seen, otherwise so maligned for ergonomics.
    - In the rest of this document, I avoid the term "mode" but speak of root hydras (the root level of the Control, Meta or Super trees).
-   - For example, instead of entering a mode, running a command, exiting it, and returning to whichever mode you were in, as with the hypothetical sequence ~<meta> f <meta> <ctl>~, it's faster to just ~M-f~ in whatever hydra you were and remain in that hydra.  This is one of the most /valid/ uses of modifier chords I've seen, otherwise so maligned for ergonomics.
-5. A trivial thing: we can use a compressed hotkey notation, such as ~Cxp~ instead of ~C-x p~, since it's still unambiguous.
-   - Comes from the fact that the first character is always a modifier, and that after homogenizing, modifiers aren't reused after the first character.  Even ~sxp~ is unambiguous (mapping to ~s-x p~).
-     # Not strictly true: how would you parse C<up>>? But <> are shift keys on US QWERTY, so they're effectively illegal, making <up> unambiguously the up arrow key.
-     # Also: it'd be nice to be able to speak of partial sequences, assuming you're already in a hydra. For that to be unambiguous, we have to rename the Super prefix to upcase S or any other upcase letter.  After all, we never use the Shift key.
 
 My motivations were:
 
-- I wanted a modifier-free life (even dropping Shift, outdoing Vim), and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  */But/* as a happy side effect of implementing the vision, I found we need surprisingly little extra typing this way, and sometimes even /less/, because the strict rules we impose on the keymap open for several exploitations.
+- I wanted a modifier-free life (even dropping Shift, outdoing Vim), and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  *But* as a happy side effect of implementing the vision, I found we need surprisingly little extra typing this way, and sometimes even /less/.
 - I asked myself as a thought experiment how one would use Emacs with an [[https://olkb.com/][OLKB Planck]] or other tiny keyboard.  This constraint sprouted many ideas.  I wanted to bind all commands to lowercase letters, and with Deianira you can if you want.  Planck users won't ever have to use its "Raise" or "Lower" hardware modes just to access a command.  Please observe that no part of the design was sacrificed to support tiny keyboards -- I actually prefer [[https://geekhack.org/index.php?topic=116622][enormous]] keyboards -- and the good fit is a side effect.
 
 No "paradigm lock-in"
 
-- We rely on an external Linux utility, kmonad, to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working somehow, we won't be left dead in the water.  Deianira's helpers for mass-remapping bindings will always work, so your bindings remain in the location you were expecting.  You'll just have to do one of two things:
-  1. Chord at first to start a key sequence, like a normal Emacsian (boo hiss).  Even forgetting about the hydra system, the remaps you've made along the way remain accessible, and the bindings are not worse than they were before you started.
-  2. Resort to =xmodmap= or similar tool to wholesale remap the keys normally labelled "Ctrl" and "Alt" to send different key events entirely.  You can no longer chord, but it's a small loss because you get to keep Hydra.  In fact, I suggest this trick anyway as the most important of the [[Training wheels][Training wheels]].  IME it's preferable to have the hydras than to have the modifiers.
-- If you like the aesthetic of the rules described under Paradigm, but decide you don't like the pseudo-modal behavior, you can forgo the hydras entirely, perhaps in favour of just enabling sticky keys and defining more repeat-maps.
-
-# - It should be possible to create a half-Deianira that relies on sticky keys and a whole lot of repeat maps, but I suspect it won't be the same.  The full Deianira is simple in end use because you can expect the interface to be regular and uniform.
+- We rely on an external Linux utility, [[https://github.com/kmonad/kmonad][kmonad]], to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working somehow, we won't be left dead in the water.  We rely on the [[https://github.com/meedstrom/massmapper][massmapper]] library to mass-remap bindings, which will always work, so your bindings remain in the location you were expecting.  You'll just have to do one of two things:
+  1. Chord at first to start a key sequence, like a normal Emacser (boo hiss).  Even forgetting about the hydra system, the remaps you've made along the way remain accessible, and the bindings are not worse than they were before you started.
+  2. Resort to =xmodmap= or similar tool to wholesale remap the keys normally labelled "Ctrl" and "Alt" to send different key events entirely.  You can no longer chord, but it's a small loss because you get to keep Hydra.  In fact, I suggest this trick anyway as a set of [[#training-wheels][training wheels]].  In my experience, it's preferable to have hydras than modifiers.
+- If you like the aesthetic of the rules described under Paradigm, but decide you don't like the pseudo-modal behavior, you can forgo the hydras entirely.  You can leave it at that, or perhaps nerd yourself into sticky keys and defining more repeat-maps.
 
 * Mandatory setup
 If you have a question, welcome to file a GitHub issue, or find my email in the source code.
@@ -220,9 +207,9 @@ If you use Emacs with a non-US keyboard layout, you may want to customize these 
 
 ** Where is repeat?
 
-Do you use the =repeat= command?  Please also bind =hydra-repeat= in =hydra-base-map= to ensure it works.
+Do you use the =repeat= command?  Ensure it's always there for you by binding =hydra-repeat= in =hydra-base-map= to the same key where you bound =repeat= in =global-map=.
 
-Let's say you already bound it to ~<f5>~ and want to keep it there.  Then just add an eval-after-load:
+Let's say you already bound it to ~<f5>~ globally and want to keep it there.  Then just add an eval-after-load so the end result looks like:
 
 #+begin_src elisp
 (define-key global-map (kbd "<f5>") #'repeat)
@@ -386,7 +373,7 @@ The following variables let you specify additional keys and commands that should
 - =dei-stemless-quitters=
 - =dei-inserting-quitters=
 
-* Imagined FAQ
+* Q&A
 ** Can I keep which-key?
 Yes.
 
@@ -568,11 +555,11 @@ Power 3. When a desktop environment like GNOME clobbers your ~s-a~ chord, you ca
 
 * Known issues
 ** Hydra does not update instantly
-If you run buffer-switching commands such as =next-buffer= from within a hydra, getting a different major mode and keymaps, the hydra will not reflect this, but continue to reflect the buffer where it was first called.
+If you run buffer-switching commands such as =next-buffer= from within a hydra, getting a different major mode and keymaps, the hydra hint will not reflect this, but continue to reflect the buffer where it was first called.
 
-Aside from confusion, it's usually not a problem because
-- in a supermajority of cases, the difference is only visual: it's the hydra /hint/ that reflects the wrong buffer's bindings.  The keys still do what they should, since most of them are not bound to specific commands but to =(call-interactively (key-binding KEY))=, which results in the correct action.
-- by default, =next-buffer= (=C-x <right>=) and similar commands are under the /Control-X-prefix/, which is static and unchanging, i.e. it has no mode-specific anything, so there is no change to show in the hydra
+Aside from confusion, it's usually not a problem because:
+- In a supermajority of cases, the difference is only visual: it's the hydra /hint/ that reflects the wrong buffer's bindings.  The keys still do what they should, since most of them are not bound to specific commands but to =(call-interactively (key-binding KEY))=, which results in the correct action.
+- By default, =next-buffer= (=C-x <right>=) and similar commands are under the /Control-X-prefix/, which is static and unchanging, i.e. it has no mode-specific anything, so there is no change to show in the hydra
 
 If you do this under a prefix that changes a lot between major modes, like =C-c=, the next key can behave unexpectedly because:
 - It can happen that you expect a key to lead to a sub-hydra but it doesn't.
@@ -585,9 +572,9 @@ In principle, I can fix this so that Deianira serves up a fresh hydra on buffer 
 Can happen when you resize the frame.
 
 * Pre-release TODOs
-** Fix critical bug: data destruction
+# ** Fix critical bug: data destruction
 
-Note that =lv= had (has? I haven't seen it in a while) a horrific bug that cleared the buffer of text without possibility of undo, by way of =delete-region=, because =lv-message= called =(with-current-buffer (lv-window))= which sometimes didn't do the expected thing.  I'd like to patch in an extra safety clause before the =delete-region=.  TODO: before publishing Deianira, patch in a safety clause. (learn how to submit PR upstream)
+# Note that =lv= had (has? I haven't seen it in a while) a horrific bug that cleared the buffer of text without possibility of undo, by way of =delete-region=, because =lv-message= called =(with-current-buffer (lv-window))= which sometimes didn't do the expected thing.  I'd like to patch in an extra safety clause before the =delete-region=.  TODO: before publishing Deianira, patch in a safety clause. (learn how to submit PR upstream)
 
 ** Training wheels
 
@@ -641,7 +628,7 @@ If you want access to the hydras from EXWM buffers, configure either =exwm-input
 
 We default to the key events Henkan, Katakana, Hiragana and friends because almost all alternatives I've found needs the user to put in some elbow grease to make them work, especially on Wayland.  If you type Japanese, you'll need to bind something else.  Here's how.
 
-The keys we've chosen to represent presses of Control/Meta/Super must be listed doubly -- once in the komnad config, and once in the following Customizable variables.
+The keys we've chosen to represent presses of Control/Meta/Super must be listed doubly -- once in the kmonad config, and once in the following Customizable variables.
 
 - =dei-ersatz-alt= (default "<hiragana-katakana>")
 - =dei-ersatz-control= (default "<katakana>")
