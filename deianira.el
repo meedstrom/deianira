@@ -24,7 +24,7 @@
 ;; Version: 0.2.0-pre
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "29.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.3.2"))
+;; Package-Requires: ((emacs "29.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.3.2") (massmapper "0.1.0"))
 
 ;;; Commentary:
 
@@ -52,11 +52,7 @@
 (require 'hydra)
 (require 'named-timer) ;; emacs core when?
 (require 'asyncloop) ;; was part of deianira.el
-;; (require 'mass-remap) ;; was part of deianira.el
-
-;; our own subpackages
-(require 'deianira-lib)
-(require 'deianira-mass-remap)
+(require 'massmapper-lib) ;; was part of deianira.el
 
 ;; muffle the compiler
 (declare-function #'dei-A/body "deianira" nil t)
@@ -381,7 +377,7 @@ Then return to the parent hydra."
   (interactive)
   (call-interactively (key-binding (kbd keydesc)))
   (if-let ((parent (dei--corresponding-hydra
-                    (dei--parent-stem (dei--drop-leaf keydesc)))))
+                    (massmapper--parent-stem (massmapper--drop-leaf keydesc)))))
       (call-interactively parent)
     (hydra-keyboard-quit)))
 
@@ -459,9 +455,16 @@ Optional argument KEYMAP means look only in that keymap."
           (add-variable-watcher 'local-minor-modes #'dei-make-hydras-maybe))
         ;; (when (not hydra-is-helpful)
         ;;   (message "hydra-is-helpful is nil, is this what you want?"))
-        (when (null dei-homogenizing-winners)
+        (when (or (bound-and-true-p dei-keymap-found-hook)
+                  (bound-and-true-p dei-homogenizing-winners))
           (deianira-mode 0)
-          (user-error "Disabling Deianira, please customize dei-homogenizing-winners")))
+          (user-error "%s%s%s"
+                      "Deianira has split into two packages,"
+                      " you'll want to add the massmapper package."
+                      " (https://github.com/meedstrom/massmapper)"))
+        (when (null massmapper-homogenizing-winners)
+          (deianira-mode 0)
+          (user-error "Disabling Deianira, please customize massmapper-homogenizing-winners")))
     (named-timer-cancel 'deianira-ctr-decay)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (keymap-set hydra-base-map "C-u" dei--old-hydra-C-u)
@@ -786,6 +789,7 @@ This will probably be called by `dei-make-hydras-maybe'."
   "Match explicit \"S-\" chords in key descriptions.
 Do not match capital letters.")
 
+;; (will probably export to massmapper.el)
 (defun dei--key-is-illegal (keydesc)
   "Non-nil if KEYDESC would be unbound in a purist scheme.
 This means a scheme of homogenizing, no shift, no multi-chords,
@@ -793,14 +797,14 @@ and no mixed modifiers."
   (let ((case-fold-search nil))
     (or
      (string-match-p dei--shift-chord-regexp keydesc)
-     (dei--key-contains dei--all-shifted-symbols-list keydesc)
-     (dei--key-contains-multi-chord keydesc)
-     (dei--key-mixes-modifiers keydesc)
+     (massmapper--key-contains dei--all-shifted-symbols-list keydesc)
+     (massmapper--key-contains-multi-chord keydesc)
+     (massmapper--key-mixes-modifiers keydesc)
      ;; Drop bastard sequences.
-     (and (dei--key-has-more-than-one-chord keydesc)
-          (not (dei--key-seq-is-permachord keydesc)))
+     (and (massmapper--key-has-more-than-one-chord keydesc)
+          (not (massmapper--key-seq-is-permachord keydesc)))
      ;; Drop e.g. <f1> C-f.
-     (and (not (dei--key-starts-with-modifier keydesc))
+     (and (not (massmapper--key-starts-with-modifier keydesc))
           (string-match-p dei--modifier-regexp-safe keydesc)))))
 
 (defconst dei--ignore-regexp-merged
@@ -808,8 +812,8 @@ and no mixed modifiers."
    (append '("DEL" "backspace")
            ;; declutter a bit (unlikely someone wants)
            '("help" "kp-" "iso-" "wheel" "menu" "redo" "undo" "again" "XF86")
-           dei--ignore-keys-irrelevant
-           dei--ignore-keys-control-chars)))
+           massmapper--ignore-keys-irrelevant
+           massmapper--ignore-keys-control-chars)))
 
 ;; REVIEW: Test <ctl> x 8 with Deianira active.
 (defvar dei--unnest-avoid-prefixes
@@ -837,8 +841,8 @@ item looks like \(KEY . COMMAND\)."
            (cl-loop
             with case-fold-search = nil
             for map in (current-active-maps)
-            as raw-map = (dei--raw-keymap map)
-            as cleaned = (member map (bound-and-true-p dei--cleaned-maps))
+            as raw-map = (massmapper--raw-keymap map)
+            ;; as cleaned = (member map (bound-and-true-p dei--cleaned-maps))
             append (cl-loop
                     for v being the key-seqs of raw-map using (key-bindings cmd)
                     as key = (key-description v)
@@ -848,9 +852,10 @@ item looks like \(KEY . COMMAND\)."
                                              ignore-event
                                              company-ignore))
                                (string-match-p dei--ignore-regexp-merged key)
-                               (dei--key-has-more-than-one-chord key)
-                               (unless cleaned
-                                 (dei--key-is-illegal key))
+                               (massmapper--key-has-more-than-one-chord key)
+                               ;; (unless cleaned
+                               ;;  (dei--key-is-illegal key))
+                               (dei--key-is-illegal key)
                                ;; (-any-p #'dei--not-on-keyboard (split-string key " "))
                                (cl-loop for prefix in dei--unnest-avoid-prefixes
                                         when (string-prefix-p prefix key)
@@ -867,7 +872,8 @@ item looks like \(KEY . COMMAND\)."
                    (-map #'car result)
                  result))
          (conflicts (cl-loop
-                     for parent in (-uniq (-keep #'dei--parent-key keys))
+                     for parent in (-uniq (-keep #'massmapper--parent-key
+                                                 keys))
                      when (assoc parent keys)
                      collect parent))
          (elapsed (float-time (time-since T))))
@@ -1102,10 +1108,10 @@ the same key."
              (cl-loop
               ;; Since `dei--get-filtered-bindings' returns full keydescs only,
               ;; infer prefixes by cutting the last key off each sequence.
-              for key in (-uniq (-keep #'dei--parent-key (dei--get-filtered-bindings)))
+              for key in (-uniq (-keep #'massmapper--parent-key (dei--get-filtered-bindings)))
               ;; Add ancestors (if we found C-c c p, count C-c c and C-c too).
               as n = (length (split-string key " "))
-              append (-iterate #'dei--parent-key key n))))
+              append (-iterate #'massmapper--parent-key key n))))
 
       ;; Figure out which stems have changed, so we can exploit the previous
       ;; flock's work and skip running defhydra for results we know will be
@@ -1251,6 +1257,27 @@ itself\)."
     ;; We're done, so hide the monster until next time.
     (dei--hide-big-variable)
     "OK"))
+
+
+;;;; Transitional
+
+(make-obsolete-variable
+ 'dei-homogenizing-winners
+ "Deianira has split into two packages, this is now in massmapper!
+ https://github.com/meedstrom/massmapper"
+ "2023-10-30")
+
+(make-obsolete-variable
+ 'dei-keymap-found-hook
+ "Deianira has split into two packages, this is now in massmapper!
+ https://github.com/meedstrom/massmapper"
+ "2023-10-30")
+
+(make-obsolete
+ #'dei-list-remaps
+ "Deianira has split into two packages, this is now in massmapper!
+ https://github.com/meedstrom/massmapper"
+ "2023-10-30")
 
 
 ;;;; Debug toolkit

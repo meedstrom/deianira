@@ -77,6 +77,8 @@ Minimally tested on Emacs 29 and 30.
 The package is not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] (and the often-enabled setting =straight-enable-use-package-integration=), you can install the package like so:
 
 #+begin_src elisp
+(use-package massmapper
+  :straight (massmapper :type git :host github :repo "meedstrom/massmapper"))
 (use-package deianira
   :straight (deianira :type git :host github :repo "meedstrom/deianira"))
 #+end_src
@@ -84,6 +86,7 @@ The package is not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.
 Alternatively with *Doom Emacs*, this goes in =packages.el=:
 
 #+begin_src elisp
+(package! massmapper :recipe (:host github :repo "meedstrom/massmapper"))
 (package! deianira :recipe (:host github :repo "meedstrom/deianira"))
 #+end_src
 
@@ -101,7 +104,7 @@ Possible alternatives to kmonad:
 The buggy and unmaintained [[https://github.com/alols/xcape][xcape]] is NOT an alternative.  Something so fundamental needs to be reliable; when I tried xcape, it could work for a while and then stop.  This leads to giving up on Deianira.
 
 *** What do I need kmonad for?
-Emacs cannot detect the fact that you held down and released Control, Meta or Super, so we need some lower software needs to tell Emacs about it.  Thus, we configure kmonad-keys to send separate key events when you touch the keyboard this way.
+Emacs cannot detect the fact that you held down and released Control, Meta or Super, so we need some lower software needs to tell Emacs about it.  Thus, we configure kmonad to send separate key events when you touch the keyboard this way.
 
 It does not matter which key events will represent this, as the user almost never sees them printed in the echo area.  The default choices are a bit unusual, discussed in [[#if-you-wish-to-change-the-keys][the appendix]].
 
@@ -159,14 +162,14 @@ Change the config file above to look more like the below.  The =tap-hold-next= m
 
 Put into your initfiles something like the following snippet.
 
-Sorry it's so long, but it helps teach you how this stuff works.  If it's any consolation, all of Deianira's source code used to be a giant initfile snippet of mine, and the following is nothing by comparison.
+It may look somewhat involved, but this isn't a place for "sane defaults" or /any/ defaults -- I need to teach you how this stuff works.
 
 #+begin_src elisp
-(require 'deianira-mass-remap)
-(add-hook 'window-buffer-change-functions #'dei--record-keymap-maybe -70)
-(add-hook 'dei-keymap-found-hook #'dei-homogenize-all-keymaps)
-(setq dei-mass-remap-debug-level 1)
-(setq dei-homogenizing-winners
+(require 'massmapper)
+(massmapper-mode)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize-all-keymaps)
+(setq massmapper-debug-level 1)
+(setq massmapper-homogenizing-winners
   '(("C-c C-c")
     (find-file)
     ("C-x C-f" . global-map)
@@ -179,23 +182,23 @@ Sorry it's so long, but it helps teach you how this stuff works.  If it's any co
 (deianira-mode)
 #+end_src
 
-If you have =(setq hydra-is-helpful nil)= somewhere in your initfiles, you'll probably want to revert it to =t= for at least a while.
+If you have =(setq hydra-is-helpful nil)= somewhere in your initfiles, you'll want to revert it to =t= for at least a while to see what's going on.
 
 ** Homogenizing
 
-Let me introduce you to the most important variable, =dei-homogenizing-winners=.  Take ownership of it; Deianira refuses to start if it's nil.  You'll want to customize it gradually over time.   Do you use ~C-x f~ or ~C-x C-f~ more?  It's hard to know when thinking about it, only experience will tell you.  But this is *absolutely key* to becoming comfortable.
+Let me introduce you to the most important variable, =massmapper-homogenizing-winners=.  Take ownership of it; Deianira refuses to start if it's nil.  You'll want to customize it gradually over time.   Do you use ~C-x f~ or ~C-x C-f~ more?  It's hard to know when thinking about it, only experience will tell you.  But this is *absolutely key* to becoming comfortable.
 
-For more info, check the variable's documentation -- type =C-h v dei-homogenizing-winners RET=.
+For more info, check the variable's documentation -- type =C-h v massmapper-homogenizing-winners RET=.
 
-To see what it has done to your Emacs, type =M-x dei-list-remaps RET=.  There is no way to revert these bindings except by restarting Emacs, but that buffer works as a lookup table for what you /used/ to have on a key, if you need a reminder.
+To see what it has done to your Emacs, type =M-x massmapper-list-remaps RET=.  There is no way to revert these bindings except by restarting Emacs, but that buffer works as a lookup table for what you /used/ to have on a key, if you merely want a reminder.
 
 *** Superfluous entries in which-key
 
-If you keep which-key -- I'm not judging -- the following snippet will hide the superfluous entries.
+If you keep which-key, the following snippet will hide the superfluous entries.
 
 #+begin_src elisp
 ;; Hide any key sequence involving more than one chord.  We have no reason to
-;; see them after using `dei-homogenize-all-keymaps'.
+;; see them after using `massmapper-homogenize-keymaps'.
 (with-eval-after-load 'which-key
   (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist))
 #+end_src
@@ -374,7 +377,7 @@ You will not mind the fact that Magit binds ~M-2~ in magit-section-mode-map if y
 
 ** Quitters and quasiquitters
 
-The following variables let you specify additional keys and commands that should exit the hydra and how it should happen.  As with =dei-homogenizing-winners=, experience will tell you over time how to customize these.  Read their docstrings so you're aware of their existence.
+The following variables let you specify additional keys and commands that should exit the hydra and how it should happen.  As with =massmapper-homogenizing-winners=, experience will tell you over time how to customize these.  Read their docstrings so you're aware of their existence.
 
 - =dei-quitter-keys=
 - =dei-quitter-commands=
@@ -636,9 +639,9 @@ Instead of =xset r rate 200 30=:
 If you want access to the hydras from EXWM buffers, configure either =exwm-input-prefix-keys= or =exwm-input-global-keys= so that they passthrough the keys defined in =dei-ersatz-control=, =dei-ersatz-meta= etc.
 ** If you wish to change the keys
 
-We default to the key events Henkan, Katakana, Hiragana and friends because almost all alternatives I've found needs the user to put in some elbow grease to make them work, especially on Wayland.  If you actually write Japanese, you'll need to bind something else.  Here's how.
+We default to the key events Henkan, Katakana, Hiragana and friends because almost all alternatives I've found needs the user to put in some elbow grease to make them work, especially on Wayland.  If you type Japanese, you'll need to bind something else.  Here's how.
 
-The keys we've chosen to represent presses of Control/Meta/Super must be listed doubly -- once in the file =dual-fn.yaml= (which we configured in Installation), and once in the following Customizable variables.
+The keys we've chosen to represent presses of Control/Meta/Super must be listed doubly -- once in the komnad config, and once in the following Customizable variables.
 
 - =dei-ersatz-alt= (default "<hiragana-katakana>")
 - =dei-ersatz-control= (default "<katakana>")
@@ -650,7 +653,7 @@ If you wish to change a keysym, change it in both places!
 
 *** Which keysyms?
 
-In my testing, these keys are predefined on Xkb's =us= layout on the standard pc105 geometry.  In other words, the config you get with =setxkbmap -layout us= .  I find it likely these keys are defined under many other configs too, maybe even all of them?
+In my testing, these keys are predefined on Xkb's =us= layout on the standard pc105 geometry.  In other words, the config you get with =setxkbmap -layout us= .  I find it likely these keys are defined under many other configs too, maybe even all configs?
 
 Additionally... they actually work in my testing under Sway WM (a Wayland compositor), unlike many other predefined keys.  If someone could explain why so many /don't/ work, I'd appreciate it.
 
