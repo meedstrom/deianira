@@ -62,34 +62,6 @@
 (declare-function #'dei-s/body "deianira" nil t)
 
 
-;;;; Constants
-
-(defconst dei--modifier-regexp
-  (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-"))
-  "Regexp for any of the modifiers: \"C-\", \"M-\" etc.
-Upon match, the string segment it matched is always two characters long.
-
-Beware that it will also match a few obscure named function keys,
-such as <ns-drag-n-drop>, where it will match against s- in the
-ns- part.  To guard this, use `dei--modifier-regexp-safe'
-instead, although that has its own flaws.")
-
-(defconst dei--modifier-regexp-safe
-  (rx (or "<" "-" bol " ")
-      (or "A-" "C-" "H-" "M-" "S-" "s-"))
-  "Like `dei--modifier-regexp', but check a preceding character.
-Benefit: it will always match if there's at least one modifier,
-and not count spurious modifier-looking things such as
-<ns-drag-n-drop> which contains an \"s-\".
-
-Drawback: you can't match twice on the same string.  Look at the
-case of M-s-<down>: it'll match M-, but if the search continues
-from there, it will fail to match s- since it's only looking for
-s- preceded by a dash (i.e. \"-s-\"), and our second search
-starts past the first dash.  However, it's fine if you cut the
-string and start a new search on the cut string.")
-
-
 ;;;; User settings
 
 (defcustom dei-hydra-keys
@@ -805,7 +777,7 @@ and no mixed modifiers."
           (not (massmapper--key-seq-is-permachord keydesc)))
      ;; Drop e.g. <f1> C-f.
      (and (not (massmapper--key-starts-with-modifier keydesc))
-          (string-match-p dei--modifier-regexp-safe keydesc)))))
+          (string-match-p massmapper--modifier-regexp-safe keydesc)))))
 
 (defconst dei--ignore-regexp-merged
   (regexp-opt
