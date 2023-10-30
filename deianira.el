@@ -697,7 +697,8 @@ heads suited for a nonum hydra, see `dei--convert-head-for-nonum'."
     (-non-nil
      `(,(if nonum-p
             `("<backspace>" ,(dei--corresponding-hydra stem) :exit t)
-          `("<backspace>" ,(dei--corresponding-hydra (dei--parent-stem stem)) :exit t))
+          `("<backspace>" ,(dei--corresponding-hydra
+                            (massmapper--parent-stem stem)) :exit t))
        ,@(when self-poppers
            (cl-loop for key in self-poppers
                     collect `(,key nil :exit t)))
@@ -1131,7 +1132,9 @@ the same key."
              ;; Sort to avail most relevant hydras soonest.  Longest first now
              ;; means shortest first once we get to `dei--step-4-birth-hydra'.
              finally return
-             (seq-sort-by #'dei--key-seq-steps-length #'> new-stems)))
+             (seq-sort-by #'massmapper--key-seq-steps-length
+                          #'>
+                          new-stems)))
 
       ;; Clear the workbench in case of a previous half-done iteration.
       (setq dei--hydra-blueprints nil)
