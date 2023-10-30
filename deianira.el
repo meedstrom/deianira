@@ -1114,7 +1114,7 @@ the same key."
       (setq dei--changed-stems
             (cl-loop
              for stem in (->> dei--hydrable-prefix-keys
-                              (-map #'dei--prefix-to-stem)
+                              (-map #'massmapper--prefix-to-stem)
                               (append '("C-" "M-" "s-" "H-" "A-"))
                               (-uniq))
              with new-bindings =
