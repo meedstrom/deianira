@@ -16,15 +16,15 @@
 # TODO: More consistent "we", "you", "I"
 # TODO: More consistent "hotkey", "key sequence", "key", "key binding" .. try to pick one.
 
-A [[https://github.com/abo-abo/hydra][hydra]]-based =which-key= banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][hercules.el]] (a "which-key based hydra banisher").  In ancient Greek myth, its namesake Hercules slew the monster called Hydra, but was then slain himself by the [[https://en.wikipedia.org/wiki/Deianira][princess Deianira]].  Bit of a joke-name, but it fits.
+A [[https://github.com/abo-abo/hydra][hydra]]-based =which-key= banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][hercules.el]] (a "which-key based hydra banisher").  In ancient Greek myth, Hercules slew the monster called Hydra, but was then slain himself by the [[https://en.wikipedia.org/wiki/Deianira][princess Deianira]].
 
 * Paradigm
 
 Imagine that after you press the Control key, Emacs behaves as if Control is still pressed for everything you do next, and then that if you press Meta, Emacs switches to behaving as if Meta is pressed.  That's basically what this package does.
 
-The angel's in the details, however.  If it only did the above, that'd be boring, but the sum of its parts is a whole new input paradigm.
+By itself, that isn't revolutionary, but the details come together into a whole new input paradigm.
 
-The paradigm is:
+Implementation
 
 1. All existing key bindings get copied into hydras.
 2. Control, Meta, Super (and Alt and Hyper if you have them) all become "leader keys" which spawn a hydra specific to each.
@@ -33,26 +33,27 @@ The paradigm is:
    - Necessary since I want every keybinding to be typeable by pressing each key in isolation separately, e.g. the sequence ~<ctl> x e~ maps to ~C-x e~, but a sequence like ~<ctl> x <ctl> e~ would have 4---count them, 4---isolated key presses and releases in sequence.  That's Just Bad, so we rule it out and are left with no obvious key sequence that would map to ~C-x C-e~.  Plus, we use the Control key to restart the input sequence, often useful.
 4. Forbid mixing modifiers: we don't allow key sequences with more than a single modifier, like ~C-M-f~, ~M-%~ or  ~C-c M-o~.  I find these gratuitously painful, and anyway there's no way to bring them over to our hydra system without sacrificing other aspects.
 
-The consequences are:
+Consequences
 
-1. We can do what I'll coin "transient exits":  When we the Control hydra is active, we can still type e.g. ~M-f~ like usual to move forward by word, without exiting the Control hydra.  This applies to all our hydras, even cases like the Control-X-prefix, so instead of a sequence like ~C-x t C-n C-x t C-n C-x t~...  you can stay in the Control-X-prefix and do ~t C-n t C-n t~... This would not be possible if we allowed more than one modifier in a hotkey.
+1. We can do what I'll coin "transient exits":  When we the Control hydra is active, we can still type e.g. ~M-f~ like usual to move forward by word, without exiting the Control hydra.  This applies to all our hydras, even cases like the hydra for the Control-X-prefix, so instead of a sequence like ~C-x t C-n C-x t C-n C-x t~...  you can "stay in the Control-X-prefix" and do ~t C-n t C-n t~... This would not be possible if we allowed more than one modifier in a hotkey.
    - In this example, =repeat= wouldn't have helped since you're cycling between two different commands, making it useless.
 2. I find it intuitive, compared to [[https://github.com/emacsorphanage/god-mode][god-mode]] or Spacemacs/Doom.  There is no weird new leader key to learn.  You press the same modifier keys you always have -- Control and Meta -- and that's all there is to it.
 3. We get many benefits of modal editors and skip some of their drawbacks.
-   - For example, instead of entering a mode, running a command, exiting it, and returning to whichever mode you were in, as with the hypothetical sequence ~<ctl> <meta> f <meta> <ctl>~, it's faster to just type ~M-f~ in whatever hydra you were---and remain in that hydra.  This is one of the most /valid/ uses of modifier chords I've seen, otherwise so maligned for ergonomics.
-   - In the rest of this document, I avoid the term "mode" but speak of root hydras (the root level of the Control, Meta or Super trees).
+   - For example, instead of entering a mode, running a command, exiting it, and returning to whichever mode you were in, as with the hypothetical sequence ~<ctl> <meta> f <meta> <ctl>~, it's faster to just type ~M-f~ in whatever hydra you were---and remain in that hydra.  These transient exits are one of the most /valid/ uses of modifier chords I've seen, otherwise so maligned for ergonomics.
+   - In the rest of this document, I avoid the term "mode" but speak of root hydras (the root level of the Control, Meta, Super, Alt or Hyper trees).
 
 My motivations were:
 
-- I wanted a modifier-free life (even dropping Shift, outdoing Vim), and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  *But* as a happy side effect of implementing the vision, I found we need surprisingly little extra typing this way, and sometimes even /less/.
-- I asked myself as a thought experiment how one would use Emacs with an [[https://olkb.com/][OLKB Planck]] or other tiny keyboard.  This constraint sprouted many ideas.  I wanted to bind all commands to lowercase letters, and with Deianira you can if you want.  Planck users won't ever have to use its "Raise" or "Lower" hardware modes just to access a command.  Please observe that no part of the design was sacrificed to support tiny keyboards -- I actually prefer [[https://geekhack.org/index.php?topic=116622][enormous]] keyboards -- and the good fit is a side effect.
+- I wanted a modifier-free life, and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  *But* as a happy side effect of implementing the vision, I found we need surprisingly little extra typing this way, and sometimes even /less/.
+  - I first started to learn Vim, lured in by the promise of "modes instead of Control-chords", but what did I find?  An excessive use of capital letters, about as uncomfortable as Control chords.  So Vim is not chord-free at all.  What a strange oversight in its design.  What's the point?  It's just a version of Emacs that uses Shift instead of Control, and ships some pretty good repeat-maps (i.e. hydras) -- that was Vim's real killer feature all along.  Thus began a glimpse of Deianira: I disagree so much with the idea of having "modes" to help you escape chords, and then typing chords within those modes anyway.
+- I asked myself as a thought experiment how one would use Emacs with an [[https://olkb.com/][OLKB Planck]] or other tiny keyboard.  This constraint sprouted many ideas.  I wondered if you could just bind all commands to sequences of lowercase letters, and with Deianira you can if you want.  Please observe that no part of the design was sacrificed to support tiny keyboards -- I actually prefer [[https://geekhack.org/index.php?topic=116622][enormous]] keyboards -- and the good fit is a side effect.
 
-No "paradigm lock-in"
+No "vendor lock-in"
 
-- We rely on an external Linux utility, [[https://github.com/kmonad/kmonad][kmonad]], to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working somehow, we won't be left dead in the water.  We rely on the [[https://github.com/meedstrom/massmapper][massmapper]] library to mass-remap bindings, which will always work, so your bindings remain in the location you were expecting.  You'll just have to do one of two things:
-  1. Chord at first to start a key sequence, like a normal Emacser (boo hiss).  Even forgetting about the hydra system, the remaps you've made along the way remain accessible, and the bindings are not worse than they were before you started.
-  2. Resort to =xmodmap= or similar tool to wholesale remap the keys normally labelled "Ctrl" and "Alt" to send different key events entirely.  You can no longer chord, but it's a small loss because you get to keep Hydra.  In fact, I suggest this trick anyway as a set of [[#training-wheels][training wheels]].  In my experience, it's preferable to have hydras than modifiers.
-- If you like the aesthetic of the rules described under Paradigm, but decide you don't like the pseudo-modal behavior, you can forgo the hydras entirely.  You can leave it at that, or perhaps nerd yourself into sticky keys and defining more repeat-maps.
+- We rely on an external Linux utility, [[https://github.com/kmonad/kmonad][kmonad]], to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working somehow, we won't be left dead in the water.  Our mass-remapping is done by the [[https://github.com/meedstrom/massmapper][massmapper]] Emacs-Lisp library, which will always work, so your bindings remain in the location you were expecting.  With a kmonad service outage, you'll just have to do one of two things:
+  1. Chord at first to start a key sequence, like a normal Emacser (boo hiss).  Even forgetting about the hydra system, the remaps you've made along the way remain accessible, and the bindings are not worse than before you started.
+  2. Resort to =xmodmap= or similar basic tool to wholesale remap the keys normally labelled "Ctrl" and "Alt" to send different key events entirely.  You can no longer chord, but it's a small loss.  In fact, I suggest this trick anyway as a set of [[#training-wheels][training wheels]].  In my experience, it's preferable to have hydras than modifiers.
+- If you like the aesthetic of the rules described under Implementation, but decide you don't like the pseudo-modal behavior, you can forgo the hydras entirely.  You enable only =massmapper-mode= but not =deianira-mode=.  You can leave it at that, or you can nerd out about defining a lot more repeat-maps or hand-made hydras, and perhaps that's better in some ways.
 
 * Mandatory setup
 If you have a question, welcome to file a GitHub issue, or find my email in the source code.
@@ -377,8 +378,8 @@ The following variables let you specify additional keys and commands that should
 ** Can I keep which-key?
 Yes.
 
-** Can I keep xah-fly-keys?
-In theory, but I haven't tested it.
+** Can I keep ergoemacs/xah-fly-keys?
+In theory... maybe?  I haven't tested them.
 
 ** Can I keep god-mode?
 No.
@@ -444,7 +445,7 @@ While it looks perfectly possible to rewire the package to use the other engines
 
 Let me explain.
 
-The famous collection of Transients known as Magit is, sayeth Internet Truth, a discoverable way to subtly modify any =git= command, beating the command line even for command line aficionados.
+The famous collection of Transients known as Magit is, sayeth Internet Truth, a discoverable way to subtly modify any =git= command, beating the command line even for command line masters.
 
 If we represent all of Emacs' key bindings in Transients, the same way Magit swallowed all of Git's commands, the benefit is unclear compared to doing the same with Hydra, because most of the time, you do not want to modify a command anyway.  But that very fact may boil down to us now having separate commands for all of the following, because we did not have Transient back in the Screaming Eighties:
 
@@ -478,13 +479,14 @@ Deianira cooperates with this; it just uncreatively brings in existing key bindi
 
 It's easy to imagine a Transient that has just one key for the verb "transpose", one key for the verb "kill", one key for the object "char", one key for the object "word" and so on, and then you add adverbs and adjectives.  Once you get to this point, you've reinvented Vim.
 
-But with the masterpiece that is Transient, maybe we could do better than Vim, beating the "Vim paradigm" even for Vim paradigm aficionados, like Magit beats the command line paradigm?
+But with the masterpiece that is Transient, maybe we could do better than Vim, beating the "Vim paradigm" even for Vim masters, like Magit beats the command line paradigm?
 
 As heady as that vision sounds, I'm skeptical whether it'd do much better.  That's where I suggest Deianira can come in, one of a set of twins that together beats Vim at Vimgolf.  Maybe that's just a fever dream.
 
 ** How easy would it be to change engine?
 
 I don't know, but Deianira would not become any simpler.  If you imagine that using the Emacs 28 repeat-maps would uncomplicate the code -- no, the lines of code would multiply.  Hydra provides a satisfactory API.
+
 
 * Notes
 ** Extra modifiers fix everything forever! Or?
