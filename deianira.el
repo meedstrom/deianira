@@ -38,7 +38,7 @@
 
 (defgroup deianira nil
   "Hydra everywhere."
-  :link '(info-link "(deianira)")
+  ;; :link '(info-link "(deianira)")
   :group 'keyboard)
 
 ;; builtin dependencies
@@ -102,7 +102,7 @@ probably."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (kbd it)) new))))
+         (set-default var (--map (key-description (key-parse it)) new))))
 
 (defcustom dei-quasiquitter-commands
   '(set-mark-command
@@ -120,7 +120,7 @@ Note that you do not need to specify shift symbols, as
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (kbd it)) new))))
+         (set-default var (--map (key-description (key-parse it)) new))))
 
 (defcustom dei-stemless-quitters
   '("<menu>"
@@ -134,7 +134,7 @@ to Emacs \"C-x a C-g\", but simply C-g."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (kbd it)) new))))
+         (set-default var (--map (key-description (key-parse it)) new))))
 
 (defcustom dei-quitter-keys
   '()
@@ -148,7 +148,7 @@ probably."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (kbd it)) new))))
+         (set-default var (--map (key-description (key-parse it)) new))))
 
 (defcustom dei-quitter-commands
   '(keyboard-quit
@@ -225,7 +225,7 @@ keystrokes <Ctrl> x TAB calls the binding of C-x TAB."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (kbd it)) new))))
+         (set-default var (--map (key-description (key-parse it)) new))))
 
 
 ;;;; Background facts
@@ -332,7 +332,7 @@ Say you want to call it for each item in a list of Org headings,
 and `next-line' is bound to the standard C-n, then you want to be
 able to type nccnccnccncc."
   (interactive)
-  (call-interactively (key-binding (kbd keydesc)))
+  (call-interactively (key-binding (key-parse keydesc)))
   (let ((init (substring keydesc 0 2)))
     ;; REVIEW: is it better to use call-interactively?
     (cond ((string-search "C-" init) (dei-C/body))
@@ -347,7 +347,7 @@ able to type nccnccnccncc."
   "For use in a hydra: call the key binding of KEYDESC.
 Then return to the parent hydra."
   (interactive)
-  (call-interactively (key-binding (kbd keydesc)))
+  (call-interactively (key-binding (key-parse keydesc)))
   (if-let ((parent (dei--corresponding-hydra
                     (massmapper--parent-stem (massmapper--drop-leaf keydesc)))))
       (call-interactively parent)
@@ -527,11 +527,11 @@ for minutes.")
      ((member (concat stem leaf) dei--hydrable-prefix-keys)
       (dei--corresponding-hydra stem leaf))
      ;; Quasi-quitter, meaning call key and return to root hydra
-     ((or (member (key-binding (kbd key)) dei-quasiquitter-commands)
+     ((or (member (key-binding (key-parse key)) dei-quasiquitter-commands)
           (member key dei-quasiquitter-keys))
       `(lambda ()
          (interactive)
-         (call-interactively (key-binding (kbd ,key)))
+         (call-interactively (key-binding ,(key-parse key)))
          (,(let ((init (substring key 0 2)))
              (cond
               ((string-search "C-" init) (dei--corresponding-hydra "C "))
@@ -541,7 +541,7 @@ for minutes.")
               ((string-search "A-" init) (dei--corresponding-hydra "A ")))))))
      ;; Regular key
      (t
-      `(call-interactively (key-binding (kbd ,key)))))))
+      `(call-interactively (key-binding ,(key-parse key)))))))
 
 (defun dei--head-arg-cmd-will-bind-to-hydra-p (stem leaf)
   (let ((binding (dei--head-arg-cmd stem leaf)))
@@ -552,7 +552,7 @@ for minutes.")
   "See `dei--head'."
   (let* ((sym (if (member (concat stem leaf) dei--hydrable-prefix-keys)
                   (dei--corresponding-hydra stem leaf)
-                (key-binding (kbd (concat stem leaf)))))
+                (key-binding (key-parse (concat stem leaf)))))
          ;; REVIEW: when is sym ever not a symbol?
          (name (if (symbolp sym)
                    (symbol-name sym)
@@ -566,8 +566,8 @@ for minutes.")
 (defun dei--head-arg-exit (stem leaf)
   "See `dei--head'."
   (let ((key (concat stem leaf)))
-    (when (or (member (key-binding (kbd key)) dei-quasiquitter-commands)
-              (member (key-binding (kbd key)) dei-quitter-commands)
+    (when (or (member (key-binding (key-parse key)) dei-quasiquitter-commands)
+              (member (key-binding (key-parse key)) dei-quitter-commands)
               (member key dei-quasiquitter-keys)
               (member key dei-quitter-keys)
               (member key dei--hydrable-prefix-keys)
@@ -775,7 +775,10 @@ and no mixed modifiers."
      (massmapper--key-mixes-modifiers keydesc)
      ;; Drop bastard sequences.
      (and (massmapper--key-has-more-than-one-chord keydesc)
-          (not (massmapper--key-seq-is-permachord keydesc)))
+          ;; REVIEW: I think these two had the same effect, but could have been
+          ;; subtly different.  Write a test?
+          ;; (not (massmapper--key-seq-is-permachord keydesc))
+          (not (massmapper--permachord-p keydesc)))
      ;; Drop e.g. <f1> C-f.
      (and (not (massmapper--key-starts-with-modifier keydesc))
           (string-match-p massmapper--modifier-regexp-safe keydesc)))))
