@@ -24,7 +24,7 @@
 ;; Version: 0.2.1snapshot
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "29.1") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.3.3") (massmapper "0.1.1"))
+;; Package-Requires: ((emacs "24.4") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.3.3") (massmapper "0.1.1"))
 
 ;;; Commentary:
 
@@ -50,6 +50,7 @@
 ;; external dependencies
 (require 'dash)
 (require 'hydra)
+(require 'compat)
 (require 'named-timer) ;; emacs core when?
 (require 'asyncloop) ;; was part of deianira.el
 (require 'massmapper-lib) ;; was part of deianira.el
