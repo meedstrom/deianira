@@ -438,6 +438,7 @@ Optional argument KEYMAP means look only in that keymap."
         (when (null massmapper-homogenizing-winners)
           (deianira-mode 0)
           (user-error "Disabling Deianira, please customize massmapper-homogenizing-winners")))
+    (when dei--loop (asyncloop-cancel dei--loop))
     (named-timer-cancel 'deianira-ctr-decay)
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (keymap-set hydra-base-map "C-u" dei--old-hydra-C-u)
@@ -451,6 +452,8 @@ Optional argument KEYMAP means look only in that keymap."
     (advice-remove #'ido-read-internal #'dei--slay)
     (advice-remove #'ivy-read #'dei--slay)
     (advice-remove #'helm #'dei--slay)))
+
+(defvar dei--loop nil)
 
 (defconst dei--ersatz-keys-alist
   '((dei-ersatz-alt . dei-A/body)
@@ -981,32 +984,32 @@ See `dei--hidden-obarray'."
   (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
   (obarray-remove obarray "dei--flocks"))
 
+(defun dei--actions-on-interrupt (loop)
+  "Abort if excessive interrupts recently."
+  (if (<= dei--interrupts-counter 4)
+      (cl-incf dei--interrupts-counter)
+    (deianira-mode 0)
+    (asyncloop-cancel loop)
+    (dei--hide-big-variable)
+    (message
+     (asyncloop-log loop
+       "5 interrupts last 3 min, disabled deianira-mode!"))))
+
 (defun dei-make-hydras-maybe (&rest _)
   "Maybe make hydras for the current keymap combo."
   (unless (or (and (equal dei--buffer-under-analysis (current-buffer))
                    (equal dei--last-width (frame-width)))
               (equal dei--last-hash (abs (sxhash (current-active-maps)))))
-    (asyncloop-run
-      #'(dei--step-0-check-preexisting
-         dei--step-1-check-settings
-         dei--step-2-model-the-world
-         dei--step-3-draw-blueprint
-         dei--step-4-birth-hydra
-         dei--step-5-register)
-
-      :debug-buffer-name "*deianira*"
-
-      :on-interrupt-discovered
-      (defun dei--actions-on-interrupt (loop)
-        "Abort if excessive interrupts recently."
-        (if (<= dei--interrupts-counter 4)
-            (cl-incf dei--interrupts-counter)
-          (deianira-mode 0)
-          (asyncloop-cancel loop)
-          (dei--hide-big-variable)
-          (message
-           (asyncloop-log loop
-             "5 interrupts last 3 min, disabled deianira-mode!")))))))
+    (setq dei--loop
+          (asyncloop-run
+            (list #'dei--step-0-check-preexisting
+                  #'dei--step-1-check-settings
+                  #'dei--step-2-model-the-world
+                  #'dei--step-3-draw-blueprint
+                  #'dei--step-4-birth-hydra
+                  #'dei--step-5-register)
+            :debug-buffer-name "*deianira*"
+            :on-interrupt-discovered #'dei--actions-on-interrupt))))
 ;; (dei-make-hydras-maybe)
 
 (defun dei--step-0-check-preexisting (loop)
@@ -1106,8 +1109,8 @@ the same key."
       ;; In emacs-lisp-mode, I'm getting a Cxn stem that comes from org-mode,
       ;; because I have no equivalent prefix in emacs-lisp-mode currently.
       ;; Although that issue should anyway not happen if C-x n is bound to a
-      ;; command -- there is an issue there (it was bound to an empty keymap, now
-      ;; fixed).  Still, it casts light on how this algo really works, and I
+      ;; command -- there is an issue there (it was bound to an empty keymap,
+      ;; now fixed).  Still, it casts light on how this algo really works, and I
       ;; think I need a flowchart before I remove this comment, just to ensure
       ;; that all edge cases will be taken care of.
       (setq dei--current-bindings (dei--get-filtered-bindings t))
