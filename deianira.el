@@ -731,16 +731,16 @@ instead of anything else they may have been bound to."
     (cons name heads)))
 
 ;; NOTE: Further improving performance is not a priority, but here's where the
-;; package spends 50-80% of CPU time.  It's a bit slow because defhydra does a lot
-;; of heavy lifting and was not meant to be used this way.  Approaches:
-;; 1. Make a focused subset of defhydra (possible?).
-;; 2. Make a defhydra variant that produces less garbage (now every 15-20
-;;    iterations of this wrapper produces 16 MB of garbage).
-;; 3. Reduce workload by giving up on the self-inserting quitters (principally
+;; package spends over 50% of CPU time.  I guess defhydra was not meant to be
+;; used in a performance-intensive way.  Approaches:
+;; 1. Make a defhydra-lite that does only what Deianira needs.
+;; 2. Reduce workload by giving up on the self-inserting quitters (principally
 ;;    capital keys) since there are many of those heads, or giving up on nonum
 ;;    hydras.
-;; 4. Somehow dodge the need to `eval' a quoted sexp, then perhaps the
-;;    byte-compiler can help?
+;; 3. Somehow dodge the need to `eval' a quoted sexp, then perhaps the
+;;    byte-compiler can help?  I don't really see a way without rewriting
+;;    defhydra as a defun, and I think only abo-abo could do
+;;    that unless someone has the itch real bad.
 (defun dei--try-birth-hydra (recipe)
   "Create a hydra named NAME with LIST-OF-HEADS.
 This will probably be called by `dei-make-hydras-maybe'."
@@ -871,7 +871,6 @@ item looks like \(KEY . COMMAND\)."
 ;; That's not true async, but it makes no difference to the user and it's easier
 ;; to debug than true async.
 
-(defvar dei--stems nil "List of stems to be forged as hydras.")
 (defvar dei--hydra-blueprints nil "List of arglists to pass to defhydra.")
 (defvar dei--buffer-under-analysis nil "The buffer to consult for bindings.")
 (defvar dei--current-hash 0 "The current keymap composite.")
@@ -905,7 +904,7 @@ long as they don't change.")
   "Alist relating keymap composites with hydra flocks.")
 
 (cl-defstruct (dei--flock
-               (:constructor dei--flock-record)
+               (:constructor dei--flock-define)
                (:copier nil))
   hash
   width
@@ -913,18 +912,18 @@ long as they don't change.")
   vars
   bindings)
 
-(defun dei--first-flock-by-hash (hash)
-  "Return a flock with :hash HASH, among `dei--flocks'."
-  (cl-loop for flock in dei--flocks
+(defun dei--first-flock-by-hash (hash flocks)
+  "Return a flock with :hash HASH, among FLOCKS."
+  (cl-loop for flock in flocks
            when (eq hash (dei--flock-hash flock))
            return flock))
 
 ;; Maybe this could be sped up with a hash table -- contrive an unique key for
 ;; each flock object by adding hash and width -- but I doubt we have a
 ;; bottleneck here.
-(defun dei--flock-by-hash-and-width (hash width)
-  "Return the flock with :hash HASH and :width WIDTH."
-  (cl-loop for flock in dei--flocks
+(defun dei--flock-by-hash-and-width (hash width flocks)
+  "Return flock with HASH and WIDTH from FLOCKS."
+  (cl-loop for flock in flocks
            when (and (eq hash (dei--flock-hash flock))
                      (eq width (dei--flock-width flock)))
            return flock))
@@ -1012,28 +1011,65 @@ See `dei--hidden-obarray'."
             :on-interrupt-discovered #'dei--actions-on-interrupt))))
 ;; (dei-make-hydras-maybe)
 
+;; (defun dei-make-hydras-maybe* (&rest _)
+;;   "Maybe make hydras for the current keymap combo."
+;;   (unless (or (and (equal dei--buffer-under-analysis (current-buffer))
+;;                    (equal dei--last-width (frame-width)))
+;;               (equal dei--last-hash (abs (sxhash (current-active-maps)))))
+;;     (dei--resume (setq dei--loop
+;;                        (make-dei-queue
+;;                         (list #'dei--step-0-check-preexisting
+;;                               #'dei--step-1-check-settings
+;;                               #'dei--step-2-model-the-world
+;;                               #'dei--step-3-draw-blueprint
+;;                               #'dei--step-4-birth-hydra
+;;                               #'dei--step-5-register))))))
+
+;; (cl-defstruct dei-queue
+;;   fns)
+
+;; (defun dei--eat (queue)
+;;   (funcall (car (dei-queue-fns queue)) queue)
+;;   (pop (dei-queue-fns queue))
+;;   (if (dei-queue-fns queue)
+;;       (dei--eat queue)
+;;     (message "All done"))
+;;   nil)
+
+;; (defun dei--resume (queue)
+;;   (when (while-no-input (dei--eat queue))
+;;     (message "Pausing for a moment")
+;;     (run-with-idle-timer 1 nil #'dei--resume queue)))
+
 (defun dei--step-0-check-preexisting (loop)
-  (setq dei--buffer-under-analysis (current-buffer))
-  (setq dei--flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
-  (setq dei--current-hash (abs (sxhash (current-active-maps))))
-  (setq dei--current-width (frame-width))
-  ;; If we already made hydras for this keymap composite, restore from cache.
-  (let ((some-flock (dei--first-flock-by-hash dei--current-hash)))
+  (let* ((buffer (current-buffer))
+         (flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
+         (hash (abs (sxhash (current-active-maps))))
+         (width (frame-width))
+         ;; If we already made hydras for this keymap composite, restore from cache.
+         ;; todo: pass in flocks instead of it being implicit
+         (some-flock (dei--first-flock-by-hash hash flocks)))
+    (setq dei--buffer-under-analysis buffer)
+    (setq dei--last-width width)
+    (setq dei--last-hash hash)
     (when some-flock
-      (let* ((past (dei--flock-by-hash-and-width dei--current-hash dei--current-width))
-             (existed (not (null past))))
-        (unless past
-          (setq past (dei--rehint-flock some-flock))
-          (setq dei--last-width dei--current-width)
-          (push past dei--flocks))
-        ;; Point names to already made values.  Beautiful.
-        (cl-loop for x in (dei--flock-funs past) do (fset (car x) (cdr x)))
-        (cl-loop for x in (dei--flock-vars past) do (set (car x) (cdr x)))
-        (setq dei--last-bindings (dei--flock-bindings past))
-        (setq dei--last-hash dei--current-hash)
+      (let* ((past (dei--flock-by-hash-and-width hash width flocks))
+             (existed (if past
+                          t
+                        (setq past (dei--rehint-flock some-flock))
+                        nil))
+             (last-bindings (dei--flock-bindings past))
+             (funs (dei--flock-funs past))
+             (vars (dei--flock-vars past)))
+        ;; TODO: Batch the next 5 lines like a db transaction
+        (setq dei--last-bindings last-bindings)
+        (setq dei--current-hash hash)
+        (setq dei--current-width width)
+        ;; Point names to already-made values.  Beautiful.
+        (cl-loop for x in funs do (fset (car x) (cdr x)))
+        (cl-loop for x in vars do (set (car x) (cdr x)))
         ;; Do not proceed to next steps
         (asyncloop-cancel loop)
-        (dei--hide-big-variable)
         (if existed
             (format "Flock exists, making current: %d" dei--current-hash)
           (format "Converting to %d chars wide: %d" dei--current-width dei--current-hash))))))
@@ -1118,7 +1154,7 @@ the same key."
       ;; The price of rigor: even if only C-c c p 4 changed, we'll have to
       ;; rebuild hydras for C-c, C-c c, and C-c c p, because it may be that each
       ;; of these levels previously didn't exist but for that last binding (rare,
-      ;; but happens). TODO: Figure out a way to skip that most of the time
+      ;; but happens). TODO: Figure out a way to skip that most of the time.
       (setq dei--changed-stems
             (cl-loop
              for stem in (->> dei--hydrable-prefix-keys
@@ -1150,9 +1186,10 @@ the same key."
       (format "Changed stems: %S" dei--changed-stems))))
 
 (defun dei--step-3-draw-blueprint (loop &optional oneshot)
-  "Draw blueprint for the first item of `dei--stems'.
-Specifically, pop a stem off the list `dei--stems', transmute it into
-a blueprint, and push that onto the list `dei--hydra-blueprints'.
+  "Draw blueprint for the first item of `dei--changed-stems'.
+Specifically, pop a stem off the list `dei--changed-stems',
+transmute it into a blueprint, and push that onto the list
+`dei--hydra-blueprints'.
 
 What is meant by \"blueprint\" is a list of arguments that we
 precompute as much as possible, that we'll later pass to
@@ -1160,57 +1197,44 @@ precompute as much as possible, that we'll later pass to
 
 Repeatedly add another invocation of this function to the front
 of asyncloop LOOP, so it will run again until
-`dei--stems' is empty.  With ONESHOT non-nil, don't do that \(so
-the programmer can debug by running the function once by
-itself\)."
+`dei--changed-stems' is empty."
   (unless (dei--abort-if-buffer-killed loop)
-    (unwind-protect
-        (when dei--changed-stems
-          (with-current-buffer dei--buffer-under-analysis
-            (let* ((stem (car dei--changed-stems))
-                   (name (dei--dub-hydra-from-key-or-stem stem))
-                   (h1 (dei--specify-hydra stem (concat name "-nonum") t))
-                   (h2 (dei--specify-hydra stem name)))
-              ;; TODO: Do a 'transaction' that can be rolled back
-              (push h1 dei--hydra-blueprints)
-              (push h2 dei--hydra-blueprints)
-              (pop dei--changed-stems)
-              stem)))
-      ;; Run again if more to do.
-      ;; NOTE: If there was an error, the push alone won't trigger a re-run, so
-      ;; I don't expect an infinite error loop.
-      (when dei--changed-stems
-        (unless oneshot
-          (push #'dei--step-3-draw-blueprint (asyncloop-remainder loop)))))))
+    (if (null dei--changed-stems)
+        "All blueprints drawn"
+      (with-current-buffer dei--buffer-under-analysis
+        (let* ((stem (car dei--changed-stems))
+               (name (dei--dub-hydra-from-key-or-stem stem))
+               (h1 (dei--specify-hydra stem (concat name "-nonum") t))
+               (h2 (dei--specify-hydra stem name)))
+          ;; TODO: Batch the next 3 lines like a db transaction
+          (push h1 dei--hydra-blueprints)
+          (push h2 dei--hydra-blueprints)
+          (pop dei--changed-stems)
+          stem)))))
 
-(defun dei--step-4-birth-hydra (loop &optional oneshot)
+(defun dei--step-4-birth-hydra (loop)
   "Pass a blueprint to `defhydra', wetting the dry-run.
 Each invocation pops one blueprint off `dei--hydra-blueprints'.
 
 Repeatedly add another invocation of this function to the front
 of asyncloop LOOP, so it will run again until
-`dei--hydra-blueprints' is empty.  With ONESHOT non-nil, don't do
-that \(so the programmer can debug by running the function once by
-itself\)."
+`dei--hydra-blueprints' is empty."
   (unless (dei--abort-if-buffer-killed loop)
-    ;; REVIEW: Maybe instead of an unwind-protect, use a condition-case and just
-    ;; call `asyncloop-cancel' after an error so there's no way to arrive to
-    ;; `dei--step-5-register' with an incomplete hydra-set anyway.
-    (unwind-protect
-        (when dei--hydra-blueprints
-          (dei--try-birth-hydra (car dei--hydra-blueprints))
-          (prog1 (car (car dei--hydra-blueprints))
-            (pop dei--hydra-blueprints)))
-      ;; Run again if more to do
-      (when dei--hydra-blueprints
-        (unless oneshot
-          (push #'dei--step-4-birth-hydra (asyncloop-remainder loop)))))))
+    (if (null dei--hydra-blueprints)
+        "All hydras born"
+      (dei--try-birth-hydra (car dei--hydra-blueprints))
+      ;; TODO: Batch the next 2 lines like a db transaction
+      (push #'dei--step-4-birth-hydra (asyncloop-remainder loop))
+      (car (pop dei--hydra-blueprints)))))
 
 (defun dei--step-5-register (loop)
   "Record the hydras made under this keymap combination."
   ;; (when (assoc dei--current-hash dei--flocks)
   ;;   (error "Hash already recorded: %s" dei--current-hash))
-  (let (funs vars)
+  (let ((flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
+        funs
+        vars)
+    ;; Prepare FUNS and VARS.
     ;; All symbols generated by `defhydra' contain a slash in the name, so just
     ;; collect all such names from the global obarray.  Note that this will
     ;; also catch syms no longer used by the current flock, which is slightly
@@ -1225,19 +1249,20 @@ itself\)."
            (push (cons sym (symbol-function sym)) funs))
          (when (boundp sym)
            (push (cons sym (symbol-value sym)) vars)))))
-    (push (dei--flock-record
+    (push (dei--flock-define
            :hash dei--current-hash
            :width dei--current-width
            :funs funs
            :vars vars
            :bindings dei--current-bindings)
-          dei--flocks)
+          flocks)
+    ;; Finally save the flock
+    ;; TODO: Batch the next 3 lines like a db transaction
     (setq dei--last-bindings dei--current-bindings)
     (setq dei--last-hash dei--current-hash)
+    (set (obarray-put dei--hidden-obarray "dei--flocks") flocks)
     (asyncloop-log loop
-      "Flock #%d born: %s" (length dei--flocks) dei--current-hash)
-    ;; We're done, so hide the monster until next time.
-    (dei--hide-big-variable)
+      "Flock #%d born: %s" (length flocks) dei--current-hash)
     "OK"))
 
 
