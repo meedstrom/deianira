@@ -21,7 +21,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.2
+;; Version: 0.2.3
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "24.4") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.3.3") (massmapper "0.1.1"))
@@ -384,7 +384,7 @@ Then return to the parent hydra."
   "Find to which keys COMMAND is bound.
 Optional argument KEYMAP means look only in that keymap."
   (->> (where-is-internal command (when keymap (list keymap)))
-       (-map #'dei--normalized-key-description)
+       (-map #'key-description)
        (--remove (string-match-p dei--ignore-regexp-merged it))))
 
 ;;;###autoload
@@ -802,7 +802,7 @@ and no mixed modifiers."
 ;; REVIEW: Test <ctl> x 8 with Deianira active.
 (defvar dei--unnest-avoid-prefixes
   (cons "C-x 8"
-        (mapcar #'dei--normalized-key-description
+        (mapcar #'key-description
                 (where-is-internal #'iso-transl-ctl-x-8-map)))
   "List of prefixes to avoid looking up.")
 
@@ -829,7 +829,9 @@ item looks like \(KEY . COMMAND\)."
             ;; as cleaned = (member map (bound-and-true-p dei--cleaned-maps))
             append (cl-loop
                     for v being the key-seqs of raw-map using (key-bindings cmd)
-                    as key = (dei--normalized-key-description v)
+                    as key = (key-description v)
+                    ;; major problem
+                    ;; as key = (dei--normalized-key-description v)
                     unless (or (member cmd '(nil
                                              self-insert-command
                                              ignore
@@ -1135,8 +1137,11 @@ the same key."
              when it collect it into new-stems
              ;; Sort to avail most relevant hydras soonest.  Longest key-seqs
              ;; first now means shortest first once we get to
-             ;; `dei--step-4-birth-hydras'.
-             finally return (reverse new-stems)))
+             ;; `dei--step-4-birth-hydras', so the important hydras like C- and C-x
+             ;; are among the first to come into existence.
+             finally return (seq-sort-by #'massmapper--key-seq-steps-length
+                                         #'>
+                                         new-stems)))
 
       ;; Clear the workbench in case of a previous half-done iteration.
       (setq dei--hydra-blueprints nil)
