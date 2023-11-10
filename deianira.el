@@ -54,6 +54,7 @@
 (require 'named-timer) ;; emacs core when?
 (require 'asyncloop) ;; was part of deianira.el
 (require 'massmapper-lib) ;; was part of deianira.el
+(require 'deianira-obsoletes)
 
 ;; muffle the compiler
 (declare-function #'dei-A/body "deianira" nil t)
@@ -103,7 +104,7 @@ probably."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (key-parse it)) new))))
+         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
 
 (defcustom dei-quasiquitter-commands
   '(set-mark-command
@@ -121,7 +122,7 @@ Note that you do not need to specify shift symbols, as
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (key-parse it)) new))))
+         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
 
 (defcustom dei-stemless-quitters
   '("<menu>"
@@ -135,7 +136,7 @@ to Emacs \"C-x a C-g\", but simply C-g."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (key-parse it)) new))))
+         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
 
 (defcustom dei-quitter-keys
   '()
@@ -149,7 +150,7 @@ probably."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (key-parse it)) new))))
+         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
 
 (defcustom dei-quitter-commands
   '(keyboard-quit
@@ -226,7 +227,7 @@ keystrokes <Ctrl> x TAB calls the binding of C-x TAB."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (key-description (key-parse it)) new))))
+         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
 
 
 ;;;; Background facts
@@ -375,11 +376,15 @@ Then return to the parent hydra."
   (unless (zerop dei--interrupts-counter)
     (cl-decf dei--interrupts-counter)))
 
+(defun dei--normalized-key-description (vec)
+  (declare (pure t) (side-effect-free t))
+  (massmapper--normalize (key-description vec)))
+
 (defun dei--on-which-keys (command &optional keymap)
   "Find to which keys COMMAND is bound.
 Optional argument KEYMAP means look only in that keymap."
   (->> (where-is-internal command (when keymap (list keymap)))
-       (-map #'key-description)
+       (-map #'dei--normalized-key-description)
        (--remove (string-match-p dei--ignore-regexp-merged it))))
 
 ;;;###autoload
@@ -466,17 +471,16 @@ Never expected to change.  Customize `dei-ersatz-alt' & co
 instead.")
 
 (defvar dei--hidden-obarray (obarray-make)
-  "Place to store the big variable `dei--flocks'.
-The variable is only needed while the hydra maker is at work.  In
-the meantime, if we didn't hide it and the user reads the
-source code and places point on `dei--flocks', eldoc may choke
-for minutes.")
+  "Place to store the huge variable named \"flocks\".
+Reason not to store it in the global obarray as simply just
+another variable \"dei--flocks\" is that when the user reads the
+source code and happens to place point on \"dei--flocks\", eldoc
+chokes for minutes, during which time Emacs is unresponsive.")
 
 (defun dei--set-ersatz-key (sym newkey)
   "Bind SYM to NEWKEY, and help other code cope with the change."
   ;; Reset all hydras because value gets hardcoded by `dei--specify-extra-heads'
-  (setq dei--flocks nil)
-  (obarray-remove dei--hidden-obarray "dei--flocks")
+  (obarray-remove dei--hidden-obarray "flocks")
   ;; Unbind last key in case it was different
   (when (boundp sym)
     (keymap-unset deianira-mode-map (symbol-value sym) t))
@@ -732,15 +736,15 @@ instead of anything else they may have been bound to."
 
 ;; NOTE: Further improving performance is not a priority, but here's where the
 ;; package spends over 50% of CPU time.  I guess defhydra was not meant to be
-;; used in a performance-intensive way.  Approaches:
-;; 1. Make a defhydra-lite that does only what Deianira needs.
-;; 2. Reduce workload by giving up on the self-inserting quitters (principally
+;; used in a performance-intensive way, especially when quoted.  Approaches:
+;; 1. Dodge the need to `eval' a quoted macro, so the byte-compiler can help.
+;;    I don't really see a way without rewriting defhydra as a defun that suits
+;;    our purposes.  I doubt I'm capable of doing so without abo-abo's advice
+;;    since the perf is not an itch for me anymore.
+;; 2. Make a defhydra-lite that does only what Deianira needs.
+;; 3. Reduce workload by giving up on the self-inserting quitters (principally
 ;;    capital keys) since there are many of those heads, or giving up on nonum
 ;;    hydras.
-;; 3. Somehow dodge the need to `eval' a quoted sexp, then perhaps the
-;;    byte-compiler can help?  I don't really see a way without rewriting
-;;    defhydra as a defun, and I think only abo-abo could do
-;;    that unless someone has the itch real bad.
 (defun dei--try-birth-hydra (recipe)
   "Create a hydra named NAME with LIST-OF-HEADS.
 This will probably be called by `dei-make-hydras-maybe'."
@@ -798,7 +802,7 @@ and no mixed modifiers."
 ;; REVIEW: Test <ctl> x 8 with Deianira active.
 (defvar dei--unnest-avoid-prefixes
   (cons "C-x 8"
-        (mapcar #'key-description
+        (mapcar #'dei--normalized-key-description
                 (where-is-internal #'iso-transl-ctl-x-8-map)))
   "List of prefixes to avoid looking up.")
 
@@ -825,7 +829,7 @@ item looks like \(KEY . COMMAND\)."
             ;; as cleaned = (member map (bound-and-true-p dei--cleaned-maps))
             append (cl-loop
                     for v being the key-seqs of raw-map using (key-bindings cmd)
-                    as key = (key-description v)
+                    as key = (dei--normalized-key-description v)
                     unless (or (member cmd '(nil
                                              self-insert-command
                                              ignore
@@ -852,8 +856,7 @@ item looks like \(KEY . COMMAND\)."
                    (-map #'car result)
                  result))
          (conflicts (cl-loop
-                     for parent in (-uniq (-keep #'massmapper--parent-key
-                                                 keys))
+                     for parent in (-uniq (-keep #'massmapper--parent-key keys))
                      when (assoc parent keys)
                      collect parent))
          (elapsed (float-time (time-since T))))
@@ -874,9 +877,7 @@ item looks like \(KEY . COMMAND\)."
 (defvar dei--hydra-blueprints nil "List of arglists to pass to defhydra.")
 (defvar dei--buffer-under-analysis nil "The buffer to consult for bindings.")
 (defvar dei--current-hash 0 "The current keymap composite.")
-(defvar dei--last-hash 0 "Hash of the keymap composite of the last buffer.")
-(defvar dei--last-width 0 "Last seen frame width.")
-(defvar dei--current-width (frame-width) "Width of current frame.")
+(defvar dei--current-width (frame-width) "Width of frame under analysis.")
 (defvar dei--current-bindings nil "List of current bindings.")
 (defvar dei--last-bindings nil "The bindings in the last buffer analyzed.")
 (defvar dei--changed-stems nil "Stems that need redefining since last analysis.")
@@ -895,13 +896,6 @@ item looks like \(KEY . COMMAND\)."
 When they change, we want to carry out some re-calculations, but
 we don't want to do them super-often so we skip doing them as
 long as they don't change.")
-
-;; Sidenote: If we had a deterministic hash function (`sxhash' is not
-;; deterministic across restarts), we could even restore this variable from
-;; disk.  That was an idea, but it won't be necessary as the package is finally
-;; so fast it doesn't even slow down my 2009 Eee PC.  Never thought it possible.
-(defvar dei--flocks nil
-  "Alist relating keymap composites with hydra flocks.")
 
 (cl-defstruct (dei--flock
                (:constructor dei--flock-define)
@@ -947,7 +941,7 @@ long as they don't change.")
            (let ((basename (substring (symbol-name (car pair)) 0 -5)))
              (cons (car pair)
                    ;; Note that we eval for a static string, see also
-                   ;; `dei--step-4-birth-hydra'.  It's ok bc the there is nothing
+                   ;; `dei--step-4-birth-hydras'.  It's ok bc the there is nothing
                    ;; dynamic in the input, so the result is deterministic.
                    (eval (hydra--format
                           ;; These arguments will be identical to what `defhydra'
@@ -972,16 +966,9 @@ long as they don't change.")
   "Cancel loop LOOP if buffer killed.
 Otherwise, return nil."
   (unless (buffer-live-p dei--buffer-under-analysis)
-    (asyncloop-cancel loop)
-    (dei--hide-big-variable)
     (asyncloop-log loop
-      "Cancelling because buffer killed: %s" dei--buffer-under-analysis)))
-
-(defun dei--hide-big-variable ()
-  "Hide the monster variable.
-See `dei--hidden-obarray'."
-  (set (obarray-put dei--hidden-obarray "dei--flocks") dei--flocks)
-  (obarray-remove obarray "dei--flocks"))
+      "Cancelling because buffer killed: %s" dei--buffer-under-analysis)
+    (asyncloop-cancel loop)))
 
 (defun dei--actions-on-interrupt (loop)
   "Abort if excessive interrupts recently."
@@ -989,90 +976,63 @@ See `dei--hidden-obarray'."
       (cl-incf dei--interrupts-counter)
     (deianira-mode 0)
     (asyncloop-cancel loop)
-    (dei--hide-big-variable)
     (message
      (asyncloop-log loop
        "5 interrupts last 3 min, disabled deianira-mode!"))))
 
 (defun dei-make-hydras-maybe (&rest _)
   "Maybe make hydras for the current keymap combo."
+  ;; This condition could do with a human comment, because damn.  I think I
+  ;; "simplified" it from a larger set of conditions once I saw that it would be
+  ;; equivalent.  Now I can't edit it without thinking very hard.
   (unless (or (and (equal dei--buffer-under-analysis (current-buffer))
-                   (equal dei--last-width (frame-width)))
-              (equal dei--last-hash (abs (sxhash (current-active-maps)))))
+                   (equal dei--current-width (frame-width)))
+              (equal dei--current-hash (abs (sxhash (current-active-maps)))))
     (setq dei--loop
           (asyncloop-run
-            (list #'dei--step-0-check-preexisting
+            (list #'dei--step-0-find-preexisting
                   #'dei--step-1-check-settings
                   #'dei--step-2-model-the-world
-                  #'dei--step-3-draw-blueprint
-                  #'dei--step-4-birth-hydra
+                  #'dei--step-3-draw-blueprints
+                  #'dei--step-4-birth-hydras
                   #'dei--step-5-register)
             :debug-buffer-name "*deianira*"
+            :immediate-break-on-input t
             :on-interrupt-discovered #'dei--actions-on-interrupt))))
 ;; (dei-make-hydras-maybe)
 
-;; (defun dei-make-hydras-maybe* (&rest _)
-;;   "Maybe make hydras for the current keymap combo."
-;;   (unless (or (and (equal dei--buffer-under-analysis (current-buffer))
-;;                    (equal dei--last-width (frame-width)))
-;;               (equal dei--last-hash (abs (sxhash (current-active-maps)))))
-;;     (dei--resume (setq dei--loop
-;;                        (make-dei-queue
-;;                         (list #'dei--step-0-check-preexisting
-;;                               #'dei--step-1-check-settings
-;;                               #'dei--step-2-model-the-world
-;;                               #'dei--step-3-draw-blueprint
-;;                               #'dei--step-4-birth-hydra
-;;                               #'dei--step-5-register))))))
-
-;; (cl-defstruct dei-queue
-;;   fns)
-
-;; (defun dei--eat (queue)
-;;   (funcall (car (dei-queue-fns queue)) queue)
-;;   (pop (dei-queue-fns queue))
-;;   (if (dei-queue-fns queue)
-;;       (dei--eat queue)
-;;     (message "All done"))
-;;   nil)
-
-;; (defun dei--resume (queue)
-;;   (when (while-no-input (dei--eat queue))
-;;     (message "Pausing for a moment")
-;;     (run-with-idle-timer 1 nil #'dei--resume queue)))
-
-(defun dei--step-0-check-preexisting (loop)
+(defun dei--step-0-find-preexisting (loop)
   (let* ((buffer (current-buffer))
-         (flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
+         (flocks (symbol-value (obarray-get dei--hidden-obarray "flocks")))
          (hash (abs (sxhash (current-active-maps))))
          (width (frame-width))
-         ;; If we already made hydras for this keymap composite, restore from cache.
-         ;; todo: pass in flocks instead of it being implicit
+         ;; If we already made hydras for this keymap composite, restore from
+         ;; cache.
          (some-flock (dei--first-flock-by-hash hash flocks)))
     (setq dei--buffer-under-analysis buffer)
-    (setq dei--last-width width)
-    (setq dei--last-hash hash)
+    (setq dei--current-hash hash)
+    (setq dei--current-width width)
     (when some-flock
       (let* ((past (dei--flock-by-hash-and-width hash width flocks))
              (existed (if past
                           t
                         (setq past (dei--rehint-flock some-flock))
                         nil))
-             (last-bindings (dei--flock-bindings past))
+             (bindings (dei--flock-bindings past))
              (funs (dei--flock-funs past))
              (vars (dei--flock-vars past)))
-        ;; TODO: Batch the next 5 lines like a db transaction
-        (setq dei--last-bindings last-bindings)
-        (setq dei--current-hash hash)
-        (setq dei--current-width width)
-        ;; Point names to already-made values.  Beautiful.
-        (cl-loop for x in funs do (fset (car x) (cdr x)))
-        (cl-loop for x in vars do (set (car x) (cdr x)))
+        ;; NOTE: It's ok to be interrupted by user activity, this function will
+        ;; just finish the work later.
+        ;; Reuse cached values.  Beautiful.
+        (cl-loop for (sym . val) in funs do (fset sym val))
+        (cl-loop for (sym . val) in vars do (set sym val))
+        (setq dei--last-bindings bindings)
         ;; Do not proceed to next steps
         (asyncloop-cancel loop)
         (if existed
-            (format "Flock exists, making current: %d" dei--current-hash)
-          (format "Converting to %d chars wide: %d" dei--current-width dei--current-hash))))))
+            (format "Summoned flock %d" hash)
+          ;; TODO: after conversion, it should be registered (goto step 5)
+          (format "Converted to %d chars wide: %d" width hash))))))
 
 ;; REVIEW: Maybe write it simpler somehow
 (defun dei--step-1-check-settings (loop)
@@ -1117,8 +1077,9 @@ the same key."
             dei--colwidth (dei--colwidth-recalc)
             dei--filler (dei--filler-recalc))
 
-      ;; Figure out dei--hydrable-prefix-keys, to lookup when making hydra-heads.
-      ;; Also used to figure out dei--changed-stems.
+      ;; Calculate dei--hydrable-prefix-keys, which has two uses:
+      ;; - it's looked up when making hydra-heads
+      ;; - it's used to calculate dei--changed-stems
       (setq dei--hydrable-prefix-keys
             (-uniq
              (cl-loop
@@ -1172,20 +1133,17 @@ the same key."
                       when (string-prefix-p stem (car binding))
                       return stem)
              when it collect it into new-stems
-             ;; Sort to avail most relevant hydras soonest.  Longest first now
-             ;; means shortest first once we get to `dei--step-4-birth-hydra'.
-             finally return
-             (seq-sort-by #'massmapper--key-seq-steps-length
-                          #'>
-                          new-stems)))
+             ;; Sort to avail most relevant hydras soonest.  Longest key-seqs
+             ;; first now means shortest first once we get to
+             ;; `dei--step-4-birth-hydras'.
+             finally return (reverse new-stems)))
 
       ;; Clear the workbench in case of a previous half-done iteration.
       (setq dei--hydra-blueprints nil)
 
-      ;; (format "Buffer %S" dei--buffer-under-analysis)
       (format "Changed stems: %S" dei--changed-stems))))
 
-(defun dei--step-3-draw-blueprint (loop &optional oneshot)
+(defun dei--step-3-draw-blueprints (loop)
   "Draw blueprint for the first item of `dei--changed-stems'.
 Specifically, pop a stem off the list `dei--changed-stems',
 transmute it into a blueprint, and push that onto the list
@@ -1193,55 +1151,57 @@ transmute it into a blueprint, and push that onto the list
 
 What is meant by \"blueprint\" is a list of arguments that we
 precompute as much as possible, that we'll later pass to
-`defhydra' in `dei--step-4-birth-hydra'.
+`defhydra' in `dei--step-4-birth-hydras'.
 
 Repeatedly add another invocation of this function to the front
 of asyncloop LOOP, so it will run again until
-`dei--changed-stems' is empty."
+`dei--changed-stems' empty."
   (unless (dei--abort-if-buffer-killed loop)
     (if (null dei--changed-stems)
         "All blueprints drawn"
-      (with-current-buffer dei--buffer-under-analysis
-        (let* ((stem (car dei--changed-stems))
-               (name (dei--dub-hydra-from-key-or-stem stem))
-               (h1 (dei--specify-hydra stem (concat name "-nonum") t))
-               (h2 (dei--specify-hydra stem name)))
-          ;; TODO: Batch the next 3 lines like a db transaction
-          (push h1 dei--hydra-blueprints)
-          (push h2 dei--hydra-blueprints)
-          (pop dei--changed-stems)
-          stem)))))
+      (let* ((stem (car dei--changed-stems))
+             (name (dei--dub-hydra-from-key-or-stem stem))
+             (h1 (dei--specify-hydra stem (concat name "-nonum") t))
+             (h2 (dei--specify-hydra stem name)))
+        ;; Side-effects start here
+        ;; Reliable side-effects
+        (push h1 dei--hydra-blueprints)
+        (push h2 dei--hydra-blueprints)
+        (push #'dei--step-3-draw-blueprint (asyncloop-remainder loop))
+        (pop dei--changed-stems)))))
 
-(defun dei--step-4-birth-hydra (loop)
+(defun dei--step-4-birth-hydras (loop)
   "Pass a blueprint to `defhydra', wetting the dry-run.
 Each invocation pops one blueprint off `dei--hydra-blueprints'.
 
 Repeatedly add another invocation of this function to the front
 of asyncloop LOOP, so it will run again until
-`dei--hydra-blueprints' is empty."
+`dei--hydra-blueprints' empty."
   (unless (dei--abort-if-buffer-killed loop)
     (if (null dei--hydra-blueprints)
         "All hydras born"
+      ;; Side-effects start here
       (dei--try-birth-hydra (car dei--hydra-blueprints))
-      ;; TODO: Batch the next 2 lines like a db transaction
-      (push #'dei--step-4-birth-hydra (asyncloop-remainder loop))
+      ;; Reliable side-effects
+      (push #'dei--step-4-birth-hydras (asyncloop-remainder loop))
       (car (pop dei--hydra-blueprints)))))
 
 (defun dei--step-5-register (loop)
   "Record the hydras made under this keymap combination."
-  ;; (when (assoc dei--current-hash dei--flocks)
-  ;;   (error "Hash already recorded: %s" dei--current-hash))
-  (let ((flocks (symbol-value (obarray-get dei--hidden-obarray "dei--flocks")))
+  (let ((flocks (symbol-value (obarray-get dei--hidden-obarray "flocks")))
         funs
         vars)
+    (when (dei--flock-by-hash-and-width
+           dei--current-hash dei--current-width flocks)
+      (error "Hash already recorded: %s" dei--current-hash))
     ;; Prepare FUNS and VARS.
     ;; All symbols generated by `defhydra' contain a slash in the name, so just
-    ;; collect all such names from the global obarray.  Note that this will
-    ;; also catch syms no longer used by the current flock, which is slightly
+    ;; collect all such names from the global obarray.  Note that this will also
+    ;; catch syms no longer used by the current flock, which is slightly
     ;; inefficient as this extra \"cream on top\" per flock builds up the more
     ;; flocks we make.  I expect it won't add up to even one doubling of work,
     ;; so it's fine.  An alternative is patching `defhydra' to list for us what
-    ;; it made.
+    ;; symbols it set.
     (mapatoms
      (lambda (sym)
        (when (string-match-p "dei-.*?/" (symbol-name sym))
@@ -1256,35 +1216,10 @@ of asyncloop LOOP, so it will run again until
            :vars vars
            :bindings dei--current-bindings)
           flocks)
+    ;; Side-effects start here
     ;; Finally save the flock
-    ;; TODO: Batch the next 3 lines like a db transaction
-    (setq dei--last-bindings dei--current-bindings)
-    (setq dei--last-hash dei--current-hash)
-    (set (obarray-put dei--hidden-obarray "dei--flocks") flocks)
-    (asyncloop-log loop
-      "Flock #%d born: %s" (length flocks) dei--current-hash)
-    "OK"))
-
-
-;;;; Transitional
-
-(make-obsolete-variable
- 'dei-homogenizing-winners
- "Deianira has split into two packages, this is now in massmapper!
- https://github.com/meedstrom/massmapper"
- "2023-10-30")
-
-(make-obsolete-variable
- 'dei-keymap-found-hook
- "Deianira has split into two packages, this is now in massmapper!
- https://github.com/meedstrom/massmapper"
- "2023-10-30")
-
-(make-obsolete
- #'dei-list-remaps
- "Deianira has split into two packages, this is now in massmapper!
- https://github.com/meedstrom/massmapper"
- "2023-10-30")
+    (set (obarray-put dei--hidden-obarray "flocks") flocks)
+    (format "Flock #%d born: %d" (length flocks) dei--current-hash)))
 
 
 ;;;; Debug toolkit
@@ -1292,10 +1227,9 @@ of asyncloop LOOP, so it will run again until
 (defun dei-reset ()
   (interactive)
   (asyncloop-reset-all)
-  (setq dei--flocks nil)
-  (setq dei--last-hash (random))
+  (setq dei--current-hash (random))
   (setq dei--last-bindings nil)
-  (obarray-remove dei--hidden-obarray "dei--flocks"))
+  (obarray-remove dei--hidden-obarray "flocks"))
 
 ;; ;; FIXME
 ;; (defun dei-regenerate-hydras-for-this-buffer ()
