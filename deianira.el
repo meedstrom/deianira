@@ -21,7 +21,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.1snapshot
+;; Version: 0.2.2
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "24.4") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.3.3") (massmapper "0.1.1"))

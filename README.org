@@ -7,7 +7,7 @@
 # notice and this notice are preserved.  This file is offered as-is,
 # without any warranty.
 
-[[https://img.shields.io/badge/license-GPL3+-blue.png]]
+# [[https://img.shields.io/badge/license-GPL3+-blue.png]]
 
 #+begin_html
 <a title="Giulio Bonasone, CC0, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"><img width="256" align="center" alt="Bust of Hercules and Dejanira MET DP812684" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg/256px-Bust_of_Hercules_and_Dejanira_MET_DP812684.jpg"></a><br><br>
@@ -16,7 +16,7 @@
 # TODO: More consistent "we", "you", "I"
 # TODO: More consistent "hotkey", "key sequence", "key", "key binding" .. try to pick one.
 
-A [[https://github.com/abo-abo/hydra][hydra]]-based =which-key= banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][hercules.el]] (a "which-key based hydra banisher").  In ancient Greek myth, Hercules slew the monster called Hydra, but was then slain himself by the [[https://en.wikipedia.org/wiki/Deianira][princess Deianira]].
+A [[https://github.com/abo-abo/hydra][hydra]]-based =which-key= banisher.  In some ways the opposite of [[https://gitlab.com/jjzmajic/hercules.el][hercules.el]] (a "which-key based hydra banisher").  In Greek myth, Hercules slew the beast called Hydra, but was then slain himself by the [[https://en.wikipedia.org/wiki/Deianira][princess Deianira]].
 
 * Paradigm
 
@@ -35,7 +35,7 @@ Implementation
 
 Consequences
 
-1. We can do what I'll coin "transient exits":  When we the Control hydra is active, we can still type e.g. ~M-f~ like usual to move forward by word, without exiting the Control hydra.  This applies to all our hydras, even cases like the hydra for the Control-X-prefix, so instead of a sequence like ~C-x t C-n C-x t C-n C-x t~...  you can "stay in the Control-X-prefix" and do ~t C-n t C-n t~... This would not be possible if we allowed more than one modifier in a hotkey.
+1. We can do what I'll coin "transient exits":  When the Control hydra is active, we can still type e.g. ~M-f~ to move forward by word, without exiting the Control hydra.  This applies to all our hydras, even cases like the hydra for the Control-X-prefix, so instead of a sequence like ~C-x t C-n C-x t C-n C-x t~...  you can "stay in the Control-X-prefix" and do ~t C-n t C-n t~... This would not be possible if we allowed more than one modifier in a hotkey.
    - In this example, =repeat= wouldn't have helped since you're cycling between two different commands, making it useless.
 2. I find it intuitive, compared to [[https://github.com/emacsorphanage/god-mode][god-mode]] or Spacemacs/Doom.  There is no weird new leader key to learn.  You press the same modifier keys you always have -- Control and Meta -- and that's all there is to it.
 3. We get many benefits of modal editors and skip some of their drawbacks.
@@ -45,18 +45,18 @@ Consequences
 My motivations were:
 
 - I wanted a modifier-free life, and I decided I don't mind typing more to get that.  Longer key sequences beat modifiers.  *But* as a happy side effect of implementing the vision, I found we need surprisingly little extra typing this way, and sometimes even /less/.
-  - I first started to learn Vim, lured in by the promise of "modes instead of Control-chords", but what did I find?  An excessive use of capital letters, about as uncomfortable as Control chords.  So Vim is not chord-free at all.  What a strange oversight in its design.  What's the point?  It's just a version of Emacs that uses Shift instead of Control, and ships some pretty good repeat-maps (i.e. hydras) -- that was Vim's real killer feature all along.  Thus began a glimpse of Deianira: I disagree so much with the idea of having "modes" to help you escape chords, and then typing chords within those modes anyway.
-- I asked myself as a thought experiment how one would use Emacs with an [[https://olkb.com/][OLKB Planck]] or other tiny keyboard.  This constraint sprouted many ideas.  I wondered if you could just bind all commands to sequences of lowercase letters, and with Deianira you can if you want.  Please observe that no part of the design was sacrificed to support tiny keyboards -- I actually prefer [[https://geekhack.org/index.php?topic=116622][enormous]] keyboards -- and the good fit is a side effect.
+  - I first started to learn Vim, lured in by the promise of "modes instead of Control-chords", but what did I find?  An excessive use of capital letters, about as uncomfortable as Control chords.  So Vim is not chord-free at all, what a strange oversight.  What's the point?  It's just a version of Emacs that uses Shift instead of Control, and ships some pretty good hydras (what it calls modes) -- that was Vim's real killer feature all along.  Thus began a glimpse of Deianira: I disagree so much with the idea of having "modes" to help you escape chords, and then typing chords within those modes anyway.
+- I asked myself as a thought-experiment how one would use Emacs with an [[https://olkb.com/][OLKB Planck]] or other tiny keyboard.  This constraint sprouted many ideas.  I wondered if you could just bind all commands to sequences of lowercase letters, and with Deianira you can if you want.  Please observe that no part of the design was sacrificed to support tiny keyboards -- I actually prefer [[https://geekhack.org/index.php?topic=116622][enormous]] keyboards -- and the good fit is a side effect.
 
 No "vendor lock-in"
 
-- We rely on an external Linux utility, [[https://github.com/kmonad/kmonad][kmonad]], to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working somehow, we won't be left dead in the water.  Our mass-remapping is done by the [[https://github.com/meedstrom/massmapper][massmapper]] Emacs-Lisp library, which will always work, so your bindings remain in the location you were expecting.  With a kmonad service outage, you'll just have to do one of two things:
-  1. Chord at first to start a key sequence, like a normal Emacser (boo hiss).  Even forgetting about the hydra system, the remaps you've made along the way remain accessible, and the bindings are not worse than before you started.
+- We rely on an external Linux utility, [[https://github.com/kmonad/kmonad][kmonad]], to turn Control, Meta and Super into leader keys, even while they continue to work as modifiers.  But even should the utility stop working somehow, we won't be left dead in the water.  Our mass-remapping is done by the [[https://github.com/meedstrom/massmapper][massmapper]] Emacs-Lisp library, which will always work, so your bindings remain in the location you were expecting.  During a kmonad service outage, you'll just have to do one of two things:
+  1. Chord at first to start a key sequence, like a normal Emacsian (boo hiss).  Even forgetting about the hydra system, the remaps you've made along the way remain accessible, and the bindings are not worse than before you started.
   2. Resort to =xmodmap= or similar basic tool to wholesale remap the keys normally labelled "Ctrl" and "Alt" to send different key events entirely.  You can no longer chord, but it's a small loss.  In fact, I suggest this trick anyway as a set of [[#training-wheels][training wheels]].  In my experience, it's preferable to have hydras than modifiers.
-- If you like the aesthetic of the rules described under Implementation, but decide you don't like the pseudo-modal behavior, you can forgo the hydras entirely.  You enable only =massmapper-mode= but not =deianira-mode=.  You can leave it at that, or you can nerd out about defining a lot more repeat-maps or hand-made hydras, and perhaps that's better in some ways.
+- If you like the aesthetic of the rules described under Implementation, but decide you don't like the pseudo-modal behavior, you can forgo the hydras entirely.  You enable only =massmapper-mode= but not =deianira-mode=.  You can leave it at that, or you can nerd out about defining a lot more repeat-maps or hand-made hydras, and perhaps that's better in some ways.  Please blog about it!
 
 * Mandatory setup
-If you have a question, welcome to file a GitHub issue, or find my email in the source code.
+(If you have a question, welcome to file a GitHub issue, or find my email in the source code.)
 
 ** Getting the package
 
@@ -155,7 +155,7 @@ It may look somewhat involved, but this isn't a place for "sane defaults" or /an
 #+begin_src elisp
 (require 'massmapper)
 (massmapper-mode)
-(add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize-all-keymaps)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize)
 (setq massmapper-debug-level 1)
 (setq massmapper-homogenizing-winners
   '(("C-c C-c")
@@ -186,9 +186,10 @@ If you keep which-key, the following snippet will hide the superfluous entries.
 
 #+begin_src elisp
 ;; Hide any key sequence involving more than one chord.  We have no reason to
-;; see them after using `massmapper-homogenize-keymaps'.
+;; see them after using `massmapper-homogenize'.
 (with-eval-after-load 'which-key
-  (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist))
+  (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist
+              :test #'equal))
 #+end_src
 
 ** Desktop-specific configuration
@@ -378,18 +379,21 @@ The following variables let you specify additional keys and commands that should
 ** Can I keep which-key?
 Yes.
 
-** Can I keep ergoemacs/xah-fly-keys?
-In theory... maybe?  I haven't tested them.
+** Can I keep ergoemacs?
+In theory.  I haven't tested it.
+
+** Can I keep xah-fly-keys?
+Probably not.
 
 ** Can I keep god-mode?
 No.
 
 ** What if instead of all this crap, you just use sticky keys and thoughtfully-made repeat-maps?
-Not the same thing -- you'd need something like god-mode, and you'd still need to setup kmonad or similar software so as to make the Control and Meta keys into entry-points for god-mode's simulations of Control and Meta.  Then we can start comparing.
+Not the same thing -- for it to be comparable, you'd need something like god-mode, and you'd still need to setup kmonad or similar software so as to make the Control and Meta keys into entry-points for god-mode's simulations of Control and Meta.
 
 Do that and I'll link your blog post here!  Many things will be different, but I'll leave the particulars for then.
 
-** Can you use this without the drastic "homogenizing" remapping?
+** Can you use this without the drastic "homogenizing" remaps?
 No.  Or there will be a lot of keys you can't reach from hydra, and the paradigm is broken.  Worse, if we have /bastard sequences/ (see [[#terminology][terminology]]) or different bindings for chord-once and perma-chord sequences (see [[#terminology][terminology]]), it introduces a layer of doubt that interferes with you memorizing the sequence -- as your muscle memory can't "cross-train" between what happens inside the hydra and what happens outside it.
 
 Note that we remap only in a structural way, according to a few fixed rules.  Sometimes these rules poke us in the eye, but aside from them, we're carefully non-opinionated.  In another package, ergoemacs-mode, they move ~M-x~ to ~M-a~, a wonderful improvement but the kind of decision Deianira doesn't involve itself in.
@@ -513,7 +517,8 @@ The rule of homogenized keymaps imply the following:
 
 I call the variant at #1 a /chord-once sequence/ and the variant at #4 a /permachord sequence/.  The act of "homogenizing" a binding is just making sure #1 and #4 are bound to the same command.  By default, the command bound at #1 will be copied to #4, overriding what was on #4.  There used to be a variable to control which way it would go by default, but experience showed some problems with the opposite default.
 
-As for the middle variants, #2 and #3, I call them 'bastard sequences', because they result from a copulation no one wanted.  These among others can optionally be unbound with =(add-hook 'dei-keymap-found-hook #'dei--unbind-illegal-keys)=, but it doesn't change much for the user.
+As for the middle variants, #2 and #3, I call them 'bastard sequences', because they result from a copulation no one wanted.
+# These among others can optionally be unbound with =(add-hook 'dei-keymap-found-hook #'dei--unbind-illegal-keys)=, but it doesn't change much for the user.
 
 *** Bastard sequence
 - ~C-c p 4 C-d~  (projectile)
@@ -557,7 +562,7 @@ Power 3. When a desktop environment like GNOME clobbers your ~s-a~ chord, you ca
 
 * Known issues
 ** Hydra does not update instantly
-If you run buffer-switching commands such as =next-buffer= from within a hydra, getting a different major mode and keymaps, the hydra hint will not reflect this, but continue to reflect the buffer where it was first called.
+If you run buffer-switching commands such as =next-buffer= while a hydra is active, getting a different major mode and keymaps, the hydra hint will not reflect this, but continue to reflect the buffer where it was spawned.
 
 Aside from confusion, it's usually not a problem because:
 - In a supermajority of cases, the difference is only visual: it's the hydra /hint/ that reflects the wrong buffer's bindings.  The keys still do what they should, since most of them are not bound to specific commands but to =(call-interactively (key-binding KEY))=, which results in the correct action.
@@ -599,7 +604,9 @@ A few training wheels in mind, but the most important: *disable the modifiers* f
 2. KEY SEQUENCES.  Also unusual among software, Emacs has key sequences.  Aside from reflecting the keymap composite, we want to make hydras to reflect /in which step/ of any sequence we are sitting.  This is half the package's /raison d'etre/.  We must now connect the hydras to each other in an intuitive predictable way.
 3. AVOIDING MODIFIERS.  Having solved 1 and 2, we've done a lot already to avoid modifiers.  However, there may be bound two different sequences like Ctrl+X F and Ctrl+X Ctrl+F to different commands.  And not only do we want to avoid holding down Ctrl, we want to tap it no more than once.  So we bash together the lists of keys, into chord-free lists, so that we won't need to press Ctrl+F in that example, nor even for that matter ensure that we press Ctrl and X simultaneously.  Kind of simple, but there's a horrific amount of edge cases, such as when one keymap binds a single command at a given location, and another keymap binds a whole sub-keymap instead, and it takes some thinking to understand what's appropriate here, and we must plug in the user's preferences along the way.
 4. PERFORMANCE.  The package must continuously keep its state in sync with the truth of the context -- not just the hydras (points 1 and 2) but the bashing together of key bindings (point 3).  Since it could do so as often as every keystroke, and we don't want any input latency, performance becomes a challenge, and we must devise ways to let the computer skip work without breaking the truthful sync.
-   
+
+After all of /that/ is done, the program /starts/ to be usable.
+
 ** Out of GNOME hell
 
 For users on GNOME or Ubuntu.
@@ -609,6 +616,12 @@ Okay, GNOME's behavior when you press the Super key, addictive right?  But Super
 : gsettings set org.gnome.mutter overlay-key ''
 
 You probably know that you can install Gnome Tweaks to access many hidden settings.  However it's not so helpful in discovering which setting is responsible for a misbehavior, like the above-mentioned.  So it's worth keeping a personal cheatsheet.
+
+------
+
+The KDE equivalent of the above:
+
+: kwriteconfig5 --file kwinrc --group ModifierOnlyShortcuts --key Meta ""
 
 ------
 
