@@ -66,6 +66,10 @@
 
 ;;;; User settings
 
+(defun dei--normalized-key-description (vec)
+  (declare (pure t) (side-effect-free t))
+  (massmapper--normalize (key-description vec)))
+
 (defcustom dei-hydra-keys
   "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
   "Keys to show in hydra hint\; default reflects an US keyboard.
@@ -375,10 +379,6 @@ Then return to the parent hydra."
   "Decrement `dei--interrupts-counter' unless already zero."
   (unless (zerop dei--interrupts-counter)
     (cl-decf dei--interrupts-counter)))
-
-(defun dei--normalized-key-description (vec)
-  (declare (pure t) (side-effect-free t))
-  (massmapper--normalize (key-description vec)))
 
 (defun dei--on-which-keys (command &optional keymap)
   "Find to which keys COMMAND is bound.

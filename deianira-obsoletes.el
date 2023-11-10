@@ -1,4 +1,4 @@
-;;; deianira-obsolete.el -*- lexical-binding: t -*-
+;;; deianira-obsoletes.el -*- lexical-binding: t -*-
 
 (make-obsolete-variable
  'dei-homogenizing-winners
@@ -19,3 +19,4 @@
  "2023-10-30")
 
 (provide 'deianira-obsoletes)
+;;; deianira-obsoletes.el ends here
