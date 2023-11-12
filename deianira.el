@@ -21,10 +21,10 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.3
+;; Version: 0.2.4-snapshot
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "24.4") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1") (asyncloop "0.3.3") (massmapper "0.1.1"))
+;; Package-Requires: ((emacs "24.4") (asyncloop "0.4.1") (massmapper "0.1.2") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
 
 ;;; Commentary:
 
@@ -1222,8 +1222,8 @@ of asyncloop LOOP, so it will run again until
            :bindings dei--current-bindings)
           flocks)
     ;; Side-effects start here
-    ;; Finally save the flock
     (set (obarray-put dei--hidden-obarray "flocks") flocks)
+    (setq dei--last-bindings dei--current-bindings)
     (format "Flock #%d born: %d" (length flocks) dei--current-hash)))
 
 
