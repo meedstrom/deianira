@@ -236,11 +236,10 @@ Everyone's got a different origin story with Emacs, but when you first learned ~
 I picked Escape.  I put the following in my init file.  After a short period of feeling like I was committing sacrilege, it felt natural like I'd been waiting to do it this way all my life.  Try it!
 
 : (define-key input-decode-map (kbd "<escape>") (kbd "C-g"))
-: ;; Read-key respects key translations, unlike read-char. Never use read-char.
-: (setq read-char-choice-use-read-key t)
-: (setq y-or-n-p-use-read-key t)
 
-Note that when Emacs freezes up, you cannot break the freeze with ~<escape>~, and all of a sudden ~C-g~ is what you must type to break it, no other key will do.  I suspect it's because input-decode-map stops working while it's frozen and the only thing Emacs will react to is a true =^G= character, much like a traditional terminal program can be interrupted with a =^C= character.  Try for yourself: eval =(sleep-for 5)= and try to break out of it.  Escape won't work, and ~C-g~ will, /even if you bound ~C-g~ to something else so it isn't supposed to be sending a keyboard-quit/.
+(Wondering how to do =ESC ESC ESC= now?  Type =C-[ C-[ C-[=.)
+
+Note that when Emacs freezes up, you cannot break the freeze with ~<escape>~, and all of a sudden ~C-g~ is what you must type to break it, even if you had bound C-g to something else.  No other key will do.  I suspect it's because Emacs stops looking up the keymaps at all working while it's frozen and the only thing Emacs will react to is a true =^G= character, much like a traditional terminal program can be interrupted with a =^C= character.  Try for yourself: eval =(sleep-for 5)= and try to break out of it.  Escape won't work, and ~C-g~ will.
 
 One day, I hope we can set the hardcoded interrupt key as a build option if not a Lisp variable.
 
@@ -561,6 +560,11 @@ Power 2. You can insert prefix arguments anywhere inside a key sequence, rather 
 Power 3. When a desktop environment like GNOME clobbers your ~s-a~ chord, you can still access it by typing ~<super> a~. Similarly, on many systems Alt+F4 tries to kill your Emacs, but you can type ~<meta> <f4>~ to reach its real binding, if you gave it one.
 
 * Known issues
+** On start, no hydras for a little while
+Yeah, it takes time to build the first flock (5-20 seconds, longer if you are interacting with Emacs in the meantime).
+
+It used to take minutes and lock up Emacs, so I'm happy with that improvement :-)  Further improvement is definitely possible (see source comments on =dei--try-birth-hydra=) but it's not my itch to scratch.
+
 ** Hydra does not update instantly
 If you run buffer-switching commands such as =next-buffer= while a hydra is active, getting a different major mode and keymaps, the hydra hint will not reflect this, but continue to reflect the buffer where it was spawned.
 
@@ -573,7 +577,6 @@ If you do this under a prefix that changes a lot between major modes, like =C-c=
 - The heads' individual =:exit= flags also do not change, so they can be inappropriate for the current buffer, not reflecting =dei-quitter-keys= or related variables.
 
 In principle, I can fix this so that Deianira serves up a fresh hydra on buffer change, but I haven't found the matter important enough to deal with.
-
 ** Hydra hint width is wrong
 
 Can happen when you resize the frame.
