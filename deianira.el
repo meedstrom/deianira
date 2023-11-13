@@ -21,10 +21,10 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.4
+;; Version: 0.2.5-snapshot
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "24.4") (asyncloop "0.4.1") (massmapper "0.1.2") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
+;; Package-Requires: ((emacs "28") (asyncloop "0.4.1") (massmapper "0.1.2") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
 
 ;;; Commentary:
 
@@ -42,10 +42,10 @@
   :group 'keyboard)
 
 ;; builtin dependencies
-(require 'seq)
 (require 'subr-x)
 (require 'cl-lib)
 (require 'help-fns)
+(require 'deianira-obsoletes)
 
 ;; external dependencies
 (require 'dash)
@@ -54,7 +54,6 @@
 (require 'named-timer) ;; emacs core when?
 (require 'asyncloop) ;; was part of deianira.el
 (require 'massmapper-lib) ;; was part of deianira.el
-(require 'deianira-obsoletes)
 
 ;; muffle the compiler
 (declare-function #'dei-A/body "deianira" nil t)
@@ -66,10 +65,6 @@
 
 ;;;; User settings
 
-(defun dei--normalized-key-description (vec)
-  (declare (pure t) (side-effect-free t))
-  (massmapper--normalize (key-description vec)))
-
 (defcustom dei-hydra-keys
   "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
   "Keys to show in hydra hint\; default reflects an US keyboard.
@@ -78,7 +73,11 @@ you have 10 columns this can be 30 or 40 characters, if you
 want 11 columns this can be 33 or 44 characters, and so on.
 
 The order matters\; it determines the order in which the keys are
-displayed."
+displayed.
+
+Unfortunately I have no advice if you want to show more oddly
+located (on QWERTY) keys such as ` or =, but these would waste
+columns on an already cramped grid."
   :type 'string
   :group 'deianira)
 
@@ -107,7 +106,8 @@ probably."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
+         (set-default var (--map (massmapper--normalize
+                                  (key-description (key-parse it))) new))))
 
 (defcustom dei-quasiquitter-commands
   '(set-mark-command
@@ -125,7 +125,8 @@ Note that you do not need to specify shift symbols, as
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
+         (set-default var (--map (massmapper--normalize
+                                  (key-description (key-parse it))) new))))
 
 (defcustom dei-stemless-quitters
   '("<menu>"
@@ -139,7 +140,8 @@ to Emacs \"C-x a C-g\", but simply C-g."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
+         (set-default var (--map (massmapper--normalize
+                                  (key-description (key-parse it))) new))))
 
 (defcustom dei-quitter-keys
   '()
@@ -152,7 +154,8 @@ probably."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
+         (set-default var (--map (massmapper--normalize
+                                  (key-description (key-parse it))) new))))
 
 (defcustom dei-quitter-commands
   '(keyboard-quit
@@ -225,7 +228,8 @@ keystrokes <Ctrl> x TAB calls the binding of C-x TAB."
   :type '(repeat key)
   :group 'deianira
   :set (lambda (var new)
-         (set-default var (--map (dei--normalized-key-description (key-parse it)) new))))
+         (set-default var (--map (massmapper--normalize
+                                  (key-description (key-parse it))) new))))
 
 
 ;;;; Background facts
@@ -350,7 +354,8 @@ Then return to the parent hydra."
   (interactive)
   (call-interactively (key-binding (key-parse keydesc)))
   (if-let ((parent (dei--corresponding-hydra
-                    (massmapper--parent-stem (massmapper--drop-leaf keydesc)))))
+                    (massmapper--parent-stem
+                     (massmapper--drop-leaf keydesc)))))
       (call-interactively parent)
     (hydra-keyboard-quit)))
 
@@ -416,25 +421,25 @@ Optional argument KEYMAP means look only in that keymap."
         (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
         (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
-
         (add-hook 'window-buffer-change-functions #'dei-make-hydras-maybe 56)
         (add-hook 'window-selection-change-functions #'dei-make-hydras-maybe)
-        ;; Unfortunately this hook is triggered every time a command is called
-        ;; via hydra.
+        ;; Unfortunately this is triggered every time hydra calls a command.
+        ;; Maybe upstream would consider it a bug:
         ;; (add-hook 'after-change-major-mode-hook #'dei-make-hydras-maybe)
         ;; With auto-save-visited-mode, this watcher is triggered every 5
-        ;; seconds.  No big deal but clutters the debug buffer.
-        (unless auto-save-visited-mode
-          (add-variable-watcher 'local-minor-modes #'dei-make-hydras-maybe))
-        ;; (when (not hydra-is-helpful)
-        ;;   (message "hydra-is-helpful is nil, is this what you want?"))
+        ;; seconds.  No big deal but clutters the log buffer:
+        ;; (add-variable-watcher 'local-minor-modes #'dei-make-hydras-maybe)
+        (when (and dei-warn-hydra-is-helpful
+                   (not hydra-is-helpful))
+          (message "hydra-is-helpful is nil!  If intended, disable `%AS'"
+                   'dei-warn-hydra-is-helpful))
         (when (or (bound-and-true-p dei-keymap-found-hook)
                   (bound-and-true-p dei-homogenizing-winners))
           (deianira-mode 0)
           (user-error "%s%s%s"
                       "Deianira has split into two packages,"
-                      " you'll want to add the massmapper package."
-                      " (https://github.com/meedstrom/massmapper)"))
+                      " you'll want to add the massmapper package:"
+                      " https://github.com/meedstrom/massmapper"))
         (when (null massmapper-homogenizing-winners)
           (deianira-mode 0)
           (user-error "Disabling Deianira, please customize massmapper-homogenizing-winners")))
@@ -444,14 +449,15 @@ Optional argument KEYMAP means look only in that keymap."
     (keymap-set hydra-base-map "C-u" dei--old-hydra-C-u)
     (remove-hook 'window-buffer-change-functions #'dei-make-hydras-maybe)
     (remove-hook 'window-selection-change-functions #'dei-make-hydras-maybe)
-    (remove-hook 'after-change-major-mode-hook #'dei-make-hydras-maybe)
-    (remove-variable-watcher 'local-minor-modes #'dei-make-hydras-maybe)
     (advice-remove #'completing-read #'dei--slay)
     (advice-remove #'read-key #'dei--slay)
     (advice-remove #'read-char #'dei--slay)
     (advice-remove #'ido-read-internal #'dei--slay)
     (advice-remove #'ivy-read #'dei--slay)
     (advice-remove #'helm #'dei--slay)))
+
+(defcustom dei-warn-hydra-is-helpful t
+  "Whether to warn that `hydra-is-helpful' is nil.")
 
 (defvar dei--loop nil)
 
@@ -470,7 +476,7 @@ instead.")
 Reason not to store it in the global obarray as simply just
 another variable \"dei--flocks\" is that when the user reads the
 source code and happens to place point on \"dei--flocks\", eldoc
-chokes for minutes, during which time Emacs is unresponsive.")
+chokes Emacs for minutes.")
 
 (defun dei--set-ersatz-key (sym newkey)
   "Bind SYM to NEWKEY, and help other code cope with the change."
@@ -553,7 +559,8 @@ chokes for minutes, during which time Emacs is unresponsive.")
 
 (defun dei--head-arg-hint (stem leaf)
   "See `dei--head'."
-  (let* ((sym (if (member (concat stem leaf) dei--hydrable-prefixes-with-ancestors)
+  (let* ((sym (if (member (concat stem leaf)
+                          dei--hydrable-prefixes-with-ancestors)
                   (dei--corresponding-hydra stem leaf)
                 (key-binding (key-parse (concat stem leaf)))))
          ;; REVIEW: when is sym ever not a symbol?
@@ -747,14 +754,13 @@ instead of anything else they may have been bound to."
 ;;
 ;; 2. Reduce workload by giving up on the self-inserting quitters (principally
 ;;    capital keys) since there are many of those heads, or giving up on nonum
-;;    hydras. `dei--step-2-model-the-world' also has potential to reduce work (see
-;;    todo there).
+;;    hydras.
 ;;
 ;; 3. C-s cream on top RET
 ;;
 ;; 4. It seems that every time this function runs, it gets slower, in a way
 ;;    that doesn't have to do with point #3. On emacs start, it takes 0.01s,
-;;    but after a few flocks, it takes 0.30s per invocation!  (And because of
+;;    but after many flocks, it takes 0.30s per invocation!  (And because of
 ;;    this, the stopgap measure described in point #2 would compound to a huge
 ;;    difference)
 (defun dei--try-birth-hydra (recipe)
@@ -779,7 +785,7 @@ see."
 
 ;;;; Keymap scanner
 
-;; Since (rx (or ...)) calls the slow `regexp-opt', name and save the regexp.
+;; Since (rx (or ...)) calls the slow `regexp-opt', cache the regexp.
 (defconst dei--shift-chord-regexp (rx (or bol "-" " ") "S-")
   "Match explicit \"S-\" chords in key descriptions.
 Do not match capital letters.")
@@ -828,87 +834,75 @@ expected to be either a command or a lambda or closure.
 
 Perhaps obvious but: this is not the bindings from any single
 keymap such as `global-map', but from the composite of all
-currently active keymaps.
+currently active keymaps, many of which occlude parts of
+`global-map'.
 
-Optional argument RAW may be useful for debugging by returning a
+Optional argument RAW may be useful for debugging, by returning a
 less filtered and not normalized list."
   ;; You know that the same key can be found several times in multiple keymaps.
   ;; Fortunately we can know which binding is correct for the current buffer,
   ;; as `current-active-maps' seems to return maps in the order in which Emacs
   ;; selects them.  So what comes earlier in the list is what would in fact be
   ;; used.  The rest is history.
-  (let* ((bindings
-          (cl-loop
-           with merged = nil
-           with case-fold-search = nil
-           for raw-map in (current-active-maps)
-           ;; as cleaned = (member map (bound-and-true-p dei--cleaned-maps))
-           append (cl-loop
-                   with bindings = nil
-                   for vec being the key-seqs of raw-map
-                   using (key-bindings cmd)
-                   as key = (key-description vec)
-                   as norm = (ignore-errors (massmapper--normalize key))
-                   if raw collect (cons key cmd) into bindings
-                   else
-                   when cmd
-                   ;; Skip nonstandard menu-bar/tool-bar/tab-bar mess
-                   unless (string-search "-bar>" key)
-                   unless (and (listp cmd) (eq 'menu-item (car cmd)))
-                   ;; Sometimes (key-description vec) evalutes to a key called
-                   ;; "C-x (..*", a key called "ESC 3..9", etc.  Even stranger,
-                   ;; VEC for every one of them is just [switch-frame].  And
-                   ;; all are bound to self-insert-command.  I don't get it.
-                   ;; But it's ok to filter out self-insert-command since I
-                   ;; deem it really rare people bind it in nonstandard places.
-                   unless (string-search ".." key)
-                   ;; (Late error-check because some of those we filtered out
-                   ;; would've tripped an error)
-                   if (null norm) do (error "key couldn't be normalized: %s" key)
-                   else
-                   unless (assoc norm bindings)
-                   unless (assoc norm merged)
-                   unless (string-match-p dei--ignore-regexp-merged norm)
-                   unless (massmapper--key-has-more-than-one-chord norm)
-                   ;; unless (unless cleaned
-                   ;;         (dei--key-is-illegal norm))
-                   unless (dei--key-is-illegal norm)
-                   ;; unless (-any-p #'dei--not-on-keyboard (split-string norm " "))
-                   unless (cl-loop for prefix in dei--unnest-avoid-prefixes
-                                   when (string-prefix-p prefix norm)
-                                   return t)
-                   ;; Check for ancestors of this key sequence...  the things I
-                   ;; put up with...
-                   unless (cl-loop
-                           with n = (length (split-string norm " " t))
-                           with parents = (-iterate #'massmapper--parent-key
-                                                    norm n)
-                           for parent in parents
-                           when (assoc parent merged)
+  (cl-loop
+   with merged = nil
+   with case-fold-search = nil
+   for raw-map in (current-active-maps)
+   ;; as cleaned = (member map (bound-and-true-p dei--cleaned-maps))
+   append (cl-loop
+           with bindings = nil
+           for vec being the key-seqs of raw-map
+           using (key-bindings cmd)
+           as key = (key-description vec)
+           as norm = (ignore-errors (massmapper--normalize key))
+           if raw collect (cons key cmd) into bindings
+           else
+           when cmd
+           ;; Skip nonstandard menu-bar/tool-bar/tab-bar mess
+           unless (string-search "-bar>" key)
+           unless (and (listp cmd) (eq 'menu-item (car cmd)))
+           ;; Sometimes (key-description vec) evalutes to a key called
+           ;; "C-x (..*", a key called "ESC 3..9", etc.  Even stranger,
+           ;; VEC for every one of them is just [switch-frame].  And
+           ;; all are bound to self-insert-command.  I don't get it.
+           ;; But it's ok to filter out self-insert-command since I
+           ;; deem it really rare people bind it in nonstandard places.
+           unless (string-search ".." key)
+           ;; (Late error-check because some of those we filtered out
+           ;; would've tripped an error)
+           if (null norm)
+           do (error "key couldn't be normalized: %s" key)
+           else
+           unless (assoc norm bindings)
+           unless (assoc norm merged)
+           unless (string-match-p dei--ignore-regexp-merged norm)
+           unless (massmapper--key-has-more-than-one-chord norm)
+           ;; unless (unless cleaned
+           ;;         (dei--key-is-illegal norm))
+           unless (dei--key-is-illegal norm)
+           ;; unless (-any-p #'dei--not-on-keyboard (split-string norm " "))
+           unless (cl-loop for prefix in dei--unnest-avoid-prefixes
+                           when (string-prefix-p prefix norm)
                            return t)
-                   ;; Oh!  Better check for descendants of this key sequence
-                   ;; too.
-                   unless (cl-loop
-                           for (superseder . _) in merged
-                           when (string-prefix-p norm superseder)
-                           return t)
-                   collect (cons norm cmd) into bindings
-                   finally return bindings)
-           into merged
-           finally return merged))
-         ;; TODO: Deprecate this error check
-         (conflicts
-          (cl-loop
-           with keys = (-map #'car bindings)
-           for parent in (-uniq (-keep #'massmapper--parent-key keys))
-           when (member parent keys)
-           collect parent)))
-    (when conflicts
-      (unless raw
-        (error "Bound variously to commands or prefix maps in buffer %s: %s"
-               (current-buffer)
-               (string-join conflicts ", "))))
-    bindings))
+           ;; Check for ancestors of this key sequence...  the things I
+           ;; put up with...
+           unless (cl-loop
+                   with n = (length (split-string norm " " t))
+                   with parents = (-iterate #'massmapper--parent-key
+                                            norm n)
+                   for parent in parents
+                   when (assoc parent merged)
+                   return t)
+           ;; Oh!  Better check for descendants of this key sequence
+           ;; too.
+           unless (cl-loop
+                   for (superseder . _) in merged
+                   when (string-prefix-p norm superseder)
+                   return t)
+           collect (cons norm cmd) into bindings
+           finally return bindings)
+   into merged
+   finally return merged))
 
 (defun dei--connection-exists (parent-stem child-stem)
   (let* ((parent-hydra-name (dei--dub-hydra-from-key-or-stem parent-stem))
@@ -924,17 +918,19 @@ less filtered and not normalized list."
 
 ;;;; Async worker
 ;; Because it would cause noticable lag to do everything at once, we slice up
-;; the work into pieces and run them only while the user is not operating Emacs.
-;; That's not true async, but it makes no difference to the user and it's easier
-;; to debug than true async.
+;; the work into pieces and run them only while the user is not operating
+;; Emacs.  That's not true async, but it makes no difference to the user and
+;; it's easier to debug than true async (especially when every invocation
+;; mutates Emacs state).  Library I made for this need:
+;; https://github.com/meedstrom/asyncloop
 
 (defvar dei--hydra-recipes nil "List of arglists to pass to defhydra.")
-(defvar dei--buffer-under-analysis nil "The buffer to consult for bindings.")
-(defvar dei--current-hash 0 "The current keymap composite.")
+(defvar dei--buffer-under-analysis nil "The buffer to make hydras for.")
+(defvar dei--current-hash 0 "The keymap composite in buffer under analysis.")
 (defvar dei--current-width (frame-width) "Width of frame under analysis.")
-(defvar dei--current-bindings nil "List of current bindings.")
-(defvar dei--last-bindings nil "The bindings in the last buffer analyzed.")
-(defvar dei--changed-stems nil "Stems that need redefining since last analysis.")
+(defvar dei--current-bindings nil "The bindings in buffer under analysis.")
+(defvar dei--last-bindings nil "Bindings in last fully analyzed buffer.")
+(defvar dei--changed-stems nil "Stems needing new hydra since last analysis.")
 
 ;; REVIEW: Maybe just presuppose that the user sets things with Emacs 29's
 ;; `setopt'?  Lots of users won't, but we could detect a non-default value and
@@ -966,9 +962,6 @@ long as they don't change.")
            when (eq hash (dei--flock-hash flock))
            return flock))
 
-;; Maybe this could be sped up with a hash table -- contrive an unique key for
-;; each flock object by adding hash and width -- but I doubt we have a
-;; bottleneck here.
 (defun dei--flock-by-hash-and-width (hash width flocks)
   "Return flock with HASH and WIDTH from FLOCKS."
   (cl-loop for flock in flocks
@@ -977,10 +970,10 @@ long as they don't change.")
            return flock))
 
 ;; TODO: figure out if it's necessary to respecify heads due to changed
-;; dei--filler and if so how to get the effect here (theory: we don't need filler
-;; to be more than one char, I think it was for gracefully degrading from a
-;; weird issue) (theory: we see no effect when starting with a narrow frame and
-;; rehint for a big frame, but the other way around could get messy)
+;; dei--filler and if so how to get the effect here (theory: we don't need
+;; filler to be more than one char, I think it was for gracefully degrading
+;; from a weird issue) (theory: we see no effect when starting with a narrow
+;; frame and rehint for a big frame, but the other way around could get messy)
 (defun dei--rehint-flock (flock width)
   "Return copy of FLOCK with hints updated to match frame WIDTH."
   (cl-letf* ((dei--colwidth (dei--colwidth-recalc width))
@@ -994,9 +987,10 @@ long as they don't change.")
            collect
            (let ((basename (substring (symbol-name (car pair)) 0 -5)))
              (cons (car pair)
-                   ;; Note that we eval for a static string, see also
-                   ;; `dei--step-4-birth-hydra'.  It's ok bc the there is nothing
-                   ;; dynamic in the input, so the result is deterministic.
+                   ;; Note that we eval to get a static string, see also
+                   ;; `dei--step-4-birth-hydra'.  It's ok b/c there is
+                   ;; nothing dynamic in the input, so the result is
+                   ;; deterministic.
                    (eval (hydra--format
                           ;; These arguments are identical to what `defhydra'
                           ;; passes to `hydra--format'. The different result
@@ -1036,8 +1030,8 @@ Otherwise, return nil."
 (defun dei-make-hydras-maybe (&rest _)
   "Maybe make hydras for the current keymap combo."
   ;; This condition could do with an explanatory comment.  I think I
-  ;; "simplified" it from a larger set of conditions once I saw that it would be
-  ;; equivalent.  Now I can't edit it without thinking very hard.
+  ;; "simplified" it from a larger set of conditions once I saw that it would
+  ;; be equivalent.  Now I can't edit it without thinking very hard.
   (unless (or (and (equal dei--buffer-under-analysis (current-buffer))
                    (equal dei--current-width (frame-width)))
               (equal dei--current-hash (abs (sxhash (current-active-maps)))))
@@ -1050,7 +1044,7 @@ Otherwise, return nil."
                   #'dei--step-4-birth-hydra
                   #'dei--step-5-register)
             :debug-buffer-name "*deianira*"
-            :immediate-break-on-input t
+            :immediate-break-on-input nil
             :on-interrupt-discovered #'dei--actions-on-interrupt))))
 ;; (dei-make-hydras-maybe)
 
@@ -1059,8 +1053,7 @@ Otherwise, return nil."
          (flocks (symbol-value (obarray-get dei--hidden-obarray "flocks")))
          (hash (abs (sxhash (current-active-maps))))
          (width (frame-width))
-         ;; If we already made hydras for this keymap composite, restore from
-         ;; cache.
+         ;; If we already made hydras for this keymap composite, retrieve them.
          (some-flock (dei--first-flock-by-hash hash flocks)))
     (setq dei--buffer-under-analysis buffer)
     (setq dei--current-hash hash)
@@ -1084,11 +1077,11 @@ Otherwise, return nil."
                 (asyncloop-cancel loop)
                 (format "Summoned flock %d" hash))
             ;; After conversion, skip to step 5 to register them
-            (setf (asyncloop-remainder loop) (list #'dei--step-5-register))
+            (setf (asyncloop-remainder loop) (list t #'dei--step-5-register))
             (format "Converted to %d chars wide: %d" width hash)))
-      (format "Ordered new flock in buffer %s" buffer))))
+      (format "Requisition new flock for buffer %s" buffer))))
 
-;; REVIEW: Maybe write it simpler somehow
+;; REVIEW: Maybe write it more readable somehow
 (defun dei--step-1-validate-user-settings (loop)
   "Signal an error if any two user settings overlap.
 That is, if a given key description is found more than once.
@@ -1141,8 +1134,8 @@ the same key."
          (asyncloop-log loop "Problem filtering bindings: %s" (cdr err))
          (signal (car err) (cdr err))))
 
-      ;; Since `dei--unnest-and-filter-current-bindings' returns full keydescs only,
-      ;; infer prefixes by cutting the last key off each sequence.
+      ;; Since `dei--unnest-and-filter-current-bindings' returns full keydescs
+      ;; only, infer prefixes by cutting the last key off each sequence.
       (setq dei--hydrable-prefixes
             (-uniq
              (cl-loop
@@ -1152,7 +1145,8 @@ the same key."
 
       ;; Add every possible ancestor (count C-c and C-c c as well as C-c c p).
       ;; This variable will be looked up by the hydra-head makers, which I'm
-      ;; 80% sure don't need this much info, but it doesn't hurt.
+      ;; 80% sure don't need this much info, but it doesn't hurt.  It will also
+      ;; be used shortly below.
       (setq dei--hydrable-prefixes-with-ancestors
             (-uniq
              (cl-loop
@@ -1174,23 +1168,24 @@ the same key."
       ;; Figure out which stems have changed, so we can exploit the previous
       ;; flock's work and skip running defhydra for results we know will be
       ;; identical.  This has a TREMENDOUS performance boost each time we
-      ;; encounter a new keymap combo, cutting 30 seconds of computation down to
-      ;; 0-2 seconds.
+      ;; encounter a new keymap combo, cutting 30 seconds of computation down
+      ;; to 0-2 seconds.
 
       ;; Visualize a Venn diagram, with two circles for the LAST and CURRENT
       ;; bindings. The defunct bindings are somewhere in LAST, the new bindings
       ;; somewhere in CURRENT, but neither are in the circles' intersection,
-      ;; which should never be relevant to update, as they represent cases where
-      ;; the key's definition didn't change compared to the last keymap combo.
+      ;; which should never be relevant to update, as they represent cases
+      ;; where the key's definition didn't change compared to the last keymap
+      ;; combo.
 
-      ;; TODO: have it return subkeymaps too just to be sure we really update.
-      ;; In emacs-lisp-mode, I was getting a Cxn stem that comes from org-mode,
-      ;; because I had no equivalent prefix in emacs-lisp-mode.  Although that
-      ;; issue should not happen if C-x n is bound to a command -- the issue
-      ;; there was it was bound to an empty keymap, now fixed.  Still, it casts
-      ;; light on how this algo really works, and I think I need a flowchart
-      ;; before I remove this comment, just to ensure that all edge cases will
-      ;; be taken care of.
+      ;; TODO: have "bindings" include subkeymaps too just to be sure we really
+      ;; update.  In emacs-lisp-mode, I was getting a Cxn stem that comes from
+      ;; org-mode, because I had no equivalent prefix in emacs-lisp-mode.
+      ;; Although that issue should not happen if C-x n is bound to a command
+      ;; -- the issue there was it was bound to an empty keymap, now fixed.
+      ;; Still, it casts light on how this algo really works, and I think I
+      ;; need a flowchart before I remove this comment, just to ensure that all
+      ;; edge cases will be taken care of.
       (setq dei--changed-stems
             (cl-loop
              for stem in (->> dei--hydrable-stems
@@ -1211,20 +1206,20 @@ the same key."
              when it collect it into new-stems
              ;; Sort to avail most relevant hydras soonest.  Longest key-seqs
              ;; first now means shortest first once we get to
-             ;; `dei--step-4-birth-hydra', so the important hydras like C- and C-x
-             ;; are among the first to come into existence.
-             finally return (seq-sort-by #'massmapper--key-seq-steps-length
-                                         #'>
-                                         new-stems)))
+             ;; `dei--step-4-birth-hydra', so the important hydrvas like C- and
+             ;; C-x are among the first to come into existence.
+             finally return (cl-sort new-stems #'>
+                                     :key #'massmapper--key-seq-steps-length)))
 
       ;; Clear the workbench in case of a previous half-done iteration.
       (setq dei--hydra-recipes nil)
 
-      (format "%d changed stems%s"
-              (length dei--changed-stems)
-              (if dei--changed-stems
-                  (format ": %S" dei--changed-stems)
-                "")))))
+      (if dei--changed-stems
+          (format "%d changed stems: %S"
+                  (length dei--changed-stems)
+                  dei--changed-stems)
+        (setf (asyncloop-remainder loop) (list t #'dei--step-5-register))
+        "No practical keymap diffs"))))
 
 (defun dei--step-3-write-recipe (loop)
   "Write recipe for the first item of `dei--changed-stems'.
@@ -1249,12 +1244,12 @@ of asyncloop LOOP, so it will run again until
         ;; Side-effects start here
         (push h1 dei--hydra-recipes)
         (push h2 dei--hydra-recipes)
-        (push #'dei--step-3-write-recipe (asyncloop-remainder loop))
+        (push 'repeat (asyncloop-remainder loop))
         (pop dei--changed-stems)))))
 
 (defun dei--step-4-birth-hydra (loop)
-  "Pass a recipe to `defhydra', wetting the dry-run.
-Each invocation pops one recipe off `dei--hydra-recipes'.
+  "Pass a recipe to `defhydra', wetting what has been a dry-run.
+Each invocation pops one off `dei--hydra-recipes'.
 
 Repeatedly add another invocation of this function to the front
 of asyncloop LOOP, so it will run again until
@@ -1264,7 +1259,7 @@ of asyncloop LOOP, so it will run again until
         "All hydras born"
       ;; Side-effects start here
       (dei--try-birth-hydra (car dei--hydra-recipes))
-      (push #'dei--step-4-birth-hydra (asyncloop-remainder loop))
+      (push 'repeat (asyncloop-remainder loop))
       (car (pop dei--hydra-recipes)))))
 
 (defun dei--step-5-register (loop)
@@ -1280,10 +1275,10 @@ of asyncloop LOOP, so it will run again until
     ;; flock.
     ;;
     ;; Note that this will also catch syms not used by the current flock, which
-    ;; is slightly inefficient as this extra "cream on top" per flock builds
-    ;; up the more flocks we make.  I expect it won't add up to even one
-    ;; doubling of work, so it's fine.  The ideal alternative is patching
-    ;; `defhydra' to list for us what symbols it set.
+    ;; is slightly inefficient as this extra "cream on top" per flock builds up
+    ;; the more flocks we make.  I expect it won't add up to even one doubling
+    ;; of work, so it's fine.  The ideal alternative is patching `defhydra' to
+    ;; list for us what symbols it set.
     (mapatoms
      (lambda (sym)
        (when (string-match-p "dei-.*?/" (symbol-name sym))
