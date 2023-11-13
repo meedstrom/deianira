@@ -21,10 +21,10 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.5-snapshot
+;; Version: 0.2.5
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "28") (asyncloop "0.4.1") (massmapper "0.1.2") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
+;; Package-Requires: ((emacs "28") (asyncloop "0.4.2") (massmapper "0.1.2") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
 
 ;;; Commentary:
 
@@ -1043,8 +1043,8 @@ Otherwise, return nil."
                   #'dei--step-3-write-recipe
                   #'dei--step-4-birth-hydra
                   #'dei--step-5-register)
-            :debug-buffer-name "*deianira*"
-            :immediate-break-on-input nil
+            :log-buffer-name "*deianira*"
+            :immediate-break-on-user-activity nil
             :on-interrupt-discovered #'dei--actions-on-interrupt))))
 ;; (dei-make-hydras-maybe)
 
