@@ -560,10 +560,17 @@ Power 2. You can insert prefix arguments anywhere inside a key sequence, rather 
 Power 3. When a desktop environment like GNOME clobbers your ~s-a~ chord, you can still access it by typing ~<super> a~. Similarly, on many systems Alt+F4 tries to kill your Emacs, but you can type ~<meta> <f4>~ to reach its real binding, if you gave it one.
 
 * Known issues
+** Hint is misleading until after the first command
+Noticed 2023-11-13.  Will work on it.
+
+The misleading hint also includes "hydra--digit-argument" on the number keys.  They're a lie and not meant to be shown.
+
+The reason this issue could crop up is that I haven't got back to dogfooding this package.  (That's also why the package is not published anywhere, yet somehow it got 15 stars...)
+
 ** On start, no hydras for a little while
 Yeah, it takes time to build the first flock (5-20 seconds, longer if you are interacting with Emacs in the meantime).
 
-It used to take minutes and lock up Emacs, so I'm happy with that improvement :-)  Further improvement is definitely possible (see source comments on =dei--try-birth-hydra=) but it's not my itch to scratch.
+It used to take minutes and lock up Emacs, so I'm happy with that improvement :-)  Further improvement is possible (see source comments on =dei--try-birth-hydra=) but it's not my itch to scratch.
 
 ** Hydra does not update instantly
 If you run buffer-switching commands such as =next-buffer= while a hydra is active, getting a different major mode and keymaps, the hydra hint will not reflect this, but continue to reflect the buffer where it was spawned.
