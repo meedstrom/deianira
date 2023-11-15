@@ -21,7 +21,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.5
+;; Version: 0.2.6-snapshot
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "28") (asyncloop "0.4.2") (massmapper "0.1.2") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
@@ -31,8 +31,11 @@
 ;; See the README.org.  You may find it by visiting:
 ;;    https://github.com/meedstrom/deianira
 ;;
-;; or (not always) by evalling:
+;; or by evalling (but your package manager probably left out the README):
 ;;    (find-file (file-name-directory (find-library-name "deianira")))
+;;
+;; or with Straight:
+;;    M-x straight-visit-package RET deianira RET
 
 ;;; Code:
 
@@ -44,16 +47,14 @@
 ;; builtin dependencies
 (require 'subr-x)
 (require 'cl-lib)
-(require 'help-fns)
 (require 'deianira-obsoletes)
 
 ;; external dependencies
 (require 'dash)
 (require 'hydra)
 (require 'compat)
-(require 'named-timer) ;; emacs core when?
-(require 'asyncloop) ;; was part of deianira.el
-(require 'massmapper-lib) ;; was part of deianira.el
+(require 'asyncloop) ;; was part of this package
+(require 'massmapper-lib) ;; was part of this package
 
 ;; muffle the compiler
 (declare-function #'dei-A/body "deianira" nil t)
@@ -387,6 +388,8 @@ Optional argument KEYMAP means look only in that keymap."
        (-map #'key-description)
        (--remove (string-match-p dei--ignore-regexp-merged it))))
 
+(defvar dei--give-up nil)
+
 ;;;###autoload
 (define-minor-mode deianira-mode
   "Set up hooks to forge hydras, and in the darkness bind them."
@@ -397,10 +400,12 @@ Optional argument KEYMAP means look only in that keymap."
   (if deianira-mode
       (progn
         (setq dei--interrupts-counter 0)
-        (named-timer-run 'deianira-ctr-decay 60 60 #'dei--interrupts-decrement)
+        (setq dei--ctr-decay-timer
+              (run-with-timer 60 60 #'dei--interrupts-decrement))
         (setq dei--old-hydra-cell-format hydra-cell-format)
         (setq dei--old-hydra-C-u (keymap-lookup hydra-base-map "C-u"))
         (setq hydra-cell-format "% -20s %% -11`%s")
+        (setq dei--give-up nil)
         (keymap-unset hydra-base-map "C-u" t)
         ;; REVIEW: I may prefer to just instruct the user to set this stuff
         ;; themselves, so they get familiar with the variables
@@ -444,7 +449,7 @@ Optional argument KEYMAP means look only in that keymap."
           (deianira-mode 0)
           (user-error "Disabling Deianira, please customize massmapper-homogenizing-winners")))
     (when dei--loop (asyncloop-cancel dei--loop))
-    (named-timer-cancel 'deianira-ctr-decay)
+    (when (timerp dei--ctr-decay-timer) (cancel-timer dei--ctr-decay-timer))
     (setq hydra-cell-format (or dei--old-hydra-cell-format "% -20s %% -8`%s"))
     (keymap-set hydra-base-map "C-u" dei--old-hydra-C-u)
     (remove-hook 'window-buffer-change-functions #'dei-make-hydras-maybe)
@@ -459,6 +464,7 @@ Optional argument KEYMAP means look only in that keymap."
 (defcustom dei-warn-hydra-is-helpful t
   "Whether to warn that `hydra-is-helpful' is nil.")
 
+(defvar dei--ctr-decay-timer nil)
 (defvar dei--loop nil)
 
 (defconst dei--ersatz-keys-alist
@@ -1019,35 +1025,6 @@ Otherwise, return nil."
     (asyncloop-cancel loop)
     t))
 
-(defun dei--actions-on-interrupt (loop)
-  "Abort if excessive interrupts recently."
-  (if (<= dei--interrupts-counter 4)
-      (cl-incf dei--interrupts-counter)
-    (deianira-mode 0)
-    (asyncloop-cancel loop)
-    (message "5 interrupts last 3 min, disabled deianira-mode!")))
-
-(defun dei-make-hydras-maybe (&rest _)
-  "Maybe make hydras for the current keymap combo."
-  ;; This condition could do with an explanatory comment.  I think I
-  ;; "simplified" it from a larger set of conditions once I saw that it would
-  ;; be equivalent.  Now I can't edit it without thinking very hard.
-  (unless (or (and (equal dei--buffer-under-analysis (current-buffer))
-                   (equal dei--current-width (frame-width)))
-              (equal dei--current-hash (abs (sxhash (current-active-maps)))))
-    (setq dei--loop
-          (asyncloop-run
-            (list #'dei--step-0-find-premade
-                  #'dei--step-1-validate-user-settings
-                  #'dei--step-2-model-the-world
-                  #'dei--step-3-write-recipe
-                  #'dei--step-4-birth-hydra
-                  #'dei--step-5-register)
-            :log-buffer-name "*deianira*"
-            :immediate-break-on-user-activity nil
-            :on-interrupt-discovered #'dei--actions-on-interrupt))))
-;; (dei-make-hydras-maybe)
-
 (defun dei--step-0-find-premade (loop)
   (let* ((buffer (current-buffer))
          (flocks (symbol-value (obarray-get dei--hidden-obarray "flocks")))
@@ -1298,23 +1275,43 @@ of asyncloop LOOP, so it will run again until
     (setq dei--last-bindings dei--current-bindings)
     (format "Flock #%d born: %d" (length flocks) dei--current-hash)))
 
+(defun dei--actions-on-interrupt (loop)
+  "Stop trying to make hydras if excessive interrupts recently."
+  (if (<= dei--interrupts-counter 4)
+      (cl-incf dei--interrupts-counter)
+    (setq dei--give-up t)
+    (asyncloop-cancel loop)
+    (warn (asyncloop-log loop
+            "5 interrupts last 3 min, stopped trying to make hydras!  %s"
+            "To resume, turn `deianira-mode' off and on."))))
+
+(defun dei-make-hydras-maybe (&rest _)
+  "Maybe make hydras for the current keymap combo."
+  (unless (or dei--give-up
+              ;; TODO: Explain these conditions
+              (and (equal dei--buffer-under-analysis (current-buffer))
+                   (equal dei--current-width (frame-width)))
+              (equal dei--current-hash (abs (sxhash (current-active-maps)))))
+    (setq dei--loop
+          (asyncloop-run
+            (list #'dei--step-0-find-premade
+                  #'dei--step-1-validate-user-settings
+                  #'dei--step-2-model-the-world
+                  #'dei--step-3-write-recipe
+                  #'dei--step-4-birth-hydra
+                  #'dei--step-5-register)
+            :log-buffer-name "*deianira*"
+            :immediate-break-on-user-activity t
+            :on-interrupt-discovered #'dei--actions-on-interrupt))))
+
 
 ;;;; Debug toolkit
 
 (defun dei-reset ()
   (interactive)
   (asyncloop-reset-all)
-  (setq dei--current-hash (random))
   (setq dei--last-bindings nil)
   (obarray-remove dei--hidden-obarray "flocks"))
-
-;; ;; FIXME
-;; (defun dei-regenerate-hydras-for-this-buffer ()
-;;   (interactive)
-;;   (require 'map)
-;;   (let ((hash (sxhash (current-active-maps))))
-;;     (setq dei--flocks (map-delete dei--flocks hash))
-;;     (dei-async-make-hydras)))
 
 (provide 'deianira)
 ;;; deianira.el ends here
