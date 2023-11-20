@@ -84,7 +84,15 @@ columns on an already cramped grid."
 
 (defcustom dei-all-shifted-symbols
   "~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
-  "Characters that imply Shift pressed\; default reflects an US keyboard."
+  "Characters that imply Shift pressed\; default reflects an US keyboard.
+You can add or remove any characters, in any order.  You can even
+merge two or more regional layouts' sets of shift-symbols,
+because inclusion in this list mostly means that Deianira will do
+less with them.
+
+Note also that even if you usually use a non-US layout, you do
+not need to modify this variable if you never bind non-US keys to
+commands anyway."
   :type 'string
   :group 'deianira)
 
@@ -94,12 +102,17 @@ When customizing, please also customize `dei-hydra-keys'."
   :type 'number
   :group 'deianira)
 
+(defcustom dei-debug nil
+  "Whether to enable debugging checks."
+  :type 'boolean
+  :group 'deianira)
+
 (defcustom dei-quasiquitter-keys
   '("C-c c"
     "C-x l" ;; for testing
     )
   "Keys that send you to the root hydra.
-Note that if you use mass-remapping (see manual), the hydras are
+Note that if you use Massmapper (see manual), the hydras are
 generated afterwards, consulting this list then.  So it is safe
 to only refer to e.g. \"C-c c\" even if it's going to be a clone
 of \"C-c C-c\".  In fact, only \"C-c c\" will have an effect,
@@ -147,7 +160,7 @@ to Emacs \"C-x a C-g\", but simply C-g."
 (defcustom dei-quitter-keys
   '()
   "Key sequences guaranteed to slay the hydra.
-Note that if you use mass remapping (see manual), the hydras are
+Note that if you use Massmapper (see manual), the hydras are
 generated afterwards, consulting this list then.  So it is safe
 to only refer to e.g. \"C-c c\" even if it's going to be a clone
 of \"C-c C-c\".  In fact, only \"C-c c\" will have an effect,
@@ -163,23 +176,27 @@ probably."
     keyboard-escape-quit
     minibuffer-keyboard-quit
     abort-recursive-edit
-    doom/escape
     dei--call-and-return-to-root
     dei--call-and-return-to-parent
-    ;; isearch-forward
-    ;; isearch-backward
-    ;; query-replace
-    ;; query-replace-regexp
+    isearch-forward
+    isearch-forward-regexp
+    isearch-backward
+    isearch-backward-regexp
+    query-replace
+    query-replace-regexp
+    doom/escape
     doom/restart
     doom/restart-and-restore
     magit-status
     dired
     dired-jump
     re-builder
-    ffap-other-frame
-    make-frame-command
-    other-frame
+    ;; ffap-other-frame
+    ;; make-frame-command
+    ;; other-frame
     kill-emacs
+    save-buffers-kill-emacs
+    save-buffers-kill-terminal
     +lookup/online
     +doom-dashboard/open
     org-noter
@@ -188,8 +205,8 @@ probably."
     org-capture)
   "Commands guaranteed to slay the hydra.
 Note that you usually don't need to add commands that focus the
-minibuffer, as we slay the hydra automatically when something
-calls `completing-read' or the Ivy/Ido/Helm equivalents."
+minibuffer, as Deianira tries to slay the hydra automatically
+when that happens."
   :type '(repeat symbol)
   :group 'deianira)
 
@@ -216,7 +233,7 @@ will result in calling that key's normal binding, as if there was
 no active hydra (in Hydra jargon, it behaves as a foreign key).
 
 Inclusion in this list means that key will be prepended with a
-prefix.
+prefix, even though you can't see the key in the hint.
 
 Example:
 
@@ -420,12 +437,16 @@ Optional argument KEYMAP means look only in that keymap."
         ;; REVIEW: Still necessary?
         (cl-loop for key in (dei--on-which-keys #'hydra-repeat hydra-base-map)
                  do (cl-pushnew `( ,key hydra-repeat nil) dei-extra-heads))
+
+        (add-hook 'before-make-frame-hook #'dei--slay)
+        (add-hook 'minibuffer-setup-hook #'dei--slay)
         (advice-add #'completing-read :before #'dei--slay)
         (advice-add #'read-key :before #'dei--slay)
         (advice-add #'read-char :before #'dei--slay)
-        (advice-add #'ido-read-internal :before #'dei--slay) ;; REVIEW UNTESTED
-        (advice-add #'ivy-read :before #'dei--slay) ;; REVIEW UNTESTED
-        (advice-add #'helm :before #'dei--slay) ;; REVIEW UNTESTED
+        (advice-add #'read-event :before #'dei--slay)
+        (advice-add #'ido-read-internal :before #'dei--slay)
+        (advice-add #'ivy-read :before #'dei--slay)
+        (advice-add #'helm :before #'dei--slay)
         (add-hook 'window-buffer-change-functions #'dei-make-hydras-maybe 56)
         (add-hook 'window-selection-change-functions #'dei-make-hydras-maybe)
         ;; Unfortunately this is triggered every time hydra calls a command.
@@ -436,7 +457,7 @@ Optional argument KEYMAP means look only in that keymap."
         ;; (add-variable-watcher 'local-minor-modes #'dei-make-hydras-maybe)
         (when (and dei-warn-hydra-is-helpful
                    (not hydra-is-helpful))
-          (message "hydra-is-helpful is nil!  If intended, disable `%AS'"
+          (message "hydra-is-helpful is nil!  If intended, disable `%S'"
                    'dei-warn-hydra-is-helpful))
         (when (or (bound-and-true-p dei-keymap-found-hook)
                   (bound-and-true-p dei-homogenizing-winners))
@@ -454,8 +475,11 @@ Optional argument KEYMAP means look only in that keymap."
     (keymap-set hydra-base-map "C-u" dei--old-hydra-C-u)
     (remove-hook 'window-buffer-change-functions #'dei-make-hydras-maybe)
     (remove-hook 'window-selection-change-functions #'dei-make-hydras-maybe)
+    (remove-hook 'before-make-frame-hook #'dei--slay)
+    (remove-hook 'minibuffer-setup-hook #'dei--slay)
     (advice-remove #'completing-read #'dei--slay)
     (advice-remove #'read-key #'dei--slay)
+    (advice-remove #'read-event #'dei--slay)
     (advice-remove #'read-char #'dei--slay)
     (advice-remove #'ido-read-internal #'dei--slay)
     (advice-remove #'ivy-read #'dei--slay)
@@ -624,17 +648,6 @@ named function key such as <return>."
      ,(dei--head-arg-cmd "" leaf)))
 
 ;; Lists of full heads
-
-;; unused
-(defun dei--specify-heads-to-subhydra (stem leaf-list)
-  (cl-loop for leaf in leaf-list
-           collect
-           (let ((cmd (dei--corresponding-hydra stem leaf)))
-             (list leaf
-                   cmd
-                   (when (member leaf dei--hydra-keys-list)
-                     (symbol-name cmd))
-                   :exit t))))
 
 (defun dei--specify-visible-heads (stem &optional verboten-leafs)
   "Return a list of heads that will be shown in the hydra hint.
@@ -1044,14 +1057,14 @@ Otherwise, return nil."
                (bindings (dei--flock-bindings past))
                (funs (dei--flock-funs past))
                (vars (dei--flock-vars past)))
-          ;; Reuse cached values.  Beautiful.
+          ;; Reuse cached values.  It's so beautiful.
           (cl-loop for (sym . val) in funs do (fset sym val))
           (cl-loop for (sym . val) in vars do (set sym val))
           (setq dei--last-bindings bindings)
           (if existed
               (progn
                 ;; Do not proceed to next steps
-                (asyncloop-cancel loop)
+                (asyncloop-cancel loop 'quietly)
                 (format "Summoned flock %d" hash))
             ;; After conversion, skip to step 5 to register them
             (setf (asyncloop-remainder loop) (list t #'dei--step-5-register))
@@ -1236,7 +1249,7 @@ of asyncloop LOOP, so it will run again until
         "All hydras born"
       ;; Side-effects start here
       (dei--try-birth-hydra (car dei--hydra-recipes))
-      (push 'repeat (asyncloop-remainder loop))
+      (push t (asyncloop-remainder loop))
       (car (pop dei--hydra-recipes)))))
 
 (defun dei--step-5-register (loop)
@@ -1288,9 +1301,9 @@ of asyncloop LOOP, so it will run again until
 (defun dei-make-hydras-maybe (&rest _)
   "Maybe make hydras for the current keymap combo."
   (unless (or dei--give-up
-              ;; TODO: Explain these conditions
-              (and (equal dei--buffer-under-analysis (current-buffer))
-                   (equal dei--current-width (frame-width)))
+              ;; REVIEW: works fine with commenting these out?
+              ;;(and (equal dei--buffer-under-analysis (current-buffer))
+              ;;     (equal dei--current-width (frame-width)))
               (equal dei--current-hash (abs (sxhash (current-active-maps)))))
     (setq dei--loop
           (asyncloop-run
@@ -1311,7 +1324,8 @@ of asyncloop LOOP, so it will run again until
   (interactive)
   (asyncloop-reset-all)
   (setq dei--last-bindings nil)
-  (obarray-remove dei--hidden-obarray "flocks"))
+  (obarray-remove dei--hidden-obarray "flocks")
+  (message "Note there's a known bug that slows down the hydra maker each reset"))
 
 (provide 'deianira)
 ;;; deianira.el ends here

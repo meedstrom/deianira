@@ -568,12 +568,12 @@ The misleading hint also includes "hydra--digit-argument" on the number keys.  T
 The reason this issue could crop up is that I haven't got back to dogfooding this package.  (That's also why the package is not published anywhere, yet somehow it got 15 stars...)
 
 ** On start, no hydras for a little while
-Yeah, it takes time to build the first flock (5-20 seconds, longer if you are interacting with Emacs in the meantime).
+Yeah, it takes time to build the first flock (5-20 seconds, longer if you are interacting with Emacs in the meantime).  Look at buffer =*deianira*=.
 
 It used to take minutes and lock up Emacs, so I'm happy with that improvement :-)  Further improvement is possible (see source comments on =dei--try-birth-hydra=) but it's not my itch to scratch.
 
 ** Hydra does not update instantly
-If you run buffer-switching commands such as =next-buffer= while a hydra is active, getting a different major mode and keymaps, the hydra hint will not reflect this, but continue to reflect the buffer where it was spawned.
+If you run buffer-switching commands such as =next-buffer= while a hydra is active, getting a different major mode and keymaps, the hydra hint will not reflect this, but continue to reflect the last buffer you were in.
 
 Aside from confusion, it's usually not a problem because:
 - In a supermajority of cases, the difference is only visual: it's the hydra /hint/ that reflects the wrong buffer's bindings.  The keys still do what they should, since most of them are not bound to specific commands but to =(call-interactively (key-binding KEY))=, which results in the correct action.
@@ -583,7 +583,8 @@ If you do this under a prefix that changes a lot between major modes, like =C-c=
 - It can happen that you expect a key to lead to a sub-hydra but it doesn't.
 - The heads' individual =:exit= flags also do not change, so they can be inappropriate for the current buffer, not reflecting =dei-quitter-keys= or related variables.
 
-In principle, I can fix this so that Deianira serves up a fresh hydra on buffer change, but I haven't found the matter important enough to deal with.
+In principle, I can fix this so that Deianira serves up a fresh hydra on buffer change, but I haven't found the matter a big deal.
+
 ** Hydra hint width is wrong
 
 Can happen when you resize the frame.
