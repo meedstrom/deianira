@@ -24,7 +24,7 @@
 ;; Version: 0.2.6-snapshot
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "28") (asyncloop "0.4.2") (massmapper "0.1.2") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
+;; Package-Requires: ((emacs "28") (asyncloop "0.4.5") (massmapper "0.1.3-snapshot") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
 
 ;;; Commentary:
 
@@ -878,13 +878,10 @@ and no mixed modifiers."
      (massmapper--key-mixes-modifiers keydesc)
      ;; Drop bastard sequences.
      (and (massmapper--key-has-more-than-one-chord keydesc)
-          ;; REVIEW: I think these two had the same effect, but could have been
-          ;; subtly different.  Write a test?
-          ;; (not (massmapper--key-seq-is-permachord keydesc))
           (not (massmapper--permachord-p keydesc)))
      ;; Drop e.g. <f1> C-f.
      (and (not (massmapper--key-starts-with-modifier keydesc))
-          (string-match-p massmapper--modifier-regexp-safe keydesc)))))
+          (string-match-p massmapper--modifier-safe-re keydesc)))))
 
 (defconst dei--ignore-regexp-merged
   (regexp-opt
@@ -1050,7 +1047,7 @@ long as they don't change.")
 ;; from a weird issue) (theory: we see no effect when starting with a narrow
 ;; frame and rehint for a big frame, but the other way around could get messy)
 (defun dei--rehint-flock (flock width)
-  "Return copy of FLOCK with hints updated to match frame WIDTH."
+  "Copy FLOCK and update hints to match frame width WIDTH."
   (cl-letf* ((dei--colwidth (dei--colwidth-recalc width))
              (dei--filler (dei--filler-recalc dei--colwidth))
              (new (copy-sequence flock)))
@@ -1172,11 +1169,11 @@ the same key."
             dei--hydra-keys-list (dei--hydra-keys-list-recalc)
             dei--colwidth (dei--colwidth-recalc dei--current-width)
             dei--filler (dei--filler-recalc dei--colwidth))
-      
+
       (condition-case err
           (setq dei--current-bindings
                 (dei--unnest-and-filter-current-bindings))
-        ((error)
+        ((error debug)
          (asyncloop-log loop "Problem filtering bindings: %s" (cdr err))
          (signal (car err) (cdr err))))
 
