@@ -216,6 +216,13 @@ when that happens."
   :type '(repeat sexp)
   :group 'deianira)
 
+(defcustom dei-ignore
+  nil
+  "Regexp for key sequences to avoid making hydras for.
+To ignore all C- sequences, write C-."
+  :group 'deianira
+  :type 'string)
+
 ;; FIXME: broken in the Custom interface
 (defcustom dei-invisible-leafs
   (append
@@ -1189,9 +1196,12 @@ the same key."
                             (-difference dei--last-bindings
                                          dei--current-bindings)))
              with new-stems = '()
+             with case=fold-search = nil
              as it = (cl-loop
                       for binding in new-bindings
                       when (string-prefix-p stem (car binding))
+                      unless (and dei-ignore
+                                  (string-match-p dei-ignore (car binding)))
                       return stem)
              when it collect it into new-stems
              ;; Sort to avail most relevant hydras soonest.  Longest key-seqs
