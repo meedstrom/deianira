@@ -306,28 +306,80 @@ See `dei--colwidth-recalc'."
     (call-interactively #'hydra-keyboard-quit))
   args)
 
-;; This is used by dei--head-arg-cmd
-;; Could probably do with validating the input more
+(defun dei--dub-hydra-from-key (keydesc)
+  "Example: if KEYDESC is \"C-x C-a\", return \"dei-Cxa\"."
+  (declare (pure t) (side-effect-free t))
+  (if (string-empty-p keydesc)
+      nil
+    (let* ((steps (split-string keydesc " "))
+           (first-is-long (> (length (car steps)) 1)))
+      (and dei-debug
+           first-is-long
+           ;; Never try to represent chords beyond the first.  This restriction
+           ;; allows compact notation with dashes and spaces stripped.  Else
+           ;; there would be ambiguity due to confusing chords and keys for
+           ;; each other (even banning upcase keys leaves s-).
+           (cl-assert (not (string-match-p massmapper--modifier-safe-re
+                                           (substring keydesc 2)))))
+      (concat "dei-"
+              ;; root modifier
+              (and first-is-long
+                   (string-match-p massmapper--modifier-safe-re
+                                   (substring keydesc 0 2))
+                   (substring keydesc 0 1))
+              ;; the rest
+              (string-join
+               (cl-loop
+                for step in steps
+                as leaf = (massmapper--get-leaf step)
+                collect
+                ;; TODO: Before transitioning to this, ensure <tab> and TAB
+                ;; don't generate diff hydras
+                ;; (cond (;; Eliminate ambiguity by downcasing capitals
+                ;;        (and (= 1 (length leaf))
+                ;;             (seq-contains-p dei-all-shifted-symbols
+                ;;                             (string-to-char leaf)))
+                ;;        (concat "S" (downcase leaf)))
+                ;;       ;; Make function keys compact (and stay unambiguous
+                ;;       ;; by upcasing them instead)
+                ;;       ((string-match-p "<.*?>" leaf)
+                ;;        (upcase (string-replace "-" "" (substring 1 -1 leaf))))
+                ;;       (t
+                ;;        leaf))
+                ;; wrap RET SPC DEL etc in <>, to distinguish from
+                ;; (extremely unusual) all-caps seqs such as T A B
+                (if (member leaf '("NUL" "RET" "TAB" "LFD" "ESC" "SPC" "DEL"))
+                    (concat "<" leaf ">")
+                  leaf)))))))
+
+(defun dei--dub-hydra-from-stem (stem)
+  "Example: if STEM is \"C-x C-\", return \"dei-Cx\"."
+  (declare (pure t) (side-effect-free t))
+  (if (string-empty-p stem)
+      nil
+    (if (= 2 (length stem))
+        (concat "dei-" (substring stem 0 1)) ;; stem is just C- or M- etc
+      (dei--dub-hydra-from-key (string-join (butlast (split-string stem " "))
+                                            " ")))))
+
+(defun dei--dub-hydra-from-key-or-stem (keydesc-or-stem)
+  (if (key-valid-p keydesc-or-stem)
+      (dei--dub-hydra-from-key keydesc-or-stem)
+    (dei--dub-hydra-from-stem keydesc-or-stem)))
+
+;; This is used by `dei--head-arg-cmd'
 (defun dei--corresponding-hydra (keydesc-or-stem &optional leaf)
   "Return the hydra body that corresponds to a key.
 If only one argument is given, KEYDESC-OR-STEM, it should be a
 valid key description.  If supplying LEAF, then KEYDESC-OR-STEM
 should be a dangling stem, as they will be concatenated to make a
 valid key description."
-  (intern (concat
-           (dei--dub-hydra-from-key-or-stem (concat keydesc-or-stem leaf))
-           "/body")))
-
-;; TODO: wrap RET SPC DEL etc in <> for the squashed version
-(defun dei--dub-hydra-from-key-or-stem (keydesc)
-  "Example: if KEYDESC is \"C-x a\", return \"dei-Cxa\"."
-  (declare (pure t) (side-effect-free t))
-  (let ((squashed (string-join (split-string keydesc (rx (any " -"))))))
-    (if (string-match (rx "-" eol) keydesc)
-        (if (= 2 (length keydesc))
-            (concat "dei-" squashed) ;; C-, M-, s-
-          (concat "dei-" squashed "-")) ;; leaf is -
-      (concat "dei-" squashed))))
+  (let ((keydesc (concat keydesc-or-stem leaf)))
+    (if (string-empty-p keydesc)
+        nil
+      (intern (concat
+               (dei--dub-hydra-from-key-or-stem keydesc)
+               "/body")))))
 
 ;; REVIEW: write test for it with a key-simulator
 (defun dei-universal-argument (arg)
@@ -570,21 +622,18 @@ chokes Emacs for minutes.")
   (let ((key (concat stem leaf)))
     (cond
      ;; Sub-hydra
-     ((member (concat stem leaf) dei--hydrable-prefixes-with-ancestors)
-      (dei--corresponding-hydra stem leaf))
+     ((member key dei--hydrable-prefixes-with-ancestors)
+      (dei--corresponding-hydra key))
      ;; Quasi-quitter, meaning call key and return to root hydra
-     ((or (member (key-binding (key-parse key)) dei-quasiquitter-commands)
-          (member key dei-quasiquitter-keys))
+     ;; Only works if root hydra is a modifier, not if it's <f1> or other keys!
+     ((and (massmapper--key-starts-with-modifier key)
+           (or (member (key-binding (key-parse key)) dei-quasiquitter-commands)
+               (member key dei-quasiquitter-keys)))
       `(lambda ()
          (interactive)
          (call-interactively (key-binding ,(key-parse key)))
-         (,(let ((init (substring key 0 2)))
-             (cond
-              ((string-search "C-" init) (dei--corresponding-hydra "C "))
-              ((string-search "M-" init) (dei--corresponding-hydra "M "))
-              ((string-search "s-" init) (dei--corresponding-hydra "s "))
-              ((string-search "H-" init) (dei--corresponding-hydra "H "))
-              ((string-search "A-" init) (dei--corresponding-hydra "A ")))))))
+         ;; the root hydra /body
+         (,(dei--corresponding-hydra (substring key 0 2)))))
      ;; Regular key
      (t
       `(call-interactively (key-binding ,(key-parse key)))))))
@@ -931,8 +980,8 @@ less filtered and not normalized list."
    finally return merged))
 
 (defun dei--connection-exists (parent-stem child-stem)
-  (let* ((parent-hydra-name (dei--dub-hydra-from-key-or-stem parent-stem))
-         (child-hydra-name (dei--dub-hydra-from-key-or-stem child-stem)))
+  (let* ((parent-hydra-name (dei--dub-hydra-from-stem parent-stem))
+         (child-hydra-name (dei--dub-hydra-from-stem child-stem)))
     (and (fboundp (intern (concat parent-hydra-name "/body")))
          (cl-find-if
           (lambda (head)
@@ -1238,13 +1287,13 @@ of asyncloop LOOP, so it will run again until
     (if (null dei--changed-stems)
         "All recipes written"
       (let* ((stem (car dei--changed-stems))
-             (name (dei--dub-hydra-from-key-or-stem stem))
-             (h1 (dei--specify-hydra stem (concat name "-nonum") t))
-             (h2 (dei--specify-hydra stem name)))
+             (name (dei--dub-hydra-from-stem stem))
+             (r1 (dei--specify-hydra stem (concat name "-nonum") t))
+             (r2 (dei--specify-hydra stem name)))
         ;; Side-effects start here
-        (push h1 dei--hydra-recipes)
-        (push h2 dei--hydra-recipes)
-        (push 'repeat (asyncloop-remainder loop))
+        (push r1 dei--hydra-recipes)
+        (push r2 dei--hydra-recipes)
+        (push t (asyncloop-remainder loop))
         (pop dei--changed-stems)))))
 
 (defun dei--step-4-birth-hydra (loop)
