@@ -24,7 +24,7 @@
 ;; Version: 0.2.7-snapshot
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
-;; Package-Requires: ((emacs "28") (asyncloop "0.4.5") (massmapper "0.1.3-snapshot") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
+;; Package-Requires: ((emacs "28") (asyncloop "0.5.1-snapshot") (massmapper "0.1.4-snapshot") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
 
 ;;; Commentary:
 
