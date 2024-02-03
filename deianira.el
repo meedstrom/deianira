@@ -977,14 +977,16 @@ less filtered and not normalized list."
    finally return merged))
 
 (defun dei--connection-exists (parent-stem child-stem)
-  (let* ((parent-hydra-name (dei--dub-hydra-from-stem parent-stem))
-         (child-hydra-name (dei--dub-hydra-from-stem child-stem)))
-    (and (fboundp (intern (concat parent-hydra-name "/body")))
-         (cl-find-if
-          (lambda (head)
-            (eq (nth 1 head)
-                (intern (concat child-hydra-name "/body"))))
-          (symbol-value (intern (concat parent-hydra-name "/heads")))))))
+  (when (and parent-stem
+             child-stem)
+    (let* ((parent-hydra-name (dei--dub-hydra-from-stem parent-stem))
+           (child-hydra-name (dei--dub-hydra-from-stem child-stem)))
+      (and (fboundp (intern (concat parent-hydra-name "/body")))
+           (cl-find-if
+            (lambda (head)
+              (eq (nth 1 head)
+                  (intern (concat child-hydra-name "/body"))))
+            (symbol-value (intern (concat parent-hydra-name "/heads"))))))))
 ;; (dei--connection-exists "C-c " "C-c p ")
 
 
@@ -1060,7 +1062,7 @@ long as they don't change.")
            (let ((basename (substring (symbol-name (car pair)) 0 -5)))
              (cons (car pair)
                    ;; Note that we eval to get a static string, see also
-                   ;; `dei--step-4-birth-hydra'.  It's ok b/c there is
+                   ;; `dei--step-6-birth-hydra'.  It's ok b/c there is
                    ;; nothing dynamic in the input, so the result is
                    ;; deterministic.
                    (eval (hydra--format
@@ -1082,21 +1084,21 @@ long as they don't change.")
 ;;           (caddr bar))
 ;;
 
-(defun dei--abort-if-buffer-killed (loop)
+(defun dei--abort-if-buffer-killed (loop buf)
   "Cancel hydre-building LOOP if buffer killed.
 Otherwise, return nil."
-  (unless (buffer-live-p dei--buffer-under-analysis)
+  (unless (buffer-live-p buf)
     (asyncloop-log loop
-      "Cancelling because buffer killed: %s" dei--buffer-under-analysis)
+      "Cancelling because buffer killed: %s" buf)
     (asyncloop-cancel loop)
     t))
 
-(defun dei--step-0-find-premade (loop)
+(defun dei--step-1-find-premade (loop)
   (let* ((buffer (current-buffer))
          (flocks (symbol-value (obarray-get dei--hidden-obarray "flocks")))
          (hash (abs (sxhash (current-active-maps))))
          (width (frame-width))
-         ;; If we already made hydras for this keymap composite, retrieve them.
+         ;; If we already made hydras for this keymap composite, retrieve them
          (some-flock (dei--first-flock-by-hash hash flocks)))
     (setq dei--buffer-under-analysis buffer)
     (setq dei--current-hash hash)
@@ -1110,7 +1112,7 @@ Otherwise, return nil."
                (bindings (dei--flock-bindings past))
                (funs (dei--flock-funs past))
                (vars (dei--flock-vars past)))
-          ;; Reuse cached values.  It's so beautiful.
+          ;; Reuse cached values.  This code came from an eureka, so beautiful.
           (cl-loop for (sym . val) in funs do (fset sym val))
           (cl-loop for (sym . val) in vars do (set sym val))
           (setq dei--last-bindings bindings)
@@ -1119,19 +1121,19 @@ Otherwise, return nil."
                 ;; Do not proceed to next steps
                 (asyncloop-cancel loop 'quietly)
                 (format "Summoned flock %d" hash))
-            ;; After conversion, skip to step 5 to register them
-            (setf (asyncloop-remainder loop) (list t #'dei--step-5-register))
+            ;; After conversion, skip to step 7 to register them
+            (setf (asyncloop-remainder loop) (list t #'dei--step-7-register))
             (format "Converted to %d chars wide: %d" width hash)))
       (format "Requisition new flock for buffer %s" buffer))))
 
 ;; REVIEW: Maybe write it more readable somehow
-(defun dei--step-1-validate-user-settings (loop)
+(defun dei--step-2-validate-user-settings (loop)
   "Signal an error if any two user settings overlap.
 That is, if a given key description is found more than once.
 
 This prevents a situation where a hydra defines two heads on
 the same key."
-  (unless (dei--abort-if-buffer-killed loop)
+  (unless (dei--abort-if-buffer-killed loop dei--buffer-under-analysis)
     (unless (--all-p (equal (symbol-value (car it)) (cdr it))
                      dei--last-settings-alist)
       (unless (= 0 (mod (length dei-hydra-keys) dei-columns))
@@ -1160,9 +1162,66 @@ the same key."
                              overlap (car var) (car remaining-var))))))))))
     "OK"))
 
-(defun dei--step-2-model-the-world (loop)
+;; v2
+(defun dei--connection-exists (parent child)
+  "Check if PARENT hydra exists and binds CHILD hydra."
+  (when (and parent child)
+    (let* ((parent-hydra-name (dei--dub-hydra-from-key parent))
+           (child-hydra-name (dei--dub-hydra-from-key child)))
+      (and (fboundp (intern (concat parent-hydra-name "/body")))
+           (cl-find-if
+            (lambda (head)
+              (eq (nth 1 head)
+                  (intern (concat child-hydra-name "/body"))))
+            (symbol-value (intern (concat parent-hydra-name "/heads"))))))))
+
+;; what to do if child hydra stops existing?, we still need to redefine the ancestor then
+;;
+;; the trick is that if child hydra stops existing, that should be visible as a
+;; difference in new-bindings.  (not necessarily if it's just deeply nested
+;; keymap that disappeared...)
+;;
+;; but then what we want to check is not that a connection exists, but that it
+;; unexists.
+;;
+;; may once again have to split the defunct bindings from the new.
+(defun ancestors-to-connect (key)
+  (let (ancestors
+        (run t))
+    (while run
+      (let ((parent (massmapper--parent-key key)))
+        (if (dei--connection-exists parent key)
+            ;; also push the parent of the parent in case
+            (setq run nil)
+          (push parent ancestors)
+          ))
+
+      )
+    ancestors)
+  )
+
+(defun dei--new-bindings ()
+  (let* ((new-bindings (append (-difference dei--current-bindings
+                                            dei--last-bindings)
+                               (-difference dei--last-bindings
+                                            dei--current-bindings)))
+         (new-with-ancestors
+          (cl-loop
+           for (key . _) in new-bindings
+           as n = (length (split-string key " "))
+           append (-iterate #'massmapper--parent-key key n)))
+         )
+
+    (-union dei--hydrable-prefixes
+            (cl-loop
+             for prefix in new-with-ancestors
+             unless (dei--connection-exists parent-stem stem)
+             collect parent-stem))
+    ))
+
+(defun dei--step-3-model-the-world (loop)
   "Calculate facts."
-  (unless (dei--abort-if-buffer-killed loop)
+  (unless (dei--abort-if-buffer-killed loop dei--buffer-under-analysis)
     (with-current-buffer dei--buffer-under-analysis
       ;; Cache settings
       (setq dei--all-shifted-symbols-list (dei--all-shifted-symbols-list-recalc)
@@ -1197,29 +1256,28 @@ the same key."
               as n = (length (split-string key " "))
               append (-iterate #'massmapper--parent-key key n))))
 
+      ;; Note that this algo typically gives identical or near-identical
+      ;; results to just collecting all parent stems of
+      ;; `dei--hydrable-prefixes-with-ancestors'.  However, this code better
+      ;; expresses what we actually need, so I prefer to keep it like this.
+      ;; It does let us skip making a hydra or two sometimes.
       (setq dei--hydrable-stems
-            (-union
-             (-map #'massmapper--prefix-to-stem dei--hydrable-prefixes)
-             ;; Check ancestors in case we have to create those hydras too
-             (cl-loop
-              for prefix in dei--hydrable-prefixes-with-ancestors
-              as stem = (concat prefix " ")
-              as parent-stem = (massmapper--parent-stem stem)
-              unless (dei--connection-exists parent-stem stem)
-              collect parent-stem)))
+            (-uniq
+             (-union
+              (-keep #'massmapper--prefix-to-stem dei--hydrable-prefixes)
+              ;; Check ancestors in case we have to create those hydras too
+              (cl-loop
+               for prefix in dei--hydrable-prefixes-with-ancestors
+               as stem = (massmapper--prefix-to-stem prefix)
+               as parent-stem = (massmapper--parent-stem stem)
+               unless (dei--connection-exists parent-stem stem)
+               collect parent-stem))))
 
       ;; Figure out which stems have changed, so we can exploit the previous
       ;; flock's work and skip running defhydra for results we know will be
       ;; identical.  This has a TREMENDOUS performance boost each time we
       ;; encounter a new keymap combo, cutting 30 seconds of computation down
       ;; to 0-2 seconds.
-
-      ;; Visualize a Venn diagram, with two circles for the LAST and CURRENT
-      ;; bindings. The defunct bindings are somewhere in LAST, the new bindings
-      ;; somewhere in CURRENT, but neither are in the circles' intersection,
-      ;; which should never be relevant to update, as they represent cases
-      ;; where the key's definition didn't change compared to the last keymap
-      ;; combo.
 
       ;; TODO: have "bindings" include subkeymaps too just to be sure we really
       ;; update.  In emacs-lisp-mode, I was getting a Cxn stem that comes from
@@ -1229,33 +1287,34 @@ the same key."
       ;; Still, it casts light on how this algo really works, and I think I
       ;; need a flowchart before I remove this comment, just to ensure that all
       ;; edge cases will be taken care of.
+
       (setq dei--changed-stems
             (cl-loop
-             for stem in (->> dei--hydrable-stems
-                              (append '("C-" "M-" "s-" "H-" "A-"))
-                              (-uniq)
-                              ;; TODO: how did the stem "" enter the dataset?
-                              (remove ""))
-             with new-bindings =
-             (-uniq (append (-difference dei--current-bindings
-                                         dei--last-bindings)
-                            (-difference dei--last-bindings
-                                         dei--current-bindings)))
+             with case-fold-search = nil
+             ;; Visualize a Venn diagram, with two circles for the LAST and
+             ;; CURRENT bindings. The defunct bindings are somewhere in LAST,
+             ;; the new bindings somewhere in CURRENT, but neither are in the
+             ;; circles' intersection, which should never be relevant to update
+             ;; as they represent cases where the key's definition is the same
+             ;; as in the last keymap combo.
+             with new-bindings = (append (-difference dei--current-bindings
+                                                      dei--last-bindings)
+                                         (-difference dei--last-bindings
+                                                      dei--current-bindings))
              with new-stems = '()
-             with case=fold-search = nil
+             ;; TODO: I have a feeling that the whole -connection-exists stuff
+             ;; earlier becomes moot here--ancestors don't get rebuilt?
+             ;; Reimplement -connection-exists to use keydescs, and use it in
+             ;; calculating new-bindings.  That may also take care of the other
+             ;; todo regarding subkeymaps.
+             for stem in dei--hydrable-stems
              as it = (cl-loop
-                      for binding in new-bindings
-                      when (string-prefix-p stem (car binding))
-                      unless (and dei-ignore
-                                  (string-match-p dei-ignore (car binding)))
+                      for (key . _) in new-bindings
+                      when (equal stem (massmapper--drop-leaf key))
+                      unless (and dei-ignore (string-match-p dei-ignore key))
                       return stem)
-             when it collect it into new-stems
-             ;; Sort to avail most relevant hydras soonest.  Longest key-seqs
-             ;; first now means shortest first once we get to
-             ;; `dei--step-4-birth-hydra', so the important hydrvas like C- and
-             ;; C-x are among the first to come into existence.
-             finally return (cl-sort new-stems #'>
-                                     :key #'massmapper--key-seq-steps-length)))
+             when it collect it))
+
 
       ;; Clear the workbench in case of a previous half-done iteration.
       (setq dei--hydra-recipes nil)
@@ -1264,10 +1323,10 @@ the same key."
           (format "%d changed stems: %S"
                   (length dei--changed-stems)
                   dei--changed-stems)
-        (setf (asyncloop-remainder loop) (list t #'dei--step-5-register))
+        (setf (asyncloop-remainder loop) (list t #'dei--step-7-register))
         "No practical keymap diffs"))))
 
-(defun dei--step-3-write-recipe (loop)
+(defun dei--step-4-write-recipe (loop)
   "Write recipe for the first item of `dei--changed-stems'.
 Specifically, pop a stem off the list `dei--changed-stems',
 transmute it into a recipe, and push that onto the list
@@ -1275,32 +1334,43 @@ transmute it into a recipe, and push that onto the list
 
 What is meant by \"recipe\" is a list of arguments that we
 precompute as much as possible, that we'll later pass to
-`defhydra' in `dei--step-4-birth-hydra'.
+`defhydra' in `dei--step-6-birth-hydra'.
 
 Repeatedly add another invocation of this function to the front
 of asyncloop LOOP, so it will run again until
 `dei--changed-stems' empty."
-  (unless (dei--abort-if-buffer-killed loop)
-    (if (null dei--changed-stems)
-        "All recipes written"
-      (let* ((stem (car dei--changed-stems))
-             (name (dei--dub-hydra-from-stem stem))
-             (r1 (dei--specify-hydra stem (concat name "-nonum") t))
-             (r2 (dei--specify-hydra stem name)))
-        ;; Side-effects start here
-        (push r1 dei--hydra-recipes)
-        (push r2 dei--hydra-recipes)
-        (push t (asyncloop-remainder loop))
-        (pop dei--changed-stems)))))
+  (unless (dei--abort-if-buffer-killed loop dei--buffer-under-analysis)
+    (with-current-buffer dei--buffer-under-analysis
+      (if (null dei--changed-stems)
+          "All recipes written"
+        (let* ((stem (car dei--changed-stems))
+               (name (dei--dub-hydra-from-stem stem))
+               (r1 (dei--specify-hydra stem (concat name "-nonum") t))
+               (r2 (dei--specify-hydra stem name)))
+          ;; Side-effects start here
+          (push r1 dei--hydra-recipes)
+          (push r2 dei--hydra-recipes)
+          (push t (asyncloop-remainder loop))
+          (pop dei--changed-stems))))))
 
-(defun dei--step-4-birth-hydra (loop)
+(defun dei--step-5-sort-recipes (loop)
+  "Sort to avail most relevant hydras soonest, so the important
+hydras like C- and C-x are among the first to come into
+existence."
+  (setq dei--hydra-recipes
+        (cl-sort dei--hydra-recipes #'<
+                 :key (lambda (recipe)
+                        (length (car recipe)))))
+  "Sorted by shortest first")
+
+(defun dei--step-6-birth-hydra (loop)
   "Pass a recipe to `defhydra', wetting what has been a dry-run.
 Each invocation pops one off `dei--hydra-recipes'.
 
 Repeatedly add another invocation of this function to the front
 of asyncloop LOOP, so it will run again until
 `dei--hydra-recipes' empty."
-  (unless (dei--abort-if-buffer-killed loop)
+  (unless (dei--abort-if-buffer-killed loop dei--buffer-under-analysis)
     (if (null dei--hydra-recipes)
         "All hydras born"
       ;; Side-effects start here
@@ -1308,7 +1378,7 @@ of asyncloop LOOP, so it will run again until
       (push t (asyncloop-remainder loop))
       (car (pop dei--hydra-recipes)))))
 
-(defun dei--step-5-register (loop)
+(defun dei--step-7-register (loop)
   "Record the hydras made under this keymap combination."
   (let ((flocks (symbol-value (obarray-get dei--hidden-obarray "flocks")))
         funs
@@ -1363,12 +1433,13 @@ of asyncloop LOOP, so it will run again until
               (equal dei--current-hash (abs (sxhash (current-active-maps)))))
     (setq dei--loop
           (asyncloop-run
-            (list #'dei--step-0-find-premade
-                  #'dei--step-1-validate-user-settings
-                  #'dei--step-2-model-the-world
-                  #'dei--step-3-write-recipe
-                  #'dei--step-4-birth-hydra
-                  #'dei--step-5-register)
+            (list #'dei--step-1-find-premade
+                  #'dei--step-2-validate-user-settings
+                  #'dei--step-3-model-the-world
+                  #'dei--step-4-write-recipe
+                  #'dei--step-5-sort-recipes
+                  #'dei--step-6-birth-hydra
+                  #'dei--step-7-register)
             :log-buffer-name "*deianira*"
             :immediate-break-on-user-activity t
             :on-interrupt-discovered #'dei--actions-on-interrupt))))
