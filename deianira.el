@@ -21,7 +21,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.6
+;; Version: 0.2.7-snapshot
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "28") (asyncloop "0.4.5") (massmapper "0.1.3-snapshot") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
@@ -939,12 +939,18 @@ less filtered and not normalized list."
            ;; But it's ok to filter out self-insert-command since I
            ;; deem it really rare people bind it in nonstandard places.
            unless (string-search ".." key)
-           ;; (Late error-check because some of those we filtered out
-           ;; would've tripped an error)
+           ;; Late error-check because some of those we filtered out
+           ;; would've tripped an error
            if (null norm)
            do (error "key couldn't be normalized: %s" key)
            else
-           unless (assoc norm bindings)
+           ;; Used to have a `with bindings' in this sub-loop so to check for dups, but it's probably unnecessary.
+           ;; Should verify though.
+           ;; unless (assoc norm bindings)
+           ;; REVIEW: Just verifying...
+           if (assoc norm bindings)
+           do (error "key already found in same map: %s in %s" key (help-fns-find-keymap-name raw-map))
+           else
            unless (assoc norm merged)
            unless (string-match-p dei--ignore-regexp-merged norm)
            unless (massmapper--key-has-more-than-one-chord norm)
