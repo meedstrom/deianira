@@ -1,4 +1,4 @@
-;;; deianira.el --- Hydra-ize every key sequence -*- lexical-binding: t -*-
+;;; deianira.el --- Hydra-ize every key sequence -*- lexical-binding: t; no-byte-compile: t -*-
 
 ;; (read-symbol-shorthands . '("dei-" . "deianira-"))
 
@@ -21,7 +21,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.6-snapshot
+;; Version: 0.2.6
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "28") (asyncloop "0.4.5") (massmapper "0.1.3-snapshot") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
