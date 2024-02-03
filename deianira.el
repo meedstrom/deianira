@@ -47,7 +47,6 @@
 ;; builtin dependencies
 (require 'subr-x)
 (require 'cl-lib)
-(require 'deianira-obsoletes)
 
 ;; external dependencies
 (require 'dash)
