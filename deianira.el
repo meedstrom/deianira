@@ -345,7 +345,7 @@ See `dei--colwidth-recalc'."
                 ;;        (upcase (string-replace "-" "" (substring 1 -1 leaf))))
                 ;;       (t
                 ;;        leaf))
-                ;; wrap RET SPC DEL etc in <>, to distinguish from
+                ;; Wrap RET SPC DEL etc in <>, to distinguish from
                 ;; (extremely unusual) all-caps seqs such as T A B
                 (if (member leaf '("NUL" "RET" "TAB" "LFD" "ESC" "SPC" "DEL"))
                     (concat "<" leaf ">")
@@ -1190,7 +1190,7 @@ the same key."
 ;; unexists.
 ;;
 ;; may once again have to split the defunct bindings from the new.
-(defun ancestors-to-connect (key)
+(defun dei--ancestors-to-connect (key)
   (let (ancestors
         (run t))
     (while run
