@@ -897,7 +897,8 @@ and no mixed modifiers."
                 (where-is-internal #'iso-transl-ctl-x-8-map)))
   "List of prefixes to avoid looking up.")
 
-(defun dei--filter-buffer-bindings (&optional raw)
+;; (dei--filter-buffer-bindings)
+(defun dei--filter-buffer-bindings ()
   "List the current bindings appropriate for hydra-making.
 The result is an alist of \(KEYDESC . COMMAND\), where each
 KEYDESC is normalized to satisfy `key-valid-p'.  COMMAND is
@@ -906,63 +907,73 @@ expected to be either a command or a lambda or closure.
 Perhaps obvious but: this is not the bindings from any single
 keymap such as `global-map', but from the composite of all
 currently active keymaps, many of which occlude parts of
-`global-map'.
-
-Optional argument RAW may be useful while debugging, by
-returning a less filtered and not normalized list."
+`global-map'."
   ;; You know that the same key can be found several times in multiple
   ;; keymaps.  Fortunately we can know which binding is correct for the
   ;; current buffer, as `current-active-maps' seems to return maps in the
   ;; order in which Emacs selects them.  So what comes earlier in the list
   ;; is what would in fact be used.  The rest is history.
-  (let ((bindings nil)
-        (case-fold-search nil))
-    (dolist (keymap (current-active-maps) bindings)
-      (cl-loop
-       for seq being the key-seqs of keymap
-       using (key-bindings cmd)
-       as key = (key-description seq)
-       if raw do (when (not (assoc key bindings))
-                   (push (cons key cmd) bindings))
-       else do
-       (and cmd
-            ;; Skip menu-bar/tool-bar/tab-bar mess
-            (not (string-search "-bar>" key))
-            (not (and (listp cmd) (eq 'menu-item (car cmd))))
-            ;; Sometimes (key-description vec) evalutes to a key called
-            ;; "C-x (..*", a key called "ESC 3..9", etc.  Even stranger,
-            ;; vec for every one of them is just [switch-frame].  And
-            ;; all are bound to self-insert-command.  I don't get it.
-            ;; But it's ok to filter out self-insert-command.
-            (not (string-search ".." key))
-            (let ((normkey (massmapper--normalize key)))
-              (and
-               ;; Only consider the first instance of a given key (a keymap can
-               ;; list the same key twice, and it can be in several keymaps).
-               (not (assoc normkey bindings))
-               ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
-               (not (string-match-p dei--ignore-regexp-merged normkey))
-               (not (massmapper--key-has-more-than-one-chord normkey))
-               (not (dei--key-is-illegal normkey))
-               (not (cl-loop
-                     for prefix in dei--avoid-prefixes
-                     when (string-prefix-p prefix normkey)
-                     return t))
-               ;; Check for ancestors of this key sequence...  the things I
-               ;; put up with...
-               (not (cl-loop
-                     with n = (length (split-string normkey " " t))
-                     with parents = (-iterate #'massmapper--parent-key
-                                              normkey n)
-                     for parent in parents
-                     when (assoc parent bindings)
-                     return t))
-               ;; Oh!  Better check for descendants of this key sequence too.
-               (not (cl-loop
-                     for (superseder . _) in bindings
-                     when (string-prefix-p normkey superseder)
-                     return t))
-               (push (cons normkey cmd) bindings))))))))
+  (cl-loop
+   with merged = nil
+   with case-fold-search = nil
+   for keymap in (current-active-maps)
+   append (cl-loop
+           with bindings = nil
+           for seq being the key-seqs of keymap
+           using (key-bindings cmd)
+           as key = (key-description seq)
+           as normkey = (ignore-errors (massmapper--normalize key))
+           when
+           (and cmd
+                ;; Skip menu-bar/tool-bar/tab-bar mess
+                (not (string-search "-bar>" key))
+                (not (and (listp cmd) (eq 'menu-item (car cmd))))
+                ;; Sometimes (key-description vec) evalutes to a key called
+                ;; "C-x (..*", a key called "ESC 3..9", etc.  Even stranger,
+                ;; vec for every one of them is just [switch-frame].  And
+                ;; all are bound to self-insert-command.  I don't get it.
+                ;; But it's ok to filter out self-insert-command.
+                (not (string-search ".." key))
+                ;; Late error-check because some of those inputs we now
+                ;; filtered out because we don't need them, had tripped silent
+                ;; errors
+                (if (null normkey)
+                    (error "key couldn't be normalized: %s" key)
+                  t)
+                ;; Only consider the first instance of a given key (a keymap can
+                ;; list the same key twice, and it can be in several keymaps).
+                (not (assoc normkey bindings))
+                ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
+                (not (string-match-p dei--ignore-regexp-merged normkey))
+                (not (massmapper--key-has-more-than-one-chord normkey))
+                (not (dei--key-is-illegal normkey))
+                (not (cl-loop
+                      for prefix in dei--avoid-prefixes
+                      when (string-prefix-p prefix normkey)
+                      return t))
+                ;; Check if we already found an ancestor to this key
+                ;; sequence...  the things I put up with...
+                (not (cl-loop
+                      with n = (length (split-string normkey " " t))
+                      with parents = (-iterate #'massmapper--parent-key
+                                               normkey n)
+                      for parent in parents
+                      when (assoc parent merged)
+                      return t))
+                ;; Oh!  Better check for a descendant of this key sequence too.
+                ;; Does it seem insane to do this check and the above check at
+                ;; this stage?  It works because, again, we're looping thru
+                ;; `current-active-maps' in order of keymap prio---which means
+                ;; that everything that's gotten into `merged' so far has prio
+                ;; over the key now looked at.
+                (not (cl-loop
+                      for (superseder . _) in merged
+                      when (string-prefix-p normkey superseder)
+                      return t)))
+           collect (cons normkey cmd) into bindings
+           finally return bindings)
+   into merged
+   finally return merged))
 
 (defun dei--connection-exists (parent-stem child-stem)
   (when (and parent-stem
