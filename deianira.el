@@ -936,13 +936,14 @@ currently active keymaps, many of which occlude parts of
                 (not (string-search ".." key))
                 ;; Late error-check because some of those inputs we now
                 ;; filtered out because we don't need them, had tripped silent
-                ;; errors
+                ;; errors.
                 (if (null normkey)
                     (error "key couldn't be normalized: %s" key)
                   t)
                 ;; Only consider the first instance of a given key (a keymap can
                 ;; list the same key twice, and it can be in several keymaps).
                 (not (assoc normkey bindings))
+                (not (assoc normkey merged))
                 ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
                 (not (string-match-p dei--ignore-regexp-merged normkey))
                 (not (massmapper--key-has-more-than-one-chord normkey))
