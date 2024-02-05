@@ -891,7 +891,7 @@ and no mixed modifiers."
            massmapper--ignore-keys-control-chars)))
 
 ;; REVIEW: Test <ctl> x 8 with Deianira active.
-(defvar dei--unnest-avoid-prefixes
+(defvar dei--avoid-prefixes
   (cons "C-x 8"
         (mapcar #'key-description
                 (where-is-internal #'iso-transl-ctl-x-8-map)))
@@ -915,16 +915,16 @@ less filtered and not normalized list."
   ;; as `current-active-maps' seems to return maps in the order in which Emacs
   ;; selects them.  So what comes earlier in the list is what would in fact be
   ;; used.  The rest is history.
-  (let ((merged nil)
+  (let ((bindings nil)
         (case-fold-search nil))
-    (dolist (raw-map (current-active-maps) merged)
+    (dolist (raw-map (current-active-maps) bindings)
       (cl-loop
        for vec being the key-seqs of raw-map
        using (key-bindings cmd)
        as key = (key-description vec)
-       as norm = (ignore-errors (massmapper--normalize key))
-       if raw do (when (not (assoc key merged))
-                   (push (cons key cmd) merged))
+       as normized = (ignore-errors (massmapper--normalize key))
+       if raw do (when (not (assoc key bindings))
+                   (push (cons key cmd) bindings))
        else do
        (and cmd
             ;; Skip nonstandard menu-bar/tool-bar/tab-bar mess
@@ -932,44 +932,39 @@ less filtered and not normalized list."
             (not (and (listp cmd) (eq 'menu-item (car cmd))))
             ;; Sometimes (key-description vec) evalutes to a key called
             ;; "C-x (..*", a key called "ESC 3..9", etc.  Even stranger,
-            ;; VEC for every one of them is just [switch-frame].  And
+            ;; vec for every one of them is just [switch-frame].  And
             ;; all are bound to self-insert-command.  I don't get it.
-            ;; But it's ok to filter out self-insert-command since I
-            ;; deem it really rare people bind it in nonstandard places.
+            ;; But it's ok to filter out self-insert-command.
             (not (string-search ".." key))
-            ;; Late error-check because some of those we filtered out
+            ;; Late error-check, because some of those we filtered out
             ;; would've tripped an error
-            (if (null norm)
+            (if (null normized)
                 (error "key couldn't be normalized: %s" key)
               t)
-            ;; A keymap can list the same key several times, only the
-            ;; first key in the first keymap is relevant.
-            (not (assoc norm merged))
-
-            (not (string-match-p dei--ignore-regexp-merged norm))
-            (not (massmapper--key-has-more-than-one-chord norm))
-            ;; (not (unless cleaned
-            ;;        (dei--key-is-illegal norm)))
-            (not (dei--key-is-illegal norm))
-            ;; (not (-any-p #'dei--not-on-keyboard (split-string norm " ")))
-            (not (cl-loop for prefix in dei--unnest-avoid-prefixes
-                          when (string-prefix-p prefix norm)
+            ;; Only the first instance of a given key is relevant.
+            (not (assoc normized bindings))
+            ;; (not (-any-p #'dei--not-on-keyboard (split-string normized " ")))
+            (not (string-match-p dei--ignore-regexp-merged normized))
+            (not (massmapper--key-has-more-than-one-chord normized))
+            (not (dei--key-is-illegal normized))
+            (not (cl-loop for prefix in dei--avoid-prefixes
+                          when (string-prefix-p prefix normized)
                           return t))
             ;; Check for ancestors of this key sequence...  the things I
             ;; put up with...
             (not (cl-loop
-                  with n = (length (split-string norm " " t))
+                  with n = (length (split-string normized " " t))
                   with parents = (-iterate #'massmapper--parent-key
-                                           norm n)
+                                           normized n)
                   for parent in parents
-                  when (assoc parent merged)
+                  when (assoc parent bindings)
                   return t))
             ;; Oh!  Better check for descendants of this key sequence too.
             (not (cl-loop
-                  for (superseder . _) in merged
-                  when (string-prefix-p norm superseder)
+                  for (superseder . _) in bindings
+                  when (string-prefix-p normized superseder)
                   return t))
-            (push (cons norm cmd) merged))))))
+            (push (cons normized cmd) bindings))))))
 
 (defun dei--connection-exists (parent-stem child-stem)
   (when (and parent-stem
