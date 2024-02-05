@@ -965,11 +965,13 @@ currently active keymaps, many of which occlude parts of
                 ;; this stage?  It works because, again, we're looping thru
                 ;; `current-active-maps' in order of keymap prio---which means
                 ;; that everything that's gotten into `merged' so far has prio
-                ;; over the key now looked at.
+                ;; over the key now looked at.  The reason we check descendant
+                ;; is that if a prio keymap bound C-x s d, we cannot use C-x s.
                 (not (cl-loop
                       for (superseder . _) in merged
                       when (string-prefix-p normkey superseder)
                       return t)))
+           ;; This looks like I'm an amateur at `cl-loop', but it's necessary!
            collect (cons normkey cmd) into bindings
            finally return bindings)
    into merged
