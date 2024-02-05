@@ -922,7 +922,7 @@ less filtered and not normalized list."
        for vec being the key-seqs of raw-map
        using (key-bindings cmd)
        as key = (key-description vec)
-       as normized = (ignore-errors (massmapper--normalize key))
+       as normkey = (ignore-errors (massmapper--normalize key))
        if raw do (when (not (assoc key bindings))
                    (push (cons key cmd) bindings))
        else do
@@ -938,33 +938,33 @@ less filtered and not normalized list."
             (not (string-search ".." key))
             ;; Late error-check, because some of those we filtered out
             ;; would've tripped an error
-            (if (null normized)
+            (if (null normkey)
                 (error "key couldn't be normalized: %s" key)
               t)
             ;; Only the first instance of a given key is relevant.
-            (not (assoc normized bindings))
-            ;; (not (-any-p #'dei--not-on-keyboard (split-string normized " ")))
-            (not (string-match-p dei--ignore-regexp-merged normized))
-            (not (massmapper--key-has-more-than-one-chord normized))
-            (not (dei--key-is-illegal normized))
+            (not (assoc normkey bindings))
+            ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
+            (not (string-match-p dei--ignore-regexp-merged normkey))
+            (not (massmapper--key-has-more-than-one-chord normkey))
+            (not (dei--key-is-illegal normkey))
             (not (cl-loop for prefix in dei--avoid-prefixes
-                          when (string-prefix-p prefix normized)
+                          when (string-prefix-p prefix normkey)
                           return t))
             ;; Check for ancestors of this key sequence...  the things I
             ;; put up with...
             (not (cl-loop
-                  with n = (length (split-string normized " " t))
+                  with n = (length (split-string normkey " " t))
                   with parents = (-iterate #'massmapper--parent-key
-                                           normized n)
+                                           normkey n)
                   for parent in parents
                   when (assoc parent bindings)
                   return t))
             ;; Oh!  Better check for descendants of this key sequence too.
             (not (cl-loop
                   for (superseder . _) in bindings
-                  when (string-prefix-p normized superseder)
+                  when (string-prefix-p normkey superseder)
                   return t))
-            (push (cons normized cmd) bindings))))))
+            (push (cons normkey cmd) bindings))))))
 
 (defun dei--connection-exists (parent-stem child-stem)
   (when (and parent-stem
