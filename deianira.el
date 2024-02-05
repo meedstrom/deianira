@@ -908,26 +908,25 @@ keymap such as `global-map', but from the composite of all
 currently active keymaps, many of which occlude parts of
 `global-map'.
 
-Optional argument RAW may be useful for debugging, by returning a
-less filtered and not normalized list."
-  ;; You know that the same key can be found several times in multiple keymaps.
-  ;; Fortunately we can know which binding is correct for the current buffer,
-  ;; as `current-active-maps' seems to return maps in the order in which Emacs
-  ;; selects them.  So what comes earlier in the list is what would in fact be
-  ;; used.  The rest is history.
+Optional argument RAW may be useful while debugging, by
+returning a less filtered and not normalized list."
+  ;; You know that the same key can be found several times in multiple
+  ;; keymaps.  Fortunately we can know which binding is correct for the
+  ;; current buffer, as `current-active-maps' seems to return maps in the
+  ;; order in which Emacs selects them.  So what comes earlier in the list
+  ;; is what would in fact be used.  The rest is history.
   (let ((bindings nil)
         (case-fold-search nil))
-    (dolist (raw-map (current-active-maps) bindings)
+    (dolist (keymap (current-active-maps) bindings)
       (cl-loop
-       for vec being the key-seqs of raw-map
+       for seq being the key-seqs of keymap
        using (key-bindings cmd)
-       as key = (key-description vec)
-       as normkey = (ignore-errors (massmapper--normalize key))
+       as key = (key-description seq)
        if raw do (when (not (assoc key bindings))
                    (push (cons key cmd) bindings))
        else do
        (and cmd
-            ;; Skip nonstandard menu-bar/tool-bar/tab-bar mess
+            ;; Skip menu-bar/tool-bar/tab-bar mess
             (not (string-search "-bar>" key))
             (not (and (listp cmd) (eq 'menu-item (car cmd))))
             ;; Sometimes (key-description vec) evalutes to a key called
@@ -936,35 +935,34 @@ less filtered and not normalized list."
             ;; all are bound to self-insert-command.  I don't get it.
             ;; But it's ok to filter out self-insert-command.
             (not (string-search ".." key))
-            ;; Late error-check, because some of those we filtered out
-            ;; would've tripped an error
-            (if (null normkey)
-                (error "key couldn't be normalized: %s" key)
-              t)
-            ;; Only the first instance of a given key is relevant.
-            (not (assoc normkey bindings))
-            ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
-            (not (string-match-p dei--ignore-regexp-merged normkey))
-            (not (massmapper--key-has-more-than-one-chord normkey))
-            (not (dei--key-is-illegal normkey))
-            (not (cl-loop for prefix in dei--avoid-prefixes
-                          when (string-prefix-p prefix normkey)
-                          return t))
-            ;; Check for ancestors of this key sequence...  the things I
-            ;; put up with...
-            (not (cl-loop
-                  with n = (length (split-string normkey " " t))
-                  with parents = (-iterate #'massmapper--parent-key
-                                           normkey n)
-                  for parent in parents
-                  when (assoc parent bindings)
-                  return t))
-            ;; Oh!  Better check for descendants of this key sequence too.
-            (not (cl-loop
-                  for (superseder . _) in bindings
-                  when (string-prefix-p normkey superseder)
-                  return t))
-            (push (cons normkey cmd) bindings))))))
+            (let ((normkey (massmapper--normalize key)))
+              (and
+               ;; Only consider the first instance of a given key (a keymap can
+               ;; list the same key twice, and it can be in several keymaps).
+               (not (assoc normkey bindings))
+               ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
+               (not (string-match-p dei--ignore-regexp-merged normkey))
+               (not (massmapper--key-has-more-than-one-chord normkey))
+               (not (dei--key-is-illegal normkey))
+               (not (cl-loop
+                     for prefix in dei--avoid-prefixes
+                     when (string-prefix-p prefix normkey)
+                     return t))
+               ;; Check for ancestors of this key sequence...  the things I
+               ;; put up with...
+               (not (cl-loop
+                     with n = (length (split-string normkey " " t))
+                     with parents = (-iterate #'massmapper--parent-key
+                                              normkey n)
+                     for parent in parents
+                     when (assoc parent bindings)
+                     return t))
+               ;; Oh!  Better check for descendants of this key sequence too.
+               (not (cl-loop
+                     for (superseder . _) in bindings
+                     when (string-prefix-p normkey superseder)
+                     return t))
+               (push (cons normkey cmd) bindings))))))))
 
 (defun dei--connection-exists (parent-stem child-stem)
   (when (and parent-stem
