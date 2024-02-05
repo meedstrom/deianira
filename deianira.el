@@ -1056,18 +1056,14 @@ long as they don't change.")
            collect
            (let ((basename (substring (symbol-name (car pair)) 0 -5)))
              (cons (car pair)
-                   ;; Note that we eval to get a static string, see also
-                   ;; `dei--step-6-birth-hydra'.  It's ok b/c there is
-                   ;; nothing dynamic in the input, so the result is
-                   ;; deterministic.
-                   (eval (hydra--format
-                          ;; These arguments are identical to what `defhydra'
-                          ;; passes to `hydra--format'. The different result
-                          ;; is due to let-binding `dei--colwidth'.
-                          basename
-                          (eval (intern-soft (concat basename "/params")))
-                          (eval (intern-soft (concat basename "/docstring")))
-                          (eval (intern-soft (concat basename "/heads")))))))
+                   (hydra--format
+                    ;; These arguments are identical to what `defhydra'
+                    ;; passes to `hydra--format'. The different result
+                    ;; is due to let-binding `dei--colwidth'.
+                    basename
+                    (eval (intern-soft (concat basename "/params")))
+                    (eval (intern-soft (concat basename "/docstring")))
+                    (eval (intern-soft (concat basename "/heads"))))))
            else collect pair))
     new))
 
@@ -1239,11 +1235,8 @@ the same key."
       ;; Since `dei--filter-buffer-bindings' returns full keydescs
       ;; only, infer prefixes by cutting the last key off each sequence.
       (setq dei--hydrable-prefixes
-            (-uniq
-             (cl-loop
-              for key in (-uniq (-keep #'massmapper--parent-key
-                                       (-map #'car dei--current-bindings)))
-              collect key)))
+            (-uniq (-keep #'massmapper--parent-key
+                          (-map #'car dei--current-bindings))))
 
       ;; Add every possible ancestor (count C-c and C-c c as well as C-c c p).
       ;; This variable will be looked up by the hydra-head makers, which I'm
@@ -1314,7 +1307,6 @@ the same key."
                       unless (and dei-ignore (string-match-p dei-ignore key))
                       return stem)
              when it collect it))
-
 
       ;; Clear the workbench in case of a previous half-done iteration.
       (setq dei--hydra-recipes nil)
