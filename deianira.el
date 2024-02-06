@@ -21,7 +21,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.7
+;; Version: 0.2.8-snapshot
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "28") (asyncloop "0.5.1-snapshot") (massmapper "0.1.4-snapshot") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
@@ -920,53 +920,54 @@ currently active keymaps, many of which occlude parts of
            for seq being the key-seqs of keymap
            using (key-bindings cmd)
            as key = (key-description seq)
-           as normkey = (ignore-errors (massmapper--normalize key))
+           as normkey = (and
+                         cmd
+                         ;; Ignore menu-bar/tool-bar/tab-bar
+                         (not (string-search "-bar>" key))
+                         (not (and (listp cmd)
+                                   (eq 'menu-item (car cmd))))
+                         ;; Sometimes (key-description seq) evalutes to a key
+                         ;; called "C-x (..*", a key called "ESC 3..9", etc.
+                         ;; Even stranger, `seq' for every one of them is just
+                         ;; [switch-frame].  And all are bound to
+                         ;; self-insert-command.  I don't get it.  But it's ok
+                         ;; to filter out self-insert-command.
+                         (not (string-search ".." key))
+                         ;; Finally the input can be assumed valid.
+                         (massmapper--normalize key))
+           when normkey
            when
-           (and cmd
-                ;; Skip menu-bar/tool-bar/tab-bar mess
-                (not (string-search "-bar>" key))
-                (not (and (listp cmd) (eq 'menu-item (car cmd))))
-                ;; Sometimes (key-description seq) evalutes to a key called
-                ;; "C-x (..*", a key called "ESC 3..9", etc.  Even stranger,
-                ;; `seq' for every one of them is just [switch-frame].  And
-                ;; all are bound to self-insert-command.  I don't get it.
-                ;; But it's ok to filter out self-insert-command.
-                (not (string-search ".." key))
-                ;; Before, we suppressed errors we don't care about. Now check
-                ;; for errors we do.
-                (if (null normkey)
-                    (error "key couldn't be normalized: %s" key)
-                  t)
-                ;; Only consider the first instance of a given key (a keymap can
-                ;; list the same key twice, and it can be in several keymaps).
-                (not (assoc normkey bindings))
-                (not (assoc normkey merged))
-                ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
-                (not (string-match-p dei--ignore-regexp-merged normkey))
-                (not (massmapper--key-has-more-than-one-chord normkey))
-                (not (dei--key-is-illegal normkey))
-                (not (cl-loop
-                      for prefix in dei--avoid-prefixes
-                      thereis (string-prefix-p prefix normkey)))
-                ;; Check if we already found an ancestor to this key
-                ;; sequence...  the things I put up with...
-                (not (cl-loop
-                      with n = (length (split-string normkey " " t))
-                      with parents = (-iterate #'massmapper--parent-key
-                                               normkey n)
-                      for parent in parents
-                      thereis (assoc parent merged)))
-                ;; Oh!  Better check for a descendant of this key sequence too.
-                ;; Does it seem insane to do this check and the above check at
-                ;; this stage?  It works because, again, we're looping thru
-                ;; `current-active-maps' in order of keymap prio---which means
-                ;; that everything that's gotten into `merged' so far has prio
-                ;; over the key now looked at.  The reason we check descendant
-                ;; is that if a prio keymap bound C-x s d, we cannot use C-x s.
-                (not (cl-loop
-                      for (superseder . _) in merged
-                      thereis (string-prefix-p normkey superseder))))
-           ;; This looks like I'm an amateur at `cl-loop', but it's necessary!
+           (and
+            ;; Only consider the first instance of a given key (a keymap can
+            ;; list the same key twice, and it can be in several keymaps).
+            (not (assoc normkey bindings))
+            (not (assoc normkey merged))
+            ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
+            (not (string-match-p dei--ignore-regexp-merged normkey))
+            (not (massmapper--key-has-more-than-one-chord normkey))
+            (not (dei--key-is-illegal normkey))
+            (not (cl-loop
+                  for prefix in dei--avoid-prefixes
+                  thereis (string-prefix-p prefix normkey)))
+            ;; Check if we already found an ancestor to this key
+            ;; sequence...  the things I put up with...
+            (not (cl-loop
+                  with n = (length (split-string normkey " " t))
+                  with parents = (-iterate #'massmapper--parent-key
+                                           normkey n)
+                  for parent in parents
+                  thereis (assoc parent merged)))
+            ;; Oh!  Better check for a descendant of this key sequence too.
+            ;; Does it seem insane to do this check and the above check at
+            ;; this stage?  It works because, again, we're looping thru
+            ;; `current-active-maps' in order of keymap prio---which means
+            ;; that everything that's gotten into `merged' so far has prio
+            ;; over the key now looked at.  The reason we check descendant
+            ;; is that if a prio keymap bound C-x s d, we cannot use C-x s.
+            (not (cl-loop
+                  for (superseder . _) in merged
+                  thereis (string-prefix-p normkey superseder))))
+           ;; Looks like amateur `cl-loop' code, but it's necessary!
            collect (cons normkey cmd) into bindings
            finally return bindings)
    ;; Separating `bindings' and `merged', instead of putting all into `merged'
