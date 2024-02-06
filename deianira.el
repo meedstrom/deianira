@@ -914,11 +914,9 @@ currently active keymaps, many of which occlude parts of
   ;; order in which Emacs selects them.  So what comes earlier in the list
   ;; is what would in fact be used.  The rest is history.
   (cl-loop
-   with merged = nil
    with case-fold-search = nil
    for keymap in (current-active-maps)
    append (cl-loop
-           with bindings = nil
            for seq being the key-seqs of keymap
            using (key-bindings cmd)
            as key = (key-description seq)
