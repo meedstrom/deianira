@@ -930,13 +930,12 @@ currently active keymaps, many of which occlude parts of
                 (not (and (listp cmd) (eq 'menu-item (car cmd))))
                 ;; Sometimes (key-description vec) evalutes to a key called
                 ;; "C-x (..*", a key called "ESC 3..9", etc.  Even stranger,
-                ;; vec for every one of them is just [switch-frame].  And
+                ;; `seq' for every one of them is just [switch-frame].  And
                 ;; all are bound to self-insert-command.  I don't get it.
                 ;; But it's ok to filter out self-insert-command.
                 (not (string-search ".." key))
-                ;; Late error-check because some of those inputs we now
-                ;; filtered out because we don't need them, had tripped silent
-                ;; errors.
+                ;; Before, we suppressed errors we don't care about. Now check
+                ;; for errors we do.
                 (if (null normkey)
                     (error "key couldn't be normalized: %s" key)
                   t)
@@ -975,6 +974,8 @@ currently active keymaps, many of which occlude parts of
            ;; This looks like I'm an amateur at `cl-loop', but it's necessary!
            collect (cons normkey cmd) into bindings
            finally return bindings)
+   ;; Separating `bindings' and `merged', instead of putting all into `merged'
+   ;; from the start, halves the total execution time!
    into merged
    finally return merged))
 
