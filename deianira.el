@@ -928,7 +928,7 @@ currently active keymaps, many of which occlude parts of
                 ;; Skip menu-bar/tool-bar/tab-bar mess
                 (not (string-search "-bar>" key))
                 (not (and (listp cmd) (eq 'menu-item (car cmd))))
-                ;; Sometimes (key-description vec) evalutes to a key called
+                ;; Sometimes (key-description seq) evalutes to a key called
                 ;; "C-x (..*", a key called "ESC 3..9", etc.  Even stranger,
                 ;; `seq' for every one of them is just [switch-frame].  And
                 ;; all are bound to self-insert-command.  I don't get it.
