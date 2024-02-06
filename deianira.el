@@ -21,7 +21,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.7-snapshot
+;; Version: 0.2.7
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "28") (asyncloop "0.5.1-snapshot") (massmapper "0.1.4-snapshot") (compat "29.1.4.3") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
@@ -947,8 +947,7 @@ currently active keymaps, many of which occlude parts of
                 (not (dei--key-is-illegal normkey))
                 (not (cl-loop
                       for prefix in dei--avoid-prefixes
-                      when (string-prefix-p prefix normkey)
-                      return t))
+                      thereis (string-prefix-p prefix normkey)))
                 ;; Check if we already found an ancestor to this key
                 ;; sequence...  the things I put up with...
                 (not (cl-loop
@@ -956,8 +955,7 @@ currently active keymaps, many of which occlude parts of
                       with parents = (-iterate #'massmapper--parent-key
                                                normkey n)
                       for parent in parents
-                      when (assoc parent merged)
-                      return t))
+                      thereis (assoc parent merged)))
                 ;; Oh!  Better check for a descendant of this key sequence too.
                 ;; Does it seem insane to do this check and the above check at
                 ;; this stage?  It works because, again, we're looping thru
@@ -967,8 +965,7 @@ currently active keymaps, many of which occlude parts of
                 ;; is that if a prio keymap bound C-x s d, we cannot use C-x s.
                 (not (cl-loop
                       for (superseder . _) in merged
-                      when (string-prefix-p normkey superseder)
-                      return t)))
+                      thereis (string-prefix-p normkey superseder))))
            ;; This looks like I'm an amateur at `cl-loop', but it's necessary!
            collect (cons normkey cmd) into bindings
            finally return bindings)
