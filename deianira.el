@@ -21,7 +21,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.2.8
+;; Version: 0.2.9-pre
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/deianira
 ;; Package-Requires: ((emacs "28") (asyncloop "0.5.1") (massmapper "0.1.4") (compat "29.1.4.4") (hydra "0.15.0") (named-timer "0.1") (dash "2.19.1"))
@@ -897,17 +897,47 @@ and no mixed modifiers."
                 (where-is-internal #'iso-transl-ctl-x-8-map)))
   "List of prefixes to avoid looking up.")
 
-;; (dei--filter-buffer-bindings)
-(defun dei--filter-buffer-bindings ()
+(defvar dei--cache (make-hash-table :size 2000 :test #'equal))
+(defun dei--seq-to-key-if-legal (seq)
+  (let ((cached-value (gethash seq dei--cache 'not-found)))
+    (if (eq 'not-found cached-value)
+        (puthash seq
+                 (let* ((key (key-description seq))
+                        (normkey (and
+                                  ;; Ignore menu-bar/tool-bar/tab-bar
+                                  (not (string-search "-bar>" key))
+                                  ;; Sometimes (key-description seq) evalutes
+                                  ;; to a key called "C-x (..*", a key called
+                                  ;; "ESC 3..9", etc.  Even stranger, `seq' for
+                                  ;; every one of them is just [switch-frame].
+                                  ;; And all are bound to self-insert-command.
+                                  ;; I don't get it.  But it's ok to filter out
+                                  ;; self-insert-command.
+                                  (not (string-search ".." key))
+                                  ;; Finally the input can be assumed valid.
+                                  (massmapper--normalize key))))
+                   (and
+                    normkey
+                    ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
+                    (not (string-match-p dei--ignore-regexp-merged normkey))
+                    (not (massmapper--key-has-more-than-one-chord normkey))
+                    (not (dei--key-is-illegal normkey))
+                    (cl-loop for prefix in dei--avoid-prefixes
+                             never (string-prefix-p prefix normkey))
+                    normkey))
+                 dei--cache)
+      cached-value)))
+
+;;(dei--relevant-buffer-bindings)
+(defun dei--relevant-buffer-bindings ()
   "List the current bindings appropriate for hydra-making.
 The result is an alist of \(KEYDESC . COMMAND\), where each
 KEYDESC is normalized to satisfy `key-valid-p'.  COMMAND is
-expected to be either a command or a lambda or closure.
+expected to be either a command, a lambda or a closure.
 
 Perhaps obvious but: this is not the bindings from any single
-keymap such as `global-map', but from the composite of all
-currently active keymaps, many of which occlude parts of
-`global-map'."
+keymap such as `global-map', but from the composite of currently
+active keymaps, many of which occlude parts of `global-map'."
   ;; You know that the same key can be found several times in multiple
   ;; keymaps.  Fortunately we can know which binding is correct for the
   ;; current buffer, as `current-active-maps' seems to return maps in the
@@ -919,59 +949,36 @@ currently active keymaps, many of which occlude parts of
    append (cl-loop
            for seq being the key-seqs of keymap
            using (key-bindings cmd)
-           as key = (key-description seq)
-           as normkey = (and
-                         cmd
-                         ;; Ignore menu-bar/tool-bar/tab-bar
-                         (not (string-search "-bar>" key))
-                         (not (and (listp cmd)
-                                   (eq 'menu-item (car cmd))))
-                         ;; Sometimes (key-description seq) evalutes to a key
-                         ;; called "C-x (..*", a key called "ESC 3..9", etc.
-                         ;; Even stranger, `seq' for every one of them is just
-                         ;; [switch-frame].  And all are bound to
-                         ;; self-insert-command.  I don't get it.  But it's ok
-                         ;; to filter out self-insert-command.
-                         (not (string-search ".." key))
-                         ;; Finally the input can be assumed valid.
-                         (massmapper--normalize key))
-           when normkey
-           when
-           (and
-            ;; Only consider the first instance of a given key (a keymap can
-            ;; list the same key twice, and it can be in several keymaps).
-            (not (assoc normkey bindings))
-            (not (assoc normkey merged))
-            ;; (not (-any-p #'dei--not-on-keyboard (split-string normkey " ")))
-            (not (string-match-p dei--ignore-regexp-merged normkey))
-            (not (massmapper--key-has-more-than-one-chord normkey))
-            (not (dei--key-is-illegal normkey))
-            (not (cl-loop
-                  for prefix in dei--avoid-prefixes
-                  thereis (string-prefix-p prefix normkey)))
-            ;; Check if we already found an ancestor to this key
-            ;; sequence...  the things I put up with...
-            (not (cl-loop
-                  with n = (length (split-string normkey " " t))
-                  with parents = (-iterate #'massmapper--parent-key
-                                           normkey n)
-                  for parent in parents
-                  thereis (assoc parent merged)))
-            ;; Oh!  Better check for a descendant of this key sequence too.
-            ;; Does it seem insane to do this check and the above check at
-            ;; this stage?  It works because, again, we're looping thru
-            ;; `current-active-maps' in order of keymap prio---which means
-            ;; that everything that's gotten into `merged' so far has prio
-            ;; over the key now looked at.  The reason we check descendant
-            ;; is that if a prio keymap bound C-x s d, we cannot use C-x s.
-            (not (cl-loop
-                  for (superseder . _) in merged
-                  thereis (string-prefix-p normkey superseder))))
-           ;; Looks like amateur `cl-loop' code, but it's necessary!
-           collect (cons normkey cmd) into bindings
+           as key = (dei--seq-to-key-if-legal seq)
+           when key
+           when cmd
+           ;; Rule out menu-items and other "weird" bindings
+           when (if (listp cmd)
+                    (member (car cmd) '(closure lambda))
+                  t)
+           ;; Only consider the first instance of a given key (a keymap can
+           ;; list the same key twice, and it can be in several keymaps)
+           unless (assoc key bindings)
+           unless (assoc key merged)
+           ;; Check if we already found an ancestor to or descendant of this
+           ;; key sequence... (the things I put up with...) The reason why is
+           ;; that every key that's already gotten into `merged' at this point
+           ;; has prio over the key now looked at, so if for example there
+           ;; exists a bound key C-x s d, it would be wrong to assume that
+           ;; either C-x s OR C-x s d f are now bound to a command in practice,
+           ;; just because we found it in this late keymap (C-x s would
+           ;; technically still be bound, but to a keymap value, not a command,
+           ;; which still overshadows the C-x s we now find, and the earlier
+           ;; `assoc' won't catch it because `cl-loop' skips keys bound to
+           ;; keymap values).
+           when (cl-loop for (priokey . _) in merged
+                         never (string-prefix-p key priokey)
+                         never (string-prefix-p priokey key))
+           ;; May look like amateur `cl-loop' code, but necessary
+           collect (cons key cmd) into bindings
            finally return bindings)
-   ;; Separating `bindings' and `merged', instead of putting all into `merged'
-   ;; from the start, halves the total execution time!
+   ;; Separating `bindings' and `merged', instead of collecting each key into
+   ;; `merged' from the start, halves the total execution time
    into merged
    finally return merged))
 
@@ -1225,7 +1232,7 @@ the same key."
             dei--filler (dei--filler-recalc dei--colwidth))
 
       (condition-case err
-          (setq dei--current-bindings (dei--filter-buffer-bindings))
+          (setq dei--current-bindings (dei--relevant-buffer-bindings))
         ((error debug)
          (asyncloop-log loop "Problem filtering bindings: %s" (cdr err))
          (signal (car err) (cdr err))))
@@ -1233,10 +1240,10 @@ the same key."
       ;; Check for a known problem
       (when (null dei--current-bindings)
         (error (asyncloop-log loop
-                 "%s %s" "No bindings found, probably an intermittent bug in compiled cl-loop expression in `dei--filter-buffer-bindings'."
+                 "%s %s" "No bindings found, probably an intermittent bug in compiled cl-loop expression in `dei--relevant-buffer-bindings'."
                  "Try deleting deianira.elc, or live-evalling that specific defun so it runs uncompiled.")))
 
-      ;; Since `dei--filter-buffer-bindings' returns full keydescs
+      ;; Since `dei--relevant-buffer-bindings' returns full keydescs
       ;; only, infer prefixes by cutting the last key off each sequence.
       (setq dei--hydrable-prefixes
             (-uniq (-keep #'massmapper--parent-key
