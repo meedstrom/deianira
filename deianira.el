@@ -1107,10 +1107,11 @@ Otherwise, return nil."
     (setq dei--current-width width)
     (if some-flock
         (let* ((past (dei--flock-by-hash-and-width hash width flocks))
-               (existed (if past
-                            t
-                          (setq past (dei--rehint-flock some-flock width))
-                          nil))
+               (width-also-correct
+                (if past
+                    t
+                  (setq past (dei--rehint-flock some-flock width))
+                  nil))
                (bindings (dei--flock-bindings past))
                (funs (dei--flock-funs past))
                (vars (dei--flock-vars past)))
@@ -1118,7 +1119,7 @@ Otherwise, return nil."
           (cl-loop for (sym . val) in funs do (fset sym val))
           (cl-loop for (sym . val) in vars do (set sym val))
           (setq dei--last-bindings bindings)
-          (if existed
+          (if width-also-correct
               (progn
                 ;; Do not proceed to next steps
                 (asyncloop-cancel loop 'quietly)
@@ -1311,6 +1312,8 @@ the same key."
              ;; Reimplement -connection-exists to use keydescs, and use it in
              ;; calculating new-bindings.  That may also take care of the other
              ;; todo regarding subkeymaps.
+             ;; REVIEW: if ancestors don't get rebuilt, that could be why we
+             ;; seem to get wrong hydras for buffer -- just leafs are correct
              for stem in dei--hydrable-stems
              as it = (cl-loop
                       for (key . _) in new-bindings
