@@ -1423,9 +1423,11 @@ of asyncloop LOOP, so it will run again until
       (cl-incf dei--interrupts-counter)
     (setq dei--give-up t)
     (asyncloop-cancel loop)
-    (warn (asyncloop-log loop
-            "5 interrupts last 3 min, stopped trying to make hydras!  %s"
-            "To resume, turn `deianira-mode' off and on."))))
+    (display-warning
+     'deianira
+     (asyncloop-log loop
+       "5 interrupts last 3 min, stopped trying to make hydras!  %s"
+       "To resume, turn `deianira-mode' off and on."))))
 
 (defun dei-make-hydras-maybe (&rest _)
   "Maybe make hydras for the current keymap combo."
