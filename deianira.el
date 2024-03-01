@@ -62,12 +62,16 @@
 (declare-function #'dei-M/body "deianira" nil t)
 (declare-function #'dei-s/body "deianira" nil t)
 
+;; obsolete
+(defun dei-homogenize-all-keymaps ()
+  (display-warning 'massmapper "Deprecated function dei-homogenize-all-keymaps, use massmapper-homogenize"))
+
 
 ;;;; User settings
 
 (defcustom dei-hydra-keys
   "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
-  "Keys to show in hydra hint\; default reflects an US keyboard.
+  "Keys to show in hydra hint\; default reflects an US QWERTY keyboard.
 Length should be divisible by `dei-columns'.  In other words, if
 you have 10 columns this can be 30 or 40 characters, if you
 want 11 columns this can be 33 or 44 characters, and so on.
@@ -568,7 +572,8 @@ chokes Emacs for minutes.")
 
 (defun dei--set-ersatz-key (sym newkey)
   "Bind SYM to NEWKEY, and help other code cope with the change."
-  ;; Reset all hydras because value gets hardcoded by `dei--specify-extra-heads'
+  ;; Reset all hydras because value gets hardcoded by
+  ;; `dei--specify-extra-heads'
   (obarray-remove dei--hidden-obarray "flocks")
   ;; Unbind last key in case it was different
   (when (boundp sym)
