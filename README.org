@@ -92,7 +92,7 @@ Possible alternatives to kmonad:
 The buggy and unmaintained [[https://github.com/alols/xcape][xcape]] is NOT an alternative.  Something so fundamental needs to be reliable; when I tried xcape, it could work for a while and then stop.  This leads to giving up on Deianira.
 
 *** What do I need kmonad for?
-Emacs cannot detect the fact that you held down and released Control, Meta or Super, so we need some lower software needs to tell Emacs about it.  Thus, we configure kmonad to send separate key events when you touch the keyboard this way.
+Emacs cannot detect the fact that you held down and released Control, Meta or Super, so we need some lower software to tell Emacs about it.  Thus, we configure kmonad to send separate key events when you touch the keyboard this way.
 
 It does not matter which key events will represent this, as the user almost never sees them printed in the echo area.  The default choices are a bit unusual, discussed in [[#if-you-wish-to-change-the-keys][the appendix]].
 
@@ -454,7 +454,7 @@ Let me explain.
 
 The famous collection of Transients known as Magit is, sayeth Internet Truth, a discoverable way to subtly modify any =git= command, beating the command line even for command line masters.
 
-If we represent all of Emacs' key bindings in Transients, the same way Magit swallowed all of Git's commands, the benefit is unclear compared to doing the same with Hydra, because most of the time, you do not want to modify a command anyway.  But that very fact may boil down to us now having separate commands for all of the following, because we did not have Transient back in the Screaming Eighties:
+If we represent all of Emacs' key bindings in Transients, the same way Magit swallowed all of Git's commands, the benefit is unclear compared to doing the same with Hydra, because most of the time, you do not want to modify a command anyway.  But that very fact may boil down to us now having separate commands for all of the following:
 
 - transpose-chars (C-t)
 - transpose-words (M-t)
@@ -466,7 +466,7 @@ If we represent all of Emacs' key bindings in Transients, the same way Magit swa
 - avy-transpose-lines-in-region
 - crux-transpose-windows
 
-(Vimmers, bear with me)
+(Vimmers, you might now be anxiously shifting in your seat, but bear with me)
 
 These commands speak of one *verb* "transpose", together with a variety of targets or *objects* "char", "word", "sexp", "line" and so on.  We see a similar pattern for the verb "kill":
 
